@@ -23,13 +23,13 @@ Rewarded ads need a **development build** (Expo Go cannot load the ads module): 
 - Room lobby: room code, ready / start, kick, invite a friend, share code, chat
 - Friends: search by username or friend code, requests, online status, invite
 - Match screen with turn timer, resign, result and coin payout
-- Tic Tac Toe board (all four games already work on the server)
+- Boards for all four games: Tic Tac Toe, Ayo, Ludo (full ring board, dice, captures) and Water Sort race (tap a tube, then where to pour; opponents' progress shown)
 - Me tab: friend code, game history with net coins, coin history
 - Resume: reopening the app drops you back into a game or room in progress
 
 ## Still to build in the app
 
-Water Sort, Ayo and Ludo boards (server side done), the coin pack shop (Google Play / App Store purchases), cosmetics.
+The coin pack shop (Google Play / App Store purchases) and cosmetics. Sounds, animations and a tutorial for each game.
 
 ## Layout
 

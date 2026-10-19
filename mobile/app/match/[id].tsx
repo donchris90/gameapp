@@ -1,8 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
+import { Ayo } from '../../src/games/Ayo';
+import { Ludo } from '../../src/games/Ludo';
 import { TicTacToe } from '../../src/games/TicTacToe';
+import { WaterSort } from '../../src/games/WaterSort';
 import { GAME_INFO } from '../../src/games';
 import { useSession, useSocketEvent } from '../../src/session';
 import { Match } from '../../src/types';
@@ -57,7 +60,8 @@ export default function MatchScreen() {
   };
 
   const resultText = !over ? '' : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
-  const status = over ? resultText : myTurn ? 'Your turn' : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
+  const race = match.game === 'WATER_SORT';
+  const status = over ? resultText : race ? 'Solve it first!' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
 
   return (
     <Screen>
@@ -84,11 +88,12 @@ export default function MatchScreen() {
         {seconds !== null ? <Text style={{ color: seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', marginTop: 4 }}>{seconds}s</Text> : null}
       </View>
 
-      {match.game === 'TICTACTOE' ? <TicTacToe match={match} mySeat={mySeat} onMove={send} busy={busy} /> : (
-        <Card><Body>This game's screen is not in the app yet.</Body></Card>
-      )}
-
-      <View style={{ flex: 1 }} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
+        {match.game === 'TICTACTOE' ? <TicTacToe match={match} mySeat={mySeat} onMove={send} busy={busy} />
+          : match.game === 'AYO' ? <Ayo match={match} mySeat={mySeat} onMove={send} busy={busy} />
+          : match.game === 'LUDO' ? <Ludo match={match} mySeat={mySeat} onMove={send} busy={busy} />
+          : <WaterSort match={match} mySeat={mySeat} onMove={send} busy={busy} />}
+      </ScrollView>
       {!over ? (
         <Button title="Resign" kind="ghost" onPress={resign} style={{ marginBottom: 16 }} />
       ) : (

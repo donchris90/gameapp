@@ -6,6 +6,7 @@ import { api, explain } from '../src/api';
 import { GAME_INFO } from '../src/games';
 import { useSession, useSocketEvent } from '../src/session';
 import { Room, UserSummary } from '../src/types';
+import { titleText } from '../src/cosmetics';
 import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../src/ui';
 
 type Chat = { from: { id: string; displayName: string }; text: string; at: string };
@@ -85,8 +86,8 @@ export default function RoomScreen() {
             <Card key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
               {m ? (
                 <>
-                  <Avatar name={m.displayName} online={m.online} />
-                  <View style={{ flex: 1 }}><Body style={{ fontWeight: '700' }}>{m.displayName}{m.userId === user.id ? ' (you)' : ''}</Body><Dim>{m.userId === room.hostId ? 'Host' : m.ready ? 'Ready' : 'Not ready'}</Dim></View>
+                  <Avatar name={m.displayName} online={m.online} frame={m.frame} />
+                  <View style={{ flex: 1 }}><Body style={{ fontWeight: '700' }}>{m.displayName}{m.userId === user.id ? ' (you)' : ''}</Body><Dim>{titleText(m.title) ? `${titleText(m.title)} · ` : ''}{m.userId === room.hostId ? 'Host' : m.ready ? 'Ready' : 'Not ready'}</Dim></View>
                   {m.userId === room.hostId ? <Text>👑</Text> : m.ready ? <Text style={{ color: colors.good, fontWeight: '800' }}>✓</Text> : null}
                   {isHost && m.userId !== user.id ? <Text onPress={() => act(() => api(`/rooms/current/kick/${m.userId}`, { method: 'POST' }), 'Remove player')} style={{ color: colors.dim, fontSize: 18, paddingHorizontal: 6 }}>✕</Text> : null}
                 </>

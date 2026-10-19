@@ -10,6 +10,7 @@ import { GAME_INFO } from '../../src/games';
 import { useSession, useSocketEvent } from '../../src/session';
 import { Match } from '../../src/types';
 import { useCountdown } from '../../src/useCountdown';
+import { titleText } from '../../src/cosmetics';
 import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../../src/ui';
 
 export default function MatchScreen() {
@@ -75,8 +76,9 @@ export default function MatchScreen() {
           const active = !over && match.turnSeat === p.seat;
           return (
             <View key={p.userId} style={{ alignItems: 'center', gap: 4, opacity: p.left ? 0.4 : 1 }}>
-              <View style={{ padding: 3, borderRadius: 30, borderWidth: 2, borderColor: active ? colors.accent : 'transparent' }}><Avatar name={p.displayName} size={48} /></View>
+              <View style={{ padding: 3, borderRadius: 30, borderWidth: 2, borderColor: active ? colors.accent : 'transparent' }}><Avatar name={p.displayName} size={48} frame={p.frame} /></View>
               <Text style={{ color: colors.text, fontWeight: '700' }}>{p.userId === user.id ? 'You' : p.displayName}</Text>
+              {titleText(p.title) ? <Text style={{ color: colors.dim, fontSize: 11 }}>{titleText(p.title)}</Text> : null}
               {match.game === 'TICTACTOE' ? <Text style={{ color: p.seat === 0 ? colors.x : colors.o, fontWeight: '900', fontSize: 18 }}>{match.state.marks[p.seat]}</Text> : null}
             </View>
           );

@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { ApiError, api, getAccessToken, loadTokens, refreshSession, saveTokens, setSignedOutHandler } from './api';
+import { clearShop } from './cosmetics';
 import { API_URL } from './config';
 import { Me, Tokens } from './types';
 
@@ -27,7 +28,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try { setCoins((await api<{ coins: number }>('/wallet')).coins); } catch { /* shown on next refresh */ }
   }, []);
 
-  const dropSession = useCallback(() => { setUser(null); setCoins(0); }, []);
+  const dropSession = useCallback(() => { setUser(null); setCoins(0); clearShop(); }, []);
   useEffect(() => { setSignedOutHandler(dropSession); }, [dropSession]);
 
   // Restore a saved login on start.

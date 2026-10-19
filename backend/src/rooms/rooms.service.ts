@@ -22,7 +22,7 @@ export interface RoomHooks {
 }
 
 const roomInclude = {
-  members: { include: { user: { select: { id: true, username: true, displayName: true } } }, orderBy: { seat: 'asc' as const } },
+  members: { include: { user: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true } } }, orderBy: { seat: 'asc' as const } },
 } satisfies Prisma.RoomInclude;
 export type RoomFull = Prisma.RoomGetPayload<{ include: typeof roomInclude }>;
 
@@ -59,7 +59,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       id: room.id, code: room.code, game: room.game, kind: room.kind, stake: Number(room.stake),
       minPlayers: room.minPlayers, maxPlayers: room.maxPlayers, status: room.status, hostId: room.hostId,
       members: room.members.map((m) => ({
-        userId: m.userId, username: m.user.username, displayName: m.user.displayName,
+        userId: m.userId, username: m.user.username, displayName: m.user.displayName, frame: m.user.equippedFrame, title: m.user.equippedTitle,
         seat: m.seat, ready: m.userId === room.hostId ? true : m.ready, online: this.presence.isOnline(m.userId),
       })),
     };

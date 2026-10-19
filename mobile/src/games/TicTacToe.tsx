@@ -1,5 +1,6 @@
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Match } from '../types';
+import { useTheme } from '../cosmetics';
 import { colors } from '../ui';
 
 interface State { board: Array<number | null>; marks: Record<number, string>; turn: number; winLine: number[] | null }
@@ -8,6 +9,7 @@ export function TicTacToe({ match, mySeat, onMove, busy }: { match: Match<State>
   const { width } = useWindowDimensions();
   const size = Math.min(width - 32, 420);
   const cell = (size - 16) / 3;
+  const theme = useTheme();
   const s = match.state;
   const myTurn = match.status === 'ACTIVE' && match.turnSeat === mySeat && !busy;
 
@@ -18,7 +20,7 @@ export function TicTacToe({ match, mySeat, onMove, busy }: { match: Match<State>
         const free = v === null;
         return (
           <Pressable key={i} disabled={!myTurn || !free} onPress={() => onMove({ cell: i })}
-            style={{ width: cell, height: cell, borderRadius: 18, backgroundColor: win ? '#2C3F2A' : colors.card, borderWidth: 2, borderColor: win ? colors.good : myTurn && free ? colors.line : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+            style={{ width: cell, height: cell, borderRadius: 18, backgroundColor: win ? '#2C3F2A' : theme.cell, borderWidth: 2, borderColor: win ? colors.good : myTurn && free ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
             {v !== null ? <Text style={{ fontSize: cell * 0.6, fontWeight: '900', color: v === 0 ? colors.x : colors.o }}>{s.marks[v]}</Text> : null}
           </Pressable>
         );

@@ -116,6 +116,11 @@ model User {
   adViews          AdView[]
   auditsMade       AuditLog[]   @relation("AuditAdmin")
   auditsAbout      AuditLog[]   @relation("AuditTarget")
+  items            UserItem[]
+  // Cosmetics currently shown. Frame and title are visible to other players; the board theme only to you.
+  equippedFrame    String?
+  equippedTitle    String?
+  equippedTheme    String?
 }
 
 // One coin balance per user. Balance only ever changes through
@@ -369,4 +374,17 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([targetUserId])
+}
+
+// A cosmetic a player owns. One row per player per item, so an item can only be bought once.
+model UserItem {
+  id         String   @id @default(uuid())
+  userId     String
+  itemId     String
+  pricePaid  BigInt
+  acquiredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
 }

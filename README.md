@@ -153,3 +153,12 @@ npm test
 - The first migration was written by hand because the build sandbox could not download Prisma's migration engine. Run `npx prisma migrate dev` once on your machine; if Prisma reports any drift from `schema.prisma`, accept its generated migration instead and delete mine.
 - Socket.io CORS is open (`origin: true`) for now. Restrict it once the admin web panel exists.
 - Prisma 7 generates the client into `src/generated/prisma` (git-ignored). `npm install` then `npx prisma generate` recreates it.
+
+## Step 8: Cosmetic shop
+
+Players spend coins on looks only: avatar frames, titles and board themes (`backend/src/shop/items.ts`). Nothing affects gameplay.
+
+- `GET /shop/items` catalog with `owned` flags and what is equipped; `POST /shop/items/:id/buy`; `POST /shop/items/:id/equip`; `POST /shop/unequip/:kind` (frame, title, theme).
+- Buying writes the item and the `SHOP_PURCHASE` ledger debit in one transaction, so a failed payment gives no item and a double tap charges once.
+- Frame and title are shown to other players in rooms and matches; the board theme is applied to your own Tic Tac Toe and Ayo boards.
+- Mobile: Me tab, "Customize" (`mobile/app/cosmetics.tsx`). To add an item, add it to `items.ts` and, for frames/titles, to the maps in `mobile/src/cosmetics.ts`.

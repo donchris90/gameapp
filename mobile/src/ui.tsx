@@ -1,3 +1,4 @@
+import { frameColor } from './cosmetics';
 import { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,11 +57,12 @@ export function Chip({ label, selected, onPress, disabled }: { label: string; se
   );
 }
 
-export function Avatar({ name, size = 40, online }: { name: string; size?: number; online?: boolean }) {
+export function Avatar({ name, size = 40, online, frame }: { name: string; size?: number; online?: boolean; frame?: string | null }) {
+  const ring = frameColor(frame);
   const hue = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   return (
     <View>
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue},55%,45%)`, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue},55%,45%)`, alignItems: 'center', justifyContent: 'center', ...(ring ? { borderWidth: Math.max(3, size / 14), borderColor: ring } : null) }}>
         <Text style={{ color: '#fff', fontWeight: '800', fontSize: size * 0.42 }}>{name.slice(0, 1).toUpperCase()}</Text>
       </View>
       {online !== undefined ? <View style={[s.dot, { backgroundColor: online ? colors.good : colors.line }]} /> : null}

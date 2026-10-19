@@ -1,8 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 import { api } from '../../src/api';
+import { titleText, useShop } from '../../src/cosmetics';
 import { GAME_INFO } from '../../src/games';
 import { useSession } from '../../src/session';
 import { GameType } from '../../src/types';
@@ -20,6 +21,9 @@ export default function Me() {
   const { user, coins, signOut, refreshCoins } = useSession();
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const shop = useShop();
+  const equipped = shop?.equipped;
+  const router = useRouter();
   const [tab, setTab] = useState<'games' | 'coins'>('games');
 
   useFocusEffect(useCallback(() => {
@@ -35,9 +39,9 @@ export default function Me() {
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <View style={{ alignItems: 'center', marginTop: 16, gap: 6 }}>
-          <Avatar name={user.displayName} size={72} />
+          <Avatar name={user.displayName} size={72} frame={equipped?.frame} />
           <H1>{user.displayName}</H1>
-          <Dim>@{user.username}</Dim>
+          <Dim>@{user.username}{titleText(equipped?.title) ? `  ·  ${titleText(equipped?.title)}` : ''}</Dim>
           <Coins amount={coins} size={22} />
         </View>
 
@@ -46,6 +50,8 @@ export default function Me() {
           <Text onPress={async () => { await Clipboard.setStringAsync(user.friendCode); Alert.alert('Copied', 'Friend code copied.'); }} style={{ color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: 4 }}>{user.friendCode}</Text>
           <Dim style={{ fontSize: 12 }}>Tap to copy. Friends can add you with it.</Dim>
         </Card>
+
+        <Button style={{ marginTop: 12 }} kind="ghost" title="✨ Customize: frames, titles, boards" onPress={() => router.push('/cosmetics')} />
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
           <Button style={{ flex: 1 }} kind={tab === 'games' ? 'primary' : 'ghost'} title={`Games (${wins} won)`} onPress={() => setTab('games')} />

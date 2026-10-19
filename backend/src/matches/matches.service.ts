@@ -11,7 +11,7 @@ import { AfterCommit, RoomFull, RoomsService, Tx } from '../rooms/rooms.service'
 import { WalletService } from '../wallet/wallet.service';
 
 const matchInclude = {
-  players: { include: { user: { select: { id: true, username: true, displayName: true } } }, orderBy: { seat: 'asc' as const } },
+  players: { include: { user: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true } } }, orderBy: { seat: 'asc' as const } },
 } satisfies Prisma.MatchInclude;
 type MatchFull = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
 
@@ -61,7 +61,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       turnSeat: m.turnSeat, turnDeadline: m.turnDeadline,
       state: engine ? engine.publicState(m.state) : null,
       players: m.players.map((p) => ({
-        userId: p.userId, username: p.user.username, displayName: p.user.displayName,
+        userId: p.userId, username: p.user.username, displayName: p.user.displayName, frame: p.user.equippedFrame, title: p.user.equippedTitle,
         seat: p.seat, payout: Number(p.payout), result: p.result, left: !!p.leftAt,
       })),
     };

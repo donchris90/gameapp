@@ -1,5 +1,8 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+
+// Expo Go has no push support (and the notifications module cannot even load there), so skip it entirely.
+const inExpoGo = Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
 import { api } from './api';
 
 // Remote notifications need a real build (not Expo Go) and the player's permission. Every step is allowed to fail quietly:
@@ -7,6 +10,7 @@ import { api } from './api';
 let current: string | null = null;
 
 export async function registerForPush(): Promise<void> {
+  if (inExpoGo) return;
   try {
     const N = await import('expo-notifications');
     N.setNotificationHandler({
@@ -39,6 +43,7 @@ export async function unregisterPush(): Promise<void> {
 /** Runs `onOpen` with the notification's data when the player taps one. Returns a function that stops listening. */
 export function listenForNotificationTaps(onOpen: (data: Record<string, unknown>) => void): () => void {
   let stop = () => {};
+  if (inExpoGo) return () => {};
   import('expo-notifications').then((N) => {
     const sub = N.addNotificationResponseReceivedListener((r) => onOpen((r.notification.request.content.data ?? {}) as Record<string, unknown>));
     stop = () => sub.remove();

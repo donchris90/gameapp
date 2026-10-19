@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { randomPlayerName } from './bot-names';
 import { chooseMove } from './bot-policy';
+import { ayoAnimMs } from '../games/ayo.engine';
 
 const ctx: EngineContext = { randomInt: (n) => randomInt(n) };
 
@@ -131,7 +132,9 @@ export class BotsService implements OnModuleInit, OnModuleDestroy {
     const s = botSettings();
     // Rolling the dice is quicker than thinking about a move.
     const wait = m.game === 'LUDO' && (m.state as { phase?: string }).phase === 'ROLL' ? between(s.moveMin / 2, s.moveMax / 2) : between(s.moveMin, s.moveMax);
-    const t = setTimeout(() => void this.play(m.id, m.version, player.userId, key), wait);
+    // Let the last move finish playing out on the other player's screen before the computer answers.
+    const shown = process.env.BOT_HOLD_ANIM === 'false' ? 0 : m.game === 'AYO' ? ayoAnimMs((m.state as { last?: { events?: Array<{ t: string }> } }).last?.events ?? []) : 0;
+    const t = setTimeout(() => void this.play(m.id, m.version, player.userId, key), wait + shown);
     t.unref();
   }
 

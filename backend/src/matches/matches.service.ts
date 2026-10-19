@@ -215,7 +215,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         throw e;
       }
       if (res.outcome) return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state);
-      return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs, engine.simultaneous);
+      return this.advance(tx, m, res.state, res.turnSeat, engine.simultaneous ? engine.turnTimeoutMs : (engine.turnTimeoutMs ?? this.config.turnTimeoutMs) + (res.holdMs ?? 0), engine.simultaneous);
     });
     await this.run(after);
     return this.get(userId, matchId);
@@ -282,7 +282,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
               const res = engine.applyMove(m.state, late.seat, move, ctx);
               this.auto.set(key, steps + 1);
               if (res.outcome) { this.auto.delete(key); return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state); }
-              return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs); // the next turn gets the normal clock
+              return this.advance(tx, m, res.state, res.turnSeat, (engine.turnTimeoutMs ?? this.config.turnTimeoutMs) + (res.holdMs ?? 0)); // the next turn gets the normal clock
             } catch (e) {
               if (!(e instanceof IllegalMove)) throw e; // fall through to the old rule
             }

@@ -10,6 +10,8 @@ export interface MoveResult<S> {
   /** Whose turn is next. null when nobody is on the clock. */
   turnSeat: number | null;
   outcome?: Outcome;
+  /** Extra time (ms) added to the next turn's clock, for moves that take a while to play out on screen. */
+  holdMs?: number;
 }
 
 export interface EngineContext {

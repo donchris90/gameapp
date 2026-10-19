@@ -18,6 +18,16 @@ export const MAX_SOW_STEPS = 2000;
 export const MAX_ROUND_TURNS = 400;
 export const MAX_ROUNDS = 30;
 
+/** How long each step takes to show on a phone. The client uses the same numbers, so the next player's clock only starts once the move has been shown. */
+export const AYO_ANIM = { dropMs: 380, pickMs: 700, packMs: 900, finalMs: 1000, roundMs: 1800, maxMoveMs: 14000 };
+export function ayoAnimMs(events: Array<{ t: string }>): number {
+  const drops = events.filter((e) => e.t === 'drop').length;
+  const dropMs = drops > 0 ? Math.min(AYO_ANIM.dropMs, Math.floor(AYO_ANIM.maxMoveMs / drops)) : AYO_ANIM.dropMs;
+  let ms = 0;
+  for (const e of events) ms += e.t === 'drop' ? dropMs : e.t === 'pick' ? AYO_ANIM.pickMs : e.t === 'pack' ? AYO_ANIM.packMs : e.t === 'final' ? AYO_ANIM.finalMs : e.t === 'round' ? AYO_ANIM.roundMs : 0;
+  return ms + 300;
+}
+
 export type AyoEvent =
   | { t: 'pick'; pit: number; count: number }
   | { t: 'drop'; pit: number }
@@ -123,7 +133,7 @@ export class AyoEngine implements GameEngine<AyoState> {
     }
     st.last = { seat, pit, packed: r.packedBy[seat], before, ownersBefore, capturedBefore, events };
     if (outcome) return { state: st, turnSeat: null, outcome };
-    return { state: st, turnSeat: st.decision ? st.decision.seat : st.turn };
+    return { state: st, turnSeat: st.decision ? st.decision.seat : st.turn, holdMs: ayoAnimMs(events) };
   }
 
   /** Gives the leftover seeds away, then starts the next round or ends the game. Mutates `st`. */

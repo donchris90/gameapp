@@ -21,6 +21,8 @@ You must be 18 or older and legally able to agree to these Terms. One account pe
 
 Some opponents in free games (games with no coins at stake) may be controlled by the app when no other player is available. Games with coins at stake are only ever played against other real players.
 
+If you run out of time or lose your connection during a turn-based game, the app may play your turns for you (shown as "Auto-play") so a poor connection is not an automatic loss. You take over again as soon as you make a move. If you stay away for too long you forfeit. Results of auto-played moves stand.
+
 ## 4. Fair play
 No cheating, bots, scripts, exploiting bugs, collusion, multiple accounts, abuse of the ad or bonus system, or harassment, hate, threats, sexual content or impersonation in names or messages. We may warn, suspend or ban accounts that break these rules; banned accounts may lose their coins.
 

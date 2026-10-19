@@ -103,6 +103,8 @@ export default function MatchScreen() {
         })}
       </View>
 
+      {!over && match.autoPlay?.includes(user.id) ? <Card><Body style={{ fontWeight: '800' }}>🤖 Auto-play is on</Body><Dim>You ran out of time or lost connection, so the computer is playing your turns. Make a move to take over again.</Dim></Card> : null}
+
       <View style={{ alignItems: 'center', marginBottom: 16 }}>
         <Text style={{ color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : myTurn ? colors.accent : colors.dim, fontSize: 20, fontWeight: '900' }}>{status}</Text>
         {seconds !== null ? <Text style={{ color: seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', marginTop: 4 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}

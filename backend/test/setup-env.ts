@@ -12,3 +12,4 @@ process.env.BOT_FILL_MS_MAX = '3600001';
 process.env.BOT_MOVE_MS_MIN = '0';
 process.env.BOT_MOVE_MS_MAX = '5';
 process.env.PUSH_MODE = 'memory'; // notifications are recorded, not sent
+process.env.AUTOPLAY_MAX_STEPS = '0'; // old rule (late = loss) in tests; the autoplay spec turns it on

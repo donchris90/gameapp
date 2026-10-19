@@ -18,7 +18,9 @@ const RING: Array<[number, number]> = [
 const POSITION = [0, 2, 1, 3]; // seat -> place on the board, so two players face each other
 const HOME_COL: Array<(k: number) => [number, number]> = [(k) => [7, 1 + k], (k) => [1 + k, 7], (k) => [7, 13 - k], (k) => [13 - k, 7]];
 const YARD_ORIGIN: Array<[number, number]> = [[0, 0], [0, 9], [9, 9], [9, 0]];
-const COLORS = ['#E5484D', '#2ED573', '#F5C518', '#3E8BFF'];
+// Colours from the reference Ludo board.
+const COLORS = ['#E53935', '#2EAD4B', '#F9B900', '#1E7BE0'];
+const DARK = ['#A3211E', '#1B7A32', '#B98400', '#1257A6'];
 const SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
 const FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
@@ -35,7 +37,7 @@ function cellOf(seat: number, token: number, p: number): [number, number] {
 export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; mySeat: number; onMove: (move: object) => void; busy: boolean }) {
   const { width } = useWindowDimensions();
   const size = Math.min(width - 32, 440);
-  const u = size / 15;
+  const u = (size - 12) / 15;
   const s = match.state;
   const myTurn = match.status === 'ACTIVE' && match.turnSeat === mySeat && !busy;
   const canPick = myTurn && s.phase === 'MOVE';
@@ -55,7 +57,8 @@ export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; myS
 
   return (
     <View style={{ gap: 12 }}>
-      <View style={{ width: size, height: size, alignSelf: 'center', backgroundColor: '#F4F1E8', borderRadius: 12, overflow: 'hidden' }}>
+      <View style={{ alignSelf: 'center', backgroundColor: '#1A1538', borderRadius: 22, padding: 6 }}>
+      <View style={{ width: size - 12, height: size - 12, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden' }}>
         {YARD_ORIGIN.map(([r, c], pos) => (
           <View key={pos} style={{ position: 'absolute', left: c * u, top: r * u, width: 6 * u, height: 6 * u, backgroundColor: COLORS[pos] }}>
             <View style={{ position: 'absolute', left: u, top: u, width: 4 * u, height: 4 * u, backgroundColor: '#fff', borderRadius: u }} />
@@ -82,11 +85,12 @@ export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; myS
           const d = u * 0.78;
           return (
             <Pressable key={`${seat}-${token}`} disabled={!can} onPress={() => onMove({ action: 'move', token })}
-              style={{ position: 'absolute', left: c * u + (u - d) / 2 + offset * 3, top: r * u + (u - d) / 2 - offset * 3, width: d, height: d, borderRadius: d / 2, backgroundColor: COLORS[POSITION[seat]], borderWidth: can ? 3 : 2, borderColor: can ? '#111' : '#fff', alignItems: 'center', justifyContent: 'center', zIndex: can ? 5 : 1 }}>
+              style={{ position: 'absolute', left: c * u + (u - d) / 2 + offset * 3, top: r * u + (u - d) / 2 - offset * 3, width: d, height: d, borderRadius: d / 2, backgroundColor: COLORS[POSITION[seat]], borderWidth: can ? 3 : 2, borderColor: can ? '#fff' : DARK[POSITION[seat]], shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, elevation: can ? 8 : 3, alignItems: 'center', justifyContent: 'center', zIndex: can ? 5 : 1 }}>
               <Text style={{ color: '#fff', fontSize: d * 0.45, fontWeight: '900' }}>{token + 1}</Text>
             </Pressable>
           );
         })}
+      </View>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

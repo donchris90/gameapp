@@ -4,13 +4,17 @@ import { Match } from '../types';
 import { colors } from '../ui';
 
 interface State { capacity: number; boards: number[][][]; finished: number[]; moves: number[]; solvedBy: number | null }
-export const LIQUID = ['#FF5A6E', '#FFB020', '#F4E04D', '#2ED573', '#35C4F0', '#7C5CFF', '#E56BD8'];
+// Flat, clearly distinct colours from the reference Water Sort screen.
+export const LIQUID = ['#F0399F', '#F01616', '#FF8A00', '#FFE600', '#3DEBC0', '#12B8E8', '#2A5BEF', '#A020F0', '#9A4A22', '#A7E635'];
+const RIM = '#58A9B8';
+const YELLOW = '#FFD21F';
 
 function Tube({ tube, capacity, w, h, selected, onPress, mini }: { tube: number[]; capacity: number; w: number; h: number; selected?: boolean; onPress?: () => void; mini?: boolean }) {
   const seg = (h - 6) / capacity;
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={{ width: w, height: h, marginTop: selected ? -12 : 0 }}>
-      <View style={{ flex: 1, borderWidth: mini ? 1 : 3, borderColor: selected ? colors.gold : '#8FA0D8', borderBottomLeftRadius: w / 2, borderBottomRightRadius: w / 2, borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: 'rgba(255,255,255,0.05)' }}>
+      {!mini ? <View style={{ position: 'absolute', top: 0, left: -2, right: -2, height: Math.max(8, w * 0.22), backgroundColor: RIM, borderWidth: 1.5, borderColor: '#8CCBD6', zIndex: 2 }} /> : null}
+      <View style={{ flex: 1, borderWidth: mini ? 1 : 3, borderTopWidth: 0, borderColor: selected ? YELLOW : 'rgba(235,245,250,.92)', borderBottomLeftRadius: w / 2, borderBottomRightRadius: w / 2, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: 'rgba(255,255,255,.04)' }}>
         {tube.map((c, i) => <View key={i} style={{ height: seg, backgroundColor: LIQUID[c % LIQUID.length], borderTopWidth: i === tube.length - 1 ? 0 : 0 }} />)}
       </View>
     </Pressable>
@@ -43,7 +47,7 @@ export function WaterSort({ match, mySeat, onMove, busy }: { match: Match<State>
   for (let i = 0; i < board.length; i += perRow) rows.push(board.map((_, k) => k).slice(i, i + perRow));
 
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: 16, backgroundColor: '#111111', borderRadius: 22, padding: 14 }}>
       <View style={{ gap: 8 }}>
         {match.players.filter((p) => p.seat !== mySeat).map((p) => (
           <View key={p.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: p.left ? 0.4 : 1 }}>
@@ -60,7 +64,7 @@ export function WaterSort({ match, mySeat, onMove, busy }: { match: Match<State>
           </View>
         ))}
       </View>
-      <Text style={{ color: colors.dim, textAlign: 'center' }}>Tap a tube, then the tube to pour into. Moves: {s.moves[mySeat]} · Finished tubes: {s.finished[mySeat]} of {LIQUID.length}</Text>
+      <Text style={{ color: 'rgba(255,255,255,.55)', textAlign: 'center' }}>Tap a tube, then the tube to pour into. Moves: {s.moves[mySeat]} · Finished tubes: {s.finished[mySeat]} of {LIQUID.length}</Text>
     </View>
   );
 }

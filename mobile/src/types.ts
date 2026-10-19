@@ -13,7 +13,8 @@ export interface MatchPlayer { userId: string; username: string; displayName: st
 export interface Match<S = any> {
   id: string; roomId: string | null; game: GameType; stake: number; pot: number; houseFee: number;
   status: 'ACTIVE' | 'FINISHED'; endReason: string | null; winnerId: string | null; version: number;
-  turnSeat: number | null; turnDeadline: string | null; state: S; players: MatchPlayer[];
+  turnSeat: number | null; autoPlay?: string[];
+  turnDeadline: string | null; state: S; players: MatchPlayer[];
 }
 export interface GamesInfo {
   games: Array<{ game: GameType; available: boolean; minPlayers: number; maxPlayers: number }>;

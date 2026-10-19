@@ -47,6 +47,7 @@ export class BotsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.matches.setBotDriver((m) => this.consider(m as unknown as LiveMatch));
+    this.matches.setAutoPicker((game, engine, state, seat) => chooseMove(game as any, engine as any, state, seat, ctx));
     // Safety net after a restart or a missed event: any live match waiting on a computer player gets scheduled again.
     this.timer = setInterval(() => void this.recover().catch((e) => this.log.warn(e)), 10_000);
     this.timer.unref();

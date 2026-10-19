@@ -58,6 +58,15 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     this.botDriver = fn;
   }
 
+  /** Set by the bots module: picks a sensible move for a seat whose player has gone quiet. */
+  private autoPicker?: (game: string, engine: unknown, state: unknown, seat: number) => unknown;
+  /** Players whose turns are being played for them (timed out or offline), with how many steps were played. */
+  private readonly auto = new Map<string, number>();
+
+  setAutoPicker(fn: (game: string, engine: unknown, state: unknown, seat: number) => unknown) {
+    this.autoPicker = fn;
+  }
+
   // ---- views ----
 
   view(m: MatchFull) {
@@ -66,6 +75,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       id: m.id, roomId: m.roomId, game: m.game, stake: Number(m.stake), pot: Number(m.pot), houseFee: Number(m.houseFee),
       status: m.status, endReason: m.endReason, winnerId: m.winnerId, version: m.version,
       turnSeat: m.turnSeat, turnDeadline: m.turnDeadline,
+      autoPlay: m.players.filter((p) => this.auto.has(`${m.id}:${p.userId}`)).map((p) => p.userId),
       state: engine ? engine.publicState(m.state) : null,
       players: m.players.map((p) => ({
         userId: p.userId, username: p.user.username, displayName: p.user.displayName, frame: p.user.equippedFrame, title: p.user.equippedTitle,
@@ -188,6 +198,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         if (m.turnSeat !== player.seat) throw appError(409, 'NOT_YOUR_TURN', 'It is not your turn');
       }
       let res;
+      this.auto.delete(`${m.id}:${userId}`); // the player is back: they play their own turns again
       try {
         res = engine.applyMove(m.state, player.seat, dto.move, ctx);
       } catch (e) {
@@ -232,7 +243,27 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         }
         if (m.turnSeat === null) return undefined;
         const late = m.players.find((p) => p.seat === m.turnSeat);
-        return late ? this.eliminate(tx, m, late.userId, 'TIMEOUT') : undefined;
+        if (!late) return undefined;
+        // Out of time or offline: the computer plays this turn for them so a bad connection is not an automatic loss.
+        // When they come back and move, they take over again. Only after a long absence do they forfeit.
+        const key = `${m.id}:${late.userId}`;
+        const steps = this.auto.get(key) ?? 0;
+        const maxSteps = Number(process.env.AUTOPLAY_MAX_STEPS ?? 60);
+        if (engine && this.autoPicker && m.players.length > 1 && !late.leftAt && steps < maxSteps) {
+          const move = this.autoPicker(m.game, engine, m.state, late.seat);
+          if (move) {
+            try {
+              const res = engine.applyMove(m.state, late.seat, move, ctx);
+              this.auto.set(key, steps + 1);
+              if (res.outcome) { this.auto.delete(key); return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state); }
+              return this.advance(tx, m, res.state, res.turnSeat, Number(process.env.AUTOPLAY_TURN_MS ?? 5_000));
+            } catch (e) {
+              if (!(e instanceof IllegalMove)) throw e; // fall through to the old rule
+            }
+          }
+        }
+        this.auto.delete(key);
+        return this.eliminate(tx, m, late.userId, 'TIMEOUT');
       });
       if (after) { settled++; await this.run(after); }
     }

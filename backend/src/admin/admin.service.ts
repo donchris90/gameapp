@@ -154,4 +154,27 @@ export class AdminService {
       nextCursor: rows.length > opts.limit ? page[page.length - 1].id : null,
     };
   }
+
+  async reports(opts: { status: 'OPEN' | 'RESOLVED'; limit: number }) {
+    const rows = await this.prisma.chatReport.findMany({
+      where: { status: opts.status }, orderBy: { createdAt: opts.status === 'OPEN' ? 'asc' : 'desc' }, take: opts.limit,
+      include: { reporter: { select: { id: true, username: true } }, reported: { select: { id: true, username: true, status: true } } },
+    });
+    return {
+      reports: rows.map((r) => ({
+        id: r.id, createdAt: r.createdAt, status: r.status, reason: r.reason, messageText: r.messageText, context: r.context,
+        reporter: r.reporter, reported: r.reported, resolvedAt: r.resolvedAt,
+      })),
+    };
+  }
+
+  async resolveReport(adminId: string, reportId: string, note: string) {
+    const r = await this.prisma.chatReport.findUnique({ where: { id: reportId } });
+    if (!r) throw appError(404, 'REPORT_NOT_FOUND', 'No such report');
+    await this.prisma.$transaction([
+      this.prisma.chatReport.update({ where: { id: reportId }, data: { status: 'RESOLVED', resolvedAt: new Date(), resolvedById: adminId } }),
+      this.prisma.auditLog.create({ data: { adminId, action: 'RESOLVE_REPORT', targetUserId: r.reportedId, data: { reportId, note } } }),
+    ]);
+    return { ok: true };
+  }
 }

@@ -40,6 +40,13 @@ Back up the database daily: `docker compose exec db pg_dump -U postgres playcirc
 - **AdMob**: create the app, one rewarded ad unit, and turn on server-side verification with the callback `https://api.yourdomain.com/ads/ssv`. Put your real AdMob app ids in `mobile/app.json` (they are Google's test ids now) and your rewarded unit ids in `mobile/.env` as `EXPO_PUBLIC_ADMOB_REWARDED_ANDROID` and `EXPO_PUBLIC_ADMOB_REWARDED_IOS`. If they are missing, release builds quietly fall back to Google's test ads and you earn nothing.
 - Replace the placeholder name and bundle ids (`com.playcircle.app`) in `mobile/app.json` with your final ones **before** creating store products: they cannot be changed later.
 
+## 4b. Push notifications (messages and game invites)
+Notifications use Expo's free push service, but phones need the platform's own keys:
+- **Android:** create a Firebase project (free), add an Android app with your package name, download `google-services.json` into `mobile/` and add `"googleServicesFile": "./google-services.json"` under `android` in `app.json`. Then run `eas credentials`, choose Android, and upload the Firebase service account key for "FCM V1".
+- **iOS:** `eas build` creates the Apple push key for you the first time (you need the Apple Developer account).
+- Run `eas init` once so the project has an EAS project id; the app needs it to get a push token.
+- Notifications do not work in Expo Go. Test them on a built app.
+
 ## 5. Admin website
 ```
 cd admin && echo "VITE_API_URL=https://api.yourdomain.com" > .env && npm ci && npx vite build

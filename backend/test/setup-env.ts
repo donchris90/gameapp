@@ -11,3 +11,4 @@ process.env.BOT_FILL_MS_MIN = '3600000';
 process.env.BOT_FILL_MS_MAX = '3600001';
 process.env.BOT_MOVE_MS_MIN = '0';
 process.env.BOT_MOVE_MS_MAX = '5';
+process.env.PUSH_MODE = 'memory'; // notifications are recorded, not sent

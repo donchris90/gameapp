@@ -121,6 +121,11 @@ model User {
   auditsMade       AuditLog[]   @relation("AuditAdmin")
   auditsAbout      AuditLog[]   @relation("AuditTarget")
   items            UserItem[]
+  messagesSent     Message[]    @relation("MsgSender")
+  messagesReceived Message[]    @relation("MsgRecipient")
+  pushTokens       PushToken[]
+  reportsMade      ChatReport[] @relation("ReportBy")
+  reportsAgainst   ChatReport[] @relation("ReportAbout")
   // Cosmetics currently shown. Frame and title are visible to other players; the board theme only to you.
   equippedFrame    String?
   equippedTitle    String?
@@ -391,4 +396,61 @@ model UserItem {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, itemId])
+}
+
+// A private message between two friends. Deleted after the retention period (30 days by default).
+model Message {
+  id          String    @id @default(uuid())
+  senderId    String
+  recipientId String
+  body        String
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  sender    User @relation("MsgSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("MsgRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt])
+  @@index([senderId, recipientId, createdAt])
+  @@index([createdAt])
+}
+
+// Expo push token of one of a player's phones.
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+}
+
+// A player reporting a message they received. The text and the lines around it are copied here, so the
+// report still makes sense after the chat is cleaned up.
+model ChatReport {
+  id           String       @id @default(uuid())
+  reporterId   String
+  reportedId   String
+  messageId    String?
+  messageText  String
+  context      Json
+  reason       String
+  status       ReportStatus @default(OPEN)
+  createdAt    DateTime     @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  reporter User @relation("ReportBy", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("ReportAbout", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, messageId])
+  @@index([status, createdAt])
 }

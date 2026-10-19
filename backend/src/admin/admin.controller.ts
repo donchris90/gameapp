@@ -11,6 +11,9 @@ class StatusDto {
   @IsIn(['ACTIVE', 'SUSPENDED', 'BANNED']) status!: UserStatus;
   @IsString() @MinLength(3) @MaxLength(200) reason!: string;
 }
+class ResolveDto {
+  @IsString() @MaxLength(200) note!: string;
+}
 class AdjustDto {
   @IsInt() @Min(-10_000_000) @Max(10_000_000) amount!: number;
   @IsString() @MinLength(3) @MaxLength(200) reason!: string;
@@ -47,4 +50,14 @@ export class AdminController {
 
   @Get('audit')
   audit(@Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit = 25, @Query('cursor') cursor?: string) { return this.admin.audit({ limit: lim(limit), cursor }); }
+
+  @Get('reports')
+  reports(@Query('status', new DefaultValuePipe('OPEN')) status: string, @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number) {
+    return this.admin.reports({ status: status === 'RESOLVED' ? 'RESOLVED' : 'OPEN', limit: Math.min(Math.max(limit, 1), 200) });
+  }
+
+  @Post('reports/:id/resolve') @HttpCode(200)
+  resolveReport(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolveDto) {
+    return this.admin.resolveReport(a.id, id, dto.note);
+  }
 }

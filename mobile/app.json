@@ -28,6 +28,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-iap",
+      "expo-notifications",
       [
         "react-native-google-mobile-ads",
         {

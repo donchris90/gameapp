@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
 import { useSocketEvent } from '../../src/session';
-import { UserSummary } from '../../src/types';
+import { Conversation, UserSummary } from '../../src/types';
 import { Avatar, Body, Button, Card, Dim, Empty, Field, H1, Screen, colors } from '../../src/ui';
 
 type Friend = UserSummary & { online: boolean };
@@ -17,10 +17,15 @@ export default function Friends() {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<UserSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [talks, setTalks] = useState<Record<string, Conversation>>({});
 
   const load = useCallback(async () => {
-    const [f, r] = await Promise.all([api<Friend[]>('/friends').catch(() => null), api<{ incoming: Req[]; outgoing: Req[] }>('/friends/requests').catch(() => null)]);
+    const [f, r, c] = await Promise.all([
+      api<Friend[]>('/friends').catch(() => null), api<{ incoming: Req[]; outgoing: Req[] }>('/friends/requests').catch(() => null),
+      api<Conversation[]>('/chat/conversations').catch(() => null),
+    ]);
     if (f) setFriends(f);
+    if (c) setTalks(Object.fromEntries(c.map((x) => [x.user.id, x])));
     if (r) { setIncoming(r.incoming); setOutgoing(r.outgoing); }
   }, []);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
@@ -28,6 +33,7 @@ export default function Friends() {
   useSocketEvent('friend:accepted', load);
   useSocketEvent<{ friendId?: string; userId?: string }>('friend:online', load);
   useSocketEvent('friend:offline', load);
+  useSocketEvent('chat:message', load);
 
   const search = async (text: string) => {
     setQ(text);
@@ -92,7 +98,14 @@ export default function Friends() {
         {friends.map((f) => (
           <Card key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <Avatar name={f.displayName} online={f.online} />
-            <View style={{ flex: 1 }}><Body style={{ fontWeight: '700' }}>{f.displayName}</Body><Dim>{f.online ? 'Online' : 'Offline'}</Dim></View>
+            <View style={{ flex: 1 }}>
+              <Body style={{ fontWeight: '700' }}>{f.displayName}</Body>
+              {talks[f.id] ? <Dim numberOfLines={1} style={{ color: talks[f.id].unread > 0 ? colors.text : colors.dim }}>{talks[f.id].last.mine ? 'You: ' : ''}{talks[f.id].last.body}</Dim> : <Dim>{f.online ? 'Online' : 'Offline'}</Dim>}
+            </View>
+            <Pressable onPress={() => router.push({ pathname: '/chat/[userId]', params: { userId: f.id, name: f.displayName } })} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 24 }}>💬</Text>
+              {talks[f.id]?.unread > 0 ? <View style={{ position: 'absolute', top: 0, right: 0, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.bad, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{talks[f.id].unread}</Text></View> : null}
+            </Pressable>
             <Button title="Invite" kind="ghost" onPress={() => invite(f)} style={{ minHeight: 40 }} />
             <Text onPress={() => remove(f)} style={{ color: colors.dim, fontSize: 22, paddingHorizontal: 6 }}>⋯</Text>
           </Card>

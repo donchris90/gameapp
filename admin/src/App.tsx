@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
 import { ApiError, api, login, logout, setLogoutHandler, signedIn } from './api';
 
-type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'purchases' } | { page: 'audit' };
+type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'reports' } | { page: 'purchases' } | { page: 'audit' };
 
 const n = (v: number) => v.toLocaleString();
 const when = (s: string) => new Date(s).toLocaleString();
@@ -35,7 +35,7 @@ export function App() {
     <div className="layout">
       <nav className="side">
         <h1>🎮 PlayCircle</h1>
-        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('purchases', 'Purchases')}{nav('audit', 'Audit log')}
+        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('reports', 'Reports')}{nav('purchases', 'Purchases')}{nav('audit', 'Audit log')}
         <div style={{ flex: 1 }} />
         <a onClick={async () => { await logout(); setAuthed(false); }}>Log out</a>
       </nav>
@@ -44,6 +44,7 @@ export function App() {
         {view.page === 'users' && <Users onOpen={(id) => setView({ page: 'user', id })} />}
         {view.page === 'user' && <UserPage id={view.id} onBack={() => setView({ page: 'users' })} />}
         {view.page === 'matches' && <Matches />}
+        {view.page === 'reports' && <Reports onOpen={(id) => setView({ page: 'user', id })} />}
         {view.page === 'purchases' && <Purchases />}
         {view.page === 'audit' && <Audit />}
       </main>
@@ -251,6 +252,47 @@ function Matches() {
           </tr>))}</tbody>
       </table>
       <Pager cursor={cursor} onMore={more} more={busy} />
+    </>
+  );
+}
+
+function Reports({ onOpen }: { onOpen: (id: string) => void }) {
+  const [status, setStatus] = useState<'OPEN' | 'RESOLVED'>('OPEN');
+  const { data, error, reload } = useLoad<{ reports: any[] }>(`/admin/reports?status=${status}&limit=100`);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [err, setErr] = useState('');
+  const resolve = async (id: string) => {
+    setErr('');
+    try { await api(`/admin/reports/${id}/resolve`, 'POST', { note: notes[id] ?? 'handled' }); reload(); } catch (e) { setErr(msg(e)); }
+  };
+  return (
+    <>
+      <h2>Chat reports</h2>
+      <div className="row" style={{ marginBottom: 14 }}>
+        <select style={{ maxWidth: 200 }} value={status} onChange={(e) => setStatus(e.target.value as 'OPEN' | 'RESOLVED')}><option value="OPEN">Open</option><option value="RESOLVED">Closed</option></select>
+        <button className="ghost" onClick={reload}>Refresh</button>
+      </div>
+      {error || err ? <div className="err">{error || err}</div> : null}
+      {data && data.reports.length === 0 ? <p className="dim">Nothing here.</p> : null}
+      {data?.reports.map((r) => (
+        <div key={r.id} className="card" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <div><b>{r.reporter.username}</b> reported <a onClick={() => onOpen(r.reported.id)}><b>{r.reported.username}</b></a> <span className={`pill ${r.reported.status}`}>{r.reported.status}</span></div>
+            <span className="dim">{when(r.createdAt)}</span>
+          </div>
+          <p style={{ margin: '8px 0' }}>Reason: {r.reason}</p>
+          <blockquote style={{ margin: '8px 0', padding: '8px 12px', borderLeft: '3px solid #c0392b' }}>{r.messageText}</blockquote>
+          <details><summary className="dim">Conversation around it</summary>
+            {(r.context as any[]).map((c, i) => <div key={i} className="dim" style={{ padding: '2px 0' }}>{c.from === r.reported.id ? r.reported.username : r.reporter.username}: {c.body}</div>)}
+          </details>
+          {status === 'OPEN' ? (
+            <div className="row" style={{ marginTop: 10 }}>
+              <input placeholder="What you did (warned, banned…)" value={notes[r.id] ?? ''} onChange={(e) => setNotes({ ...notes, [r.id]: e.target.value })} />
+              <button disabled={(notes[r.id] ?? '').trim().length < 3} onClick={() => resolve(r.id)}>Close report</button>
+            </div>
+          ) : null}
+        </div>
+      ))}
     </>
   );
 }

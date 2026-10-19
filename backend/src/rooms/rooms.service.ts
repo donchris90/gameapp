@@ -4,6 +4,7 @@ import { randomCode } from '../common/codes';
 import { appError } from '../common/errors';
 import { FriendsService } from '../friends/friends.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { PresenceService } from '../realtime/presence.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { InsufficientCoinsException } from '../wallet/wallet.service';
@@ -39,6 +40,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     private readonly presence: PresenceService,
     private readonly friends: FriendsService,
     private readonly games: GameRegistry,
+    private readonly push: PushService,
   ) {}
 
   setHooks(hooks: RoomHooks) {
@@ -326,6 +328,12 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     this.realtime.emitToUser(toId, 'room:invite', {
       id: invite.id, from, expiresAt, room: { code: room.code, game: room.game, stake: Number(room.stake) },
     });
+    if (!this.presence.isOnline(toId)) {
+      void this.push.notify(toId, {
+        title: 'Game invite', body: `${from.displayName} invited you to play ${room.game.replace('_', ' ').toLowerCase()}${room.stake > 0n ? ` for ${room.stake} coins` : ''}`,
+        data: { type: 'invite', code: room.code },
+      });
+    }
     return { id: invite.id, expiresAt };
   }
 

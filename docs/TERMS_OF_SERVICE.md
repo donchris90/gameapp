@@ -24,6 +24,8 @@ Some opponents in free games (games with no coins at stake) may be controlled by
 ## 4. Fair play
 No cheating, bots, scripts, exploiting bugs, collusion, multiple accounts, abuse of the ad or bonus system, or harassment, hate, threats, sexual content or impersonation in names or messages. We may warn, suspend or ban accounts that break these rules; banned accounts may lose their coins.
 
+Friends can message each other. Do not send abuse, threats, hate, sexual content, scams or spam. Players can report a message and block another player at any time, and we may review reported messages (and the messages around them), warn the sender, or suspend or ban the account. Messages are deleted after 30 days.
+
 ## 5. Ads
 The app shows ads, including optional rewarded ads. Rewards are paid after the ad is fully watched and are limited per day.
 

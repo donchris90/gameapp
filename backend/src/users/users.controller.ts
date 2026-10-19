@@ -47,6 +47,8 @@ export class UsersController {
     const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
     await this.prisma.$transaction([
       this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+      this.prisma.message.deleteMany({ where: { OR: [{ senderId: user.id }, { recipientId: user.id }] } }),
+      this.prisma.pushToken.deleteMany({ where: { userId: user.id } }),
       this.prisma.friendship.deleteMany({ where: { OR: [{ userAId: user.id }, { userBId: user.id }] } }),
       this.prisma.block.deleteMany({ where: { OR: [{ blockerId: user.id }, { blockedId: user.id }] } }),
       this.prisma.roomInvite.deleteMany({ where: { OR: [{ fromUserId: user.id }, { toUserId: user.id }] } }),

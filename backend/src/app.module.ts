@@ -6,6 +6,8 @@ import { AppConfig, CONFIG, ConfigModule } from './config/config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AdminModule } from './admin/admin.module';
+import { ChatModule } from './chat/chat.module';
+import { PushModule } from './push/push.module';
 import { ShopModule } from './shop/shop.module';
 import { EconomyModule } from './economy/economy.module';
 import { GamesModule } from './games/games.module';
@@ -36,6 +38,8 @@ import { WalletModule } from './wallet/wallet.module';
     EconomyModule,
     AdminModule,
     ShopModule,
+    PushModule,
+    ChatModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

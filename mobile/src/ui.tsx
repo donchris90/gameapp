@@ -71,7 +71,7 @@ export function Avatar({ name, size = 40, online, frame }: { name: string; size?
 }
 
 export const H1 = ({ children }: { children: ReactNode }) => <Text style={s.h1}>{children}</Text>;
-export const Dim = ({ children, style }: { children: ReactNode; style?: any }) => <Text style={[{ color: colors.dim }, style]}>{children}</Text>;
+export const Dim = ({ children, style, numberOfLines }: { children: ReactNode; style?: any; numberOfLines?: number }) => <Text numberOfLines={numberOfLines} style={[{ color: colors.dim }, style]}>{children}</Text>;
 export const Body = ({ children, style }: { children: ReactNode; style?: any }) => <Text style={[{ color: colors.text, fontSize: 16 }, style]}>{children}</Text>;
 
 export function Empty({ text }: { text: string }) {

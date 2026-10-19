@@ -49,6 +49,26 @@ enum RoomKind {
   QUICK
 }
 
+enum MatchStatus {
+  ACTIVE
+  FINISHED
+}
+
+// Why a match ended. TIMEOUT: the player to move ran out of time.
+// FORFEIT: a player resigned or left the room mid-game.
+enum MatchEndReason {
+  NORMAL
+  DRAW
+  FORFEIT
+  TIMEOUT
+}
+
+enum PlayerResult {
+  WON
+  LOST
+  DRAW
+}
+
 enum LedgerEntryType {
   SIGNUP_BONUS
   DAILY_BONUS
@@ -90,6 +110,7 @@ model User {
   roomMembership   RoomMember?
   invitesSent      RoomInvite[]  @relation("InviteFrom")
   invitesReceived  RoomInvite[]  @relation("InviteTo")
+  matchPlayers     MatchPlayer[]
 }
 
 // One coin balance per user. Balance only ever changes through
@@ -220,4 +241,51 @@ model RoomInvite {
 
   @@unique([roomId, toUserId])
   @@index([toUserId])
+}
+
+// One played game. Stakes are debited when it is created and settled when it
+// ends, both inside database transactions, so coins can never be half-moved.
+// roomId has no foreign key: the lobby may be deleted while history stays.
+model Match {
+  id           String          @id @default(uuid())
+  roomId       String?
+  game         GameType
+  stake        BigInt          @default(0)
+  pot          BigInt          @default(0)
+  houseFee     BigInt          @default(0)
+  status       MatchStatus     @default(ACTIVE)
+  endReason    MatchEndReason?
+  winnerId     String?
+  state        Json
+  // Bumped on every change. Clients send the version they saw with a move,
+  // so a double tap or stale screen cannot play the same turn twice.
+  version      Int             @default(1)
+  turnSeat     Int?
+  turnDeadline DateTime?
+  startedAt    DateTime        @default(now())
+  finishedAt   DateTime?
+
+  players MatchPlayer[]
+
+  @@index([status, turnDeadline])
+  @@index([roomId])
+}
+
+model MatchPlayer {
+  id      String        @id @default(uuid())
+  matchId String
+  userId  String
+  seat    Int
+  stake   BigInt        @default(0)
+  // Coins returned to this player at the end (winnings, or the refund on a draw)
+  payout  BigInt        @default(0)
+  result  PlayerResult?
+  leftAt  DateTime?
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+  @@unique([matchId, seat])
+  @@index([userId])
 }

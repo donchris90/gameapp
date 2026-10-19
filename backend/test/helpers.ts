@@ -2,13 +2,38 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { GameEngine } from '../src/games/engine';
+import { GameRegistry } from '../src/games/game-registry';
+import { GameType } from '../src/generated/prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-export async function createApp(): Promise<INestApplication> {
+/**
+ * Stand-in rules for games whose real engines are not built yet (Ayo, Ludo, Water Sort), so
+ * lobby, quick match and staking can be tested for every table size. Any move passes the turn;
+ * { end: 'win' } wins for the mover and { end: 'draw' } draws.
+ */
+export function fakeEngine(game: GameType): GameEngine<{ n: number }> {
+  return {
+    game,
+    init: (n) => ({ state: { n }, turnSeat: 0 }),
+    applyMove: (state, seat, move: any) => {
+      if (move?.end === 'win') return { state, turnSeat: null, outcome: { type: 'WIN', winnerSeat: seat } };
+      if (move?.end === 'draw') return { state, turnSeat: null, outcome: { type: 'DRAW' } };
+      return { state, turnSeat: (seat + 1) % state.n };
+    },
+    publicState: (s) => s,
+  };
+}
+
+export async function createApp(opts: { fakeEngines?: boolean } = {}): Promise<INestApplication> {
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = mod.createNestApplication();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   await app.init();
+  if (opts.fakeEngines !== false) {
+    const registry = app.get(GameRegistry);
+    for (const g of ['AYO', 'LUDO', 'WATER_SORT'] as const) registry.register(fakeEngine(g));
+  }
   return app;
 }
 

@@ -1,7 +1,7 @@
+import { RoomsService } from '../src/rooms/rooms.service';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PresenceService } from '../src/realtime/presence.service';
-import { RoomsService } from '../src/rooms/rooms.service';
 import { ROOM_IDLE_MS } from '../src/rooms/game-config';
 import { befriend, bearer, createApp, newPlayer, prismaOf, setCoins } from './helpers';
 
@@ -187,7 +187,8 @@ describe('Rooms', () => {
       await join(g, room.code).expect(200);
       await http().post('/rooms/current/ready').set(bearer(g)).send({ ready: true }).expect(200);
       await http().post('/rooms/current/start').set(bearer(host)).expect(200);
-      await app.get(RoomsService).finishGame(room.id);
+      const match = (await http().get('/matches/current').set(bearer(g)).expect(200)).body;
+      await http().post(`/matches/${match.id}/forfeit`).set(bearer(g)).expect(200);
       const cur = (await http().get('/rooms/current').set(bearer(g)).expect(200)).body;
       expect(cur.status).toBe('WAITING');
       expect(cur.members.find((m: any) => m.userId === g.user.id).ready).toBe(false);

@@ -57,6 +57,20 @@ The host role passes to the next player when the host leaves; a lobby is deleted
 
 **Hooks for step 3**: `RoomsService.start()` flips a room to `IN_PROGRESS`; the game engine takes over from there, debits stakes through `WalletService`, and calls `RoomsService.finishGame(roomId)` to return everyone to the lobby for a rematch. If players leave and too few remain, the room emits `room:aborted` (stakes get refunded there).
 
+## Step 3: Tic Tac Toe with staking, end to end
+
+Starting a game from a lobby (or a quick match) creates a **match**. Only games with a registered engine can be played (`GET /games` says which; right now Tic Tac Toe).
+
+- **Stakes**: every player's stake is taken when the match starts, in the same transaction as the room start. If anyone cannot afford it, nothing is taken and the start fails with `INSUFFICIENT_COINS`.
+- **Payout**: winner gets pot minus the house cut (`HOUSE_FEE_PERCENT`, default 10, rounded down for the house) as `GAME_PAYOUT`; the cut is a `HOUSE_FEE` platform entry. A draw refunds every stake in full (`GAME_REFUND`). Stake 0 is a friendly game and touches no coins.
+- **Zero-sum check**: all ledger entries with reference `match:<id>` add up to 0.
+- **Forfeits**: resigning, leaving the room mid-game, or running out of time (`TURN_TIMEOUT_MS`, default 30000) makes the opponent the winner. With 3-4 players the match continues until one remains.
+- **Safety**: moves carry the match `version` (stale moves get `STALE_STATE`), duplicates apply once, and a winning move racing the timeout sweeper settles exactly once.
+
+REST: `GET /games`, `GET /matches/current`, `GET /matches/history?limit&cursor`, `GET /matches/:id`, `POST /matches/:id/move` `{version, move:{cell}}`, `POST /matches/:id/forfeit`.
+Socket events: `match:started`, `match:state`, `match:ended`.
+Ayo, Ludo and Water Sort are rejected with `GAME_NOT_AVAILABLE` until their engines land (steps 4 and 5).
+
 ## Run it
 
 ```bash

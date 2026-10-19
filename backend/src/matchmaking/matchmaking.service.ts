@@ -3,6 +3,7 @@ import { GameType } from '../generated/prisma/client';
 import { appError } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { GameRegistry } from '../games/game-registry';
 import { GAME_CONFIG, STAKE_OPTIONS } from '../rooms/game-config';
 import { RoomsService } from '../rooms/rooms.service';
 import { InsufficientCoinsException } from '../wallet/wallet.service';
@@ -31,6 +32,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeService,
+    private readonly games: GameRegistry,
   ) {}
 
   onModuleInit() {
@@ -52,6 +54,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
 
   async join(userId: string, dto: { game: GameType; stake: number; size?: number }) {
     const cfg = GAME_CONFIG[dto.game];
+    if (!this.games.isAvailable(dto.game)) throw appError(400, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
     const size = dto.size ?? cfg.max;
     if (!STAKE_OPTIONS.includes(dto.stake)) throw appError(400, 'BAD_STAKE', `Stake must be one of ${STAKE_OPTIONS.join(', ')}`);
     if (size < cfg.min || size > cfg.max) throw appError(400, 'BAD_PLAYER_COUNT', `${dto.game} supports ${cfg.min} to ${cfg.max} players`);

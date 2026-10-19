@@ -7,27 +7,43 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PresenceService } from '../realtime/presence.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { InsufficientCoinsException } from '../wallet/wallet.service';
+import { GameRegistry } from '../games/game-registry';
 import { GAME_CONFIG, INVITE_TTL_MS, ROOM_CODE_LENGTH, ROOM_IDLE_MS, STAKE_OPTIONS } from './game-config';
 
-type Tx = Prisma.TransactionClient;
+export type Tx = Prisma.TransactionClient;
+export type AfterCommit = () => void | Promise<void>;
+
+/** Lets the match layer take over when a lobby starts a game or loses a player mid-game. */
+export interface RoomHooks {
+  /** Runs inside the start transaction: create the match and take the stakes. */
+  onStart(tx: Tx, room: RoomFull): Promise<AfterCommit | void>;
+  /** Runs inside the leave transaction: a player leaving mid-game forfeits. */
+  onLeave(tx: Tx, roomId: string, userId: string): Promise<AfterCommit | void>;
+}
 
 const roomInclude = {
   members: { include: { user: { select: { id: true, username: true, displayName: true } } }, orderBy: { seat: 'asc' as const } },
 } satisfies Prisma.RoomInclude;
-type RoomFull = Prisma.RoomGetPayload<{ include: typeof roomInclude }>;
+export type RoomFull = Prisma.RoomGetPayload<{ include: typeof roomInclude }>;
 
 const isUnique = (e: unknown): e is Prisma.PrismaClientKnownRequestError => e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 
 @Injectable()
 export class RoomsService implements OnModuleInit, OnModuleDestroy {
   private sweeper?: NodeJS.Timeout;
+  private hooks?: RoomHooks;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly presence: PresenceService,
     private readonly friends: FriendsService,
+    private readonly games: GameRegistry,
   ) {}
+
+  setHooks(hooks: RoomHooks) {
+    this.hooks = hooks;
+  }
 
   onModuleInit() {
     this.sweeper = setInterval(() => void this.sweepIdle().catch(() => undefined), 60_000);
@@ -72,6 +88,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
 
   async create(userId: string, dto: { game: GameType; stake: number; maxPlayers?: number }) {
     const cfg = GAME_CONFIG[dto.game];
+    if (!this.games.isAvailable(dto.game)) throw appError(400, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
     if (!STAKE_OPTIONS.includes(dto.stake)) throw appError(400, 'BAD_STAKE', `Stake must be one of ${STAKE_OPTIONS.join(', ')}`);
     const maxPlayers = dto.maxPlayers ?? cfg.max;
     if (maxPlayers < cfg.min || maxPlayers > cfg.max) throw appError(400, 'BAD_PLAYER_COUNT', `${dto.game} supports ${cfg.min} to ${cfg.max} players`);
@@ -148,11 +165,13 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       const room = await tx.room.findUnique({ where: { id: member.roomId }, include: roomInclude });
       if (!room || !room.members.some((m) => m.userId === userId)) return null;
 
+      // Leaving mid-game forfeits the match (the opponent is paid) before the seat is freed.
+      const after = room.status === 'IN_PROGRESS' ? await this.hooks?.onLeave(tx, room.id, userId) : undefined;
       await tx.roomMember.delete({ where: { userId } });
       const remaining = room.members.filter((m) => m.userId !== userId);
       if (remaining.length === 0) {
         await tx.room.delete({ where: { id: room.id } });
-        return { roomId: room.id, room: null, aborted: false };
+        return { roomId: room.id, room: null, aborted: false, after };
       }
       const data: Prisma.RoomUpdateInput = {};
       if (room.hostId === userId) data.host = { connect: { id: remaining[0].userId } };
@@ -165,9 +184,10 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
         aborted = true;
       }
       if (Object.keys(data).length) await tx.room.update({ where: { id: room.id }, data });
-      return { roomId: room.id, room: await tx.room.findUniqueOrThrow({ where: { id: room.id }, include: roomInclude }), aborted };
+      return { roomId: room.id, room: await tx.room.findUniqueOrThrow({ where: { id: room.id }, include: roomInclude }), aborted, after };
     });
     if (!result) return null;
+    await this.runAfter(result.after);
     this.realtime.leaveRoomChannel(userId, result.roomId);
     if (result.room) {
       this.broadcast(result.room);
@@ -211,7 +231,16 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     return this.view(updated);
   }
 
+  private async runAfter(after: AfterCommit | void) {
+    try {
+      await after?.();
+    } catch {
+      // The money is already settled and saved; a failed push must not undo or fail the request.
+    }
+  }
+
   async start(hostId: string) {
+    let after: AfterCommit | void = undefined;
     const updated = await this.prisma.$transaction(async (tx) => {
       const member = await tx.roomMember.findUnique({ where: { userId: hostId } });
       if (!member) throw appError(404, 'NOT_IN_ROOM', 'You are not in a room');
@@ -230,10 +259,19 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
           players: broke.map((m) => ({ userId: m.userId, displayName: m.user.displayName })),
         });
       }
+      if (!this.games.isAvailable(room.game)) throw appError(409, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
+      try {
+        after = await this.hooks?.onStart(tx, room);
+      } catch (e) {
+        // Someone spent coins in the instant between the check above and taking the stakes.
+        if (e instanceof InsufficientCoinsException) throw appError(409, 'CANNOT_AFFORD', 'Some players do not have enough coins for this stake');
+        throw e;
+      }
       await tx.room.update({ where: { id: room.id }, data: { status: 'IN_PROGRESS', startedAt: new Date() } });
       return tx.room.findUniqueOrThrow({ where: { id: room.id }, include: roomInclude });
     });
     this.broadcast(updated, 'room:started');
+    await this.runAfter(after);
     return this.view(updated);
   }
 
@@ -241,10 +279,12 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   async finishGame(roomId: string) {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.lock(tx, roomId);
+      if (!(await tx.room.findUnique({ where: { id: roomId }, select: { id: true } }))) return null; // everyone already left
       await tx.roomMember.updateMany({ where: { roomId }, data: { ready: false } });
       await tx.room.update({ where: { id: roomId }, data: { status: 'WAITING', startedAt: null } });
       return tx.room.findUniqueOrThrow({ where: { id: roomId }, include: roomInclude });
     });
+    if (!updated) return null;
     this.broadcast(updated);
     return this.view(updated);
   }
@@ -309,7 +349,10 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   async createQuickRoom(game: GameType, stake: bigint, userIds: string[], size: number) {
     const cfg = GAME_CONFIG[game];
     const dropped: Array<{ userId: string; reason: 'IN_ROOM' | 'CANNOT_AFFORD' }> = [];
-    const result = await this.prisma.$transaction(async (tx) => {
+    let after: AfterCommit | void = undefined;
+    let result: RoomFull | null;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
       const inRooms = new Set((await tx.roomMember.findMany({ where: { userId: { in: userIds } }, select: { userId: true } })).map((m) => m.userId));
       const wallets = new Map((await tx.wallet.findMany({ where: { userId: { in: userIds } } })).map((w) => [w.userId, w.balance]));
       const ok: string[] = [];
@@ -327,10 +370,17 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
         },
         include: roomInclude,
       });
+      after = await this.hooks?.onStart(tx, room);
       return room;
-    });
+      });
+    } catch (e) {
+      // Someone's coins changed in the instant after the check: nothing was taken, nobody is dropped.
+      if (e instanceof InsufficientCoinsException) return { room: null, dropped };
+      throw e;
+    }
     if (result) {
       for (const m of result.members) this.realtime.joinRoomChannel(m.userId, result.id);
+      await this.runAfter(after);
     }
     return { room: result ? this.view(result) : null, dropped };
   }

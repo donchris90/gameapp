@@ -1,0 +1,4 @@
+# Replace with your real domains. Caddy gets and renews HTTPS certificates by itself.
+api.example.com {
+  reverse_proxy api:3000
+}

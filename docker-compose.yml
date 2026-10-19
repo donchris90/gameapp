@@ -1,0 +1,27 @@
+# One-server setup: Postgres + the API. Put a reverse proxy (Caddy, see docs/DEPLOY.md) in front for HTTPS.
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: playcircle
+    volumes: [pgdata:/var/lib/postgresql/data]
+  api:
+    build: ./backend
+    restart: always
+    depends_on: [db]
+    env_file: ./backend/.env.production
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/playcircle
+      PORT: 3000
+    ports: ["127.0.0.1:3000:3000"]
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on: [api]
+    ports: ["80:80", "443:443"]
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile, caddydata:/data]
+volumes:
+  pgdata:
+  caddydata:

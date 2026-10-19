@@ -167,3 +167,6 @@ Players spend coins on looks only: avatar frames, titles and board themes (`back
 
 - How to play: a collapsible rules card on each game's lobby screen (`mobile/src/howto.ts`).
 - Sound and vibration: short effects for moves, your turn, win, loss and draw (`mobile/src/sfx.ts`, files in `mobile/assets/sfx`). Players can switch it off in the Me tab. Effects are plain generated tones; swap the .wav files for nicer ones any time.
+
+## Going live
+See `docs/DEPLOY.md` for the full checklist. `docker-compose.yml` runs Postgres, the API and HTTPS (Caddy) on one server.

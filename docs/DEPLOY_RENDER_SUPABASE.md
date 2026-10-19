@@ -24,7 +24,7 @@ This replaces steps 1 to 3 of `DEPLOY.md`. Steps 4 onward (store accounts, apps,
 ## 3. Admin website
 Build it (`VITE_API_URL=https://playcircle-api.onrender.com npx vite build` inside `admin`) and host the `dist` folder as a Render **Static Site** (or Cloudflare Pages / Netlify). Then put its address in `CORS_ORIGINS` in the Render dashboard.
 
-Make yourself admin: register in the app, then in the Render dashboard open the service, **Shell**, and run `npm run make-admin -- you@email.com`.
+Admin login: add `ADMIN_EMAIL` and `ADMIN_PASSWORD` (min 10 characters) in the Render environment. On every start the API creates that account or promotes/updates it, so the admin website works right after a deploy. (Alternative: `npm run make-admin -- you@email.com` from a shell with `DATABASE_URL` set.)
 
 ## 4. Mobile app
 Set `EXPO_PUBLIC_API_URL=https://playcircle-api.onrender.com` (or your custom domain) in `mobile/.env`, then build with EAS as described in `DEPLOY.md`, step 6.

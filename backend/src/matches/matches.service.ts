@@ -248,7 +248,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         // When they come back and move, they take over again. Only after a long absence do they forfeit.
         const key = `${m.id}:${late.userId}`;
         const steps = this.auto.get(key) ?? 0;
-        const maxSteps = Number(process.env.AUTOPLAY_MAX_STEPS ?? 60);
+        const maxSteps = Number(process.env.AUTOPLAY_MAX_STEPS ?? (m.game === 'LUDO' ? 6 : 3)); // 3 missed turns in a row, then forfeit (Ludo: a turn is a roll and a move)
         if (engine && this.autoPicker && m.players.length > 1 && !late.leftAt && steps < maxSteps) {
           const move = this.autoPicker(m.game, engine, m.state, late.seat);
           if (move) {
@@ -256,7 +256,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
               const res = engine.applyMove(m.state, late.seat, move, ctx);
               this.auto.set(key, steps + 1);
               if (res.outcome) { this.auto.delete(key); return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state); }
-              return this.advance(tx, m, res.state, res.turnSeat, Number(process.env.AUTOPLAY_TURN_MS ?? 5_000));
+              return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs); // the next turn gets the normal clock
             } catch (e) {
               if (!(e instanceof IllegalMove)) throw e; // fall through to the old rule
             }

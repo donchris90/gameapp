@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GameType } from '../generated/prisma/client';
+import { AyoEngine } from './ayo.engine';
 import { GameEngine } from './engine';
 import { TicTacToeEngine } from './tictactoe.engine';
 import { WaterSortEngine } from './watersort.engine';
@@ -12,6 +13,7 @@ export class GameRegistry {
   constructor() {
     this.register(new TicTacToeEngine());
     this.register(new WaterSortEngine());
+    this.register(new AyoEngine());
   }
 
   register(engine: GameEngine<any>) {

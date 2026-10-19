@@ -82,6 +82,16 @@ Ayo, Ludo and Water Sort are rejected with `GAME_NOT_AVAILABLE` until their engi
 - **Engine hooks added for simultaneous games**: `simultaneous`, `matchTimeoutMs`, `onDeadline` (Ludo can reuse the first two if it ever needs them).
 - Known limit: moves are checked by the server, but a script could still solve a puzzle faster than a human. Plan: minimum solve time and move-rate checks before launch.
 
+## Step 5: Ayo
+
+Standard Ayo/Oware (abapa) rules for two players, 4 seeds in each of 12 pits. Seat 0 owns pits 0-5, seat 1 owns pits 6-11; seeds are sown in increasing pit order. Move: `{ "move": { "pit": 0-11 } }` with the match `version`.
+
+- Sowing skips the starting pit on laps of 12+. If the last seed makes an opponent pit hold 2 or 3 you capture it and the pits before it that also hold 2 or 3.
+- A move that would capture every seed on the opponent's row captures nothing.
+- If the opponent has no seeds you must play a move that gives them some (`MUST_FEED`); if none exists the game ends and each side keeps its own row.
+- First to 25 wins; 24-24 is a draw (stakes refunded). A game with no capture for 120 moves ends the same way as a no-feed ending.
+- `match:state` carries `last` (pit played, where it ended, seeds captured) so clients can animate.
+
 ## Run it
 
 ```bash

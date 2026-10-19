@@ -341,12 +341,12 @@ describe('Matches: Tic Tac Toe with stakes', () => {
       const p = await newPlayer(bare);
       const list = (await request(bare.getHttpServer()).get('/games').expect(200)).body;
       expect(list.games.find((g: any) => g.game === 'TICTACTOE')).toMatchObject({ available: true, minPlayers: 2, maxPlayers: 2 });
-      for (const g of ['AYO', 'LUDO']) expect(list.games.find((x: any) => x.game === g).available).toBe(false);
+      for (const g of ['LUDO']) expect(list.games.find((x: any) => x.game === g).available).toBe(false);
       expect(list).toMatchObject({ houseFeePercent: 10, turnTimeoutSeconds: 30 });
       expect(list.stakes).toContain(100);
 
       const api = (path: string, body: any) => request(bare.getHttpServer()).post(path).set(bearer(p)).send(body);
-      expect((await api('/rooms', { game: 'AYO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
+      expect((await api('/rooms', { game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
       expect((await api('/matchmaking/queue', { game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
       await api('/rooms', { game: 'TICTACTOE', stake: 0 }).expect(201);
     });

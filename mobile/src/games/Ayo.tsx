@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Match } from '../types';
 
 interface State { pits: number[]; captured: [number, number]; turn: number; moves: number; last: { seat: number; pit: number; endPit: number; captured: number } | null }
@@ -109,7 +110,7 @@ export function Ayo({ match, mySeat, onMove, busy }: { match: Match<State>; mySe
         </View>
       </View>
       <View style={{ alignItems: 'center' }} onLayout={(e) => setBoardW(e.nativeEvent.layout.width)}>
-        <View style={{ width: pitSize * 2 + 14 + 20 + 4 + 8, backgroundColor: C.wood, borderRadius: 16, padding: 10, borderWidth: 2, borderColor: C.woodEdge, gap: 6 }}>
+        <LinearGradient colors={['#EBC890', '#DEB377', '#E8C38A']} style={{ width: pitSize * 2 + 14 + 20 + 4 + 8, borderRadius: 16, padding: 10, borderWidth: 2, borderColor: C.woodEdge, gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: '#6B4420', fontSize: 10, fontWeight: '900' }}>{oppName} ▼</Text>
             <Text style={{ color: '#6B4420', fontSize: 10, fontWeight: '900' }}>▲ You</Text>
@@ -118,8 +119,13 @@ export function Ayo({ match, mySeat, onMove, busy }: { match: Match<State>; mySe
             <View style={{ flex: 1, gap: 6 }}>{leftCol.map(renderPit)}</View>
             <View style={{ flex: 1, gap: 6 }}>{rightCol.map(renderPit)}</View>
             <View pointerEvents="none" style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, marginLeft: -1, backgroundColor: 'rgba(110,70,30,0.45)' }} />
+            {[24, 70].map((top) => (
+              <View key={top} pointerEvents="none" style={{ position: 'absolute', left: '50%', top: `${top}%`, width: 18, height: 28, marginLeft: -9, borderRadius: 3, backgroundColor: '#D2AC52', borderWidth: 1, borderColor: '#8F6F26', alignItems: 'center', justifyContent: 'space-around', paddingVertical: 3 }}>
+                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#7A6120' }} /><View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#7A6120' }} />
+              </View>
+            ))}
           </View>
-        </View>
+        </LinearGradient>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={{ color: C.muted, fontSize: 11, flex: 1 }}>You packed <Text style={{ color: C.gold, fontWeight: '900', fontSize: 15 }}>{s.captured[mySeat]}</Text> · first to 25</Text>

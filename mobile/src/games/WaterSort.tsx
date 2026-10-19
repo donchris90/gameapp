@@ -13,7 +13,8 @@ function Tube({ tube, capacity, w, h, selected, onPress, mini }: { tube: number[
   const seg = (h - 6) / capacity;
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={{ width: w, height: h, marginTop: selected ? -12 : 0 }}>
-      {!mini ? <View style={{ position: 'absolute', top: 0, left: -2, right: -2, height: Math.max(8, w * 0.22), backgroundColor: RIM, borderWidth: 1.5, borderColor: '#8CCBD6', zIndex: 2 }} /> : null}
+      {!mini ? <View style={{ position: 'absolute', top: 0, left: -3, right: -3, height: Math.max(8, w * 0.22), borderRadius: 99, backgroundColor: RIM, borderWidth: 1.5, borderColor: '#8CCBD6', zIndex: 2 }} /> : null}
+      {!mini && tube.length === capacity && tube.every((c) => c === tube[0]) ? <View style={{ position: 'absolute', top: -2, left: -3, right: -3, height: Math.max(12, w * 0.32), borderRadius: 99, backgroundColor: LIQUID[tube[0] % LIQUID.length], borderWidth: 2, borderColor: 'rgba(255,255,255,.92)', zIndex: 3, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: '62%', height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.55)' }} /></View> : null}
       <View style={{ flex: 1, borderWidth: mini ? 1 : 3, borderTopWidth: 0, borderColor: selected ? YELLOW : 'rgba(235,245,250,.92)', borderBottomLeftRadius: w / 2, borderBottomRightRadius: w / 2, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: 'rgba(255,255,255,.04)' }}>
         {tube.map((c, i) => <View key={i} style={{ height: seg, backgroundColor: LIQUID[c % LIQUID.length], borderTopWidth: i === tube.length - 1 ? 0 : 0 }} />)}
       </View>

@@ -82,8 +82,9 @@ export default function MatchScreen() {
   const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? 'Solved! 🎉' : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
   const status = over ? resultText : solo ? 'Sort the colours' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
 
+  const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111' } as Record<string, string>)[match.game];
   return (
-    <Screen>
+    <Screen style={{ backgroundColor: bg }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
         <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title}</Body>
         {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo puzzle' : 'Friendly'}</Dim>}

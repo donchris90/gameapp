@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
 import { Ayo } from '../../src/games/Ayo';
 import { Ludo } from '../../src/games/Ludo';
@@ -11,7 +11,7 @@ import { useSession, useSocketEvent } from '../../src/session';
 import { Match } from '../../src/types';
 import { useCountdown } from '../../src/useCountdown';
 import { titleText } from '../../src/cosmetics';
-import { sfx } from '../../src/sfx';
+import { onSoundChange, setSoundOn, sfx, soundOn } from '../../src/sfx';
 import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../../src/ui';
 
 export default function MatchScreen() {
@@ -22,6 +22,9 @@ export default function MatchScreen() {
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState(false);
   const latest = useRef(0);
+  const [gameH, setGameH] = useState(0);
+  const [sound, setSound] = useState(soundOn());
+  useEffect(() => onSoundChange(setSound), []);
 
   const lastSeen = useRef<{ status: string; turnSeat: number | null } | null>(null);
   const accept = useCallback((m: Match) => {
@@ -70,7 +73,7 @@ export default function MatchScreen() {
   ]);
   const playAgain = async () => {
     setBusy(true);
-    try { const m = await api<Match>('/matches/solo', { method: 'POST', body: { game: match.game } }); router.replace(`/match/${m.id}`); }
+    try { const m = await api<Match>('/matches/solo', { method: 'POST', body: { game: match.game, ...(match.game === 'WATER_SORT' && mine?.result !== 'WON' ? { level: match.state.level } : {}) } }); router.replace(`/match/${m.id}`); }
     catch (e) { Alert.alert('New puzzle', explain(e)); } finally { setBusy(false); }
   };
   const goBack = async () => {
@@ -79,54 +82,52 @@ export default function MatchScreen() {
   };
 
   const solo = match.players.length === 1; // a puzzle played alone (Water Sort)
-  const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? 'Solved! 🎉' : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
-  const status = over ? resultText : solo ? 'Sort the colours' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
-
+  const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? `Level ${match.state.level ?? ''} solved! 🎉` : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
+  const status = over ? resultText : solo ? '' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : '';
   const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111' } as Record<string, string>)[match.game];
+  const onAuto = !over && !!match.autoPlay?.includes(user.id);
+  const takeBack = () => api<Match>(`/matches/${match.id}/resume`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Take back control', explain(e)));
+  const quitToHome = () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then((m) => { accept(m); goBack(); }).catch(() => goBack());
+  const props = { match, mySeat, onMove: send, busy, height: gameH };
+
   return (
     <Screen style={{ backgroundColor: bg }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-        <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title} <Text style={{ color: '#FFD21F', fontSize: 10 }}>· new look v3</Text></Body>
-        {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo puzzle' : 'Friendly'}</Dim>}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40 }}>
+        <Body style={{ fontWeight: '800', fontSize: 15 }}>{info.emoji} {info.title}</Body>
+        <Text numberOfLines={1} style={{ flex: 1, color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : colors.accent, fontWeight: '900', fontSize: 13 }}>{status}</Text>
+        {seconds !== null ? <Text style={{ color: !solo && seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', fontSize: 13 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}
+        {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo' : 'Friendly'}</Dim>}
+        <Pressable onPress={() => void setSoundOn(!sound)} hitSlop={10}><Text style={{ fontSize: 18 }}>{sound ? '🔊' : '🔇'}</Text></Pressable>
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12, display: solo ? 'none' : 'flex' }}>
-        {match.players.map((p) => {
-          const active = !over && match.turnSeat === p.seat;
-          return (
-            <View key={p.userId} style={{ alignItems: 'center', gap: 4, opacity: p.left ? 0.4 : 1 }}>
-              <View style={{ padding: 3, borderRadius: 30, borderWidth: 2, borderColor: active ? colors.accent : 'transparent' }}><Avatar name={p.displayName} size={48} frame={p.frame} /></View>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>{p.userId === user.id ? 'You' : p.displayName}</Text>
-              {titleText(p.title) ? <Text style={{ color: colors.dim, fontSize: 11 }}>{titleText(p.title)}</Text> : null}
-              {match.game === 'TICTACTOE' ? <Text style={{ color: p.seat === 0 ? colors.x : colors.o, fontWeight: '900', fontSize: 18 }}>{match.state.marks[p.seat]}</Text> : null}
-            </View>
-          );
-        })}
+      {onAuto ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, marginBottom: 6, borderRadius: 14, backgroundColor: 'rgba(124,92,255,.18)', borderWidth: 1, borderColor: colors.accent }}>
+          <Text style={{ flex: 1, color: colors.text, fontSize: 12, fontWeight: '700' }}>🤖 You were away, so the computer is playing your turns.</Text>
+          <Pressable onPress={takeBack} style={{ backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>Take back control</Text></Pressable>
+        </View>
+      ) : null}
+
+      <View style={{ flex: 1 }} onLayout={(e) => setGameH(Math.floor(e.nativeEvent.layout.height))}>
+        {gameH > 0 ? (
+          match.game === 'TICTACTOE' ? <TicTacToe {...props} />
+            : match.game === 'AYO' ? <Ayo {...props} />
+            : match.game === 'LUDO' ? <Ludo {...props} />
+            : <WaterSort {...props} onQuit={quitToHome} />
+        ) : null}
       </View>
 
-      {!over && match.autoPlay?.includes(user.id) ? <Card><Body style={{ fontWeight: '800' }}>🤖 Auto-play is on</Body><Dim>You ran out of time or lost connection, so the computer is playing your turns. Make a move to take over again.</Dim></Card> : null}
-
-      <View style={{ alignItems: 'center', marginBottom: 16 }}>
-        <Text style={{ color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : myTurn ? colors.accent : colors.dim, fontSize: 20, fontWeight: '900' }}>{status}</Text>
-        {seconds !== null ? <Text style={{ color: seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', marginTop: 4 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}
-      </View>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
-        {match.game === 'TICTACTOE' ? <TicTacToe match={match} mySeat={mySeat} onMove={send} busy={busy} />
-          : match.game === 'AYO' ? <Ayo match={match} mySeat={mySeat} onMove={send} busy={busy} />
-          : match.game === 'LUDO' ? <Ludo match={match} mySeat={mySeat} onMove={send} busy={busy} />
-          : <WaterSort match={match} mySeat={mySeat} onMove={send} busy={busy} />}
-      </ScrollView>
       {!over ? (
-        <Button title={solo ? 'Give up' : 'Resign'} kind="ghost" onPress={resign} style={{ marginBottom: 16 }} />
+        solo ? null : <Pressable onPress={resign} style={{ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 22, marginVertical: 6 }}><Text style={{ color: colors.dim, fontWeight: '800' }}>Resign</Text></Pressable>
       ) : (
-        <Card style={{ marginBottom: 16, gap: 10, alignItems: 'center' }}>
-          {mine?.result === 'WON' ? <Body>You won <Text style={{ color: colors.gold, fontWeight: '900' }}>{mine.payout.toLocaleString()}</Text> coins</Body> : null}
+        <Card style={{ marginVertical: 8, gap: 8, alignItems: 'center' }}>
+          {mine?.result === 'WON' && match.pot > 0 ? <Body>You won <Text style={{ color: colors.gold, fontWeight: '900' }}>{mine.payout.toLocaleString()}</Text> coins</Body> : null}
           {mine?.result === 'DRAW' && match.stake > 0 ? <Body>Your {match.stake.toLocaleString()} coins were returned</Body> : null}
           {mine?.result === 'LOST' && match.stake > 0 ? <Body>You lost {match.stake.toLocaleString()} coins</Body> : null}
           {solo ? null : match.endReason === 'TIMEOUT' ? <Dim>Out of time</Dim> : match.endReason === 'FORFEIT' ? <Dim>Resigned</Dim> : null}
-          {solo ? <Button title="New puzzle" onPress={playAgain} busy={busy} style={{ alignSelf: 'stretch' }} /> : null}
-          <Button title={solo ? 'Home' : 'Back to lobby'} kind={solo ? 'ghost' : 'primary'} onPress={goBack} style={{ alignSelf: 'stretch' }} />
+          <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+            {solo ? <Button title={mine?.result === 'WON' ? 'Next level' : 'Try again'} onPress={playAgain} busy={busy} style={{ flex: 1 }} /> : null}
+            <Button title={solo ? 'Home' : 'Back to lobby'} kind={solo ? 'ghost' : 'primary'} onPress={goBack} style={{ flex: 1 }} />
+          </View>
         </Card>
       )}
     </Screen>

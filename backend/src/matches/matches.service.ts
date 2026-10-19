@@ -111,12 +111,21 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
   /**
    * Starts a solo game (Water Sort): no room, no stake, nobody to wait for. A player can only have one live match.
    */
-  async startSolo(userId: string, game: GameType) {
+  async startSolo(userId: string, game: GameType, requested?: number) {
     const engine = this.games.get(game);
     if (!engine || !isSolo(game)) throw appError(400, 'NOT_SOLO', 'That game is not played alone');
     const busy = await this.prisma.matchPlayer.count({ where: { userId, leftAt: null, match: { status: 'ACTIVE' } } });
     if (busy > 0) throw appError(409, 'ALREADY_IN_MATCH', 'Finish your current game first');
-    const init = engine.init(1, ctx);
+    // Water Sort has levels: continue from the next unsolved one. A player may replay a lower level but not skip ahead.
+    let level: number | undefined;
+    if (game === 'WATER_SORT') {
+      const rows = await this.prisma.$queryRaw<Array<{ top: number | null }>>`
+        SELECT MAX(("m"."state"->>'level')::int) AS "top" FROM "Match" "m" JOIN "MatchPlayer" "p" ON "p"."matchId" = "m"."id"
+        WHERE "p"."userId" = ${userId} AND "m"."game" = 'WATER_SORT' AND "p"."result" = 'WON'`;
+      const next = Number(rows[0]?.top ?? 0) + 1;
+      level = requested && requested >= 1 ? Math.min(Math.floor(requested), next) : next;
+    }
+    const init = engine.init(1, ctx, { level });
     const id = randomUUID();
     await this.prisma.match.create({
       data: {
@@ -207,6 +216,23 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       }
       if (res.outcome) return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state);
       return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs, engine.simultaneous);
+    });
+    await this.run(after);
+    return this.get(userId, matchId);
+  }
+
+  /** Takes the turns back from the computer. If it is their turn they get a fresh clock. */
+  async resume(userId: string, matchId: string) {
+    const after = await this.prisma.$transaction(async (tx) => {
+      const m = await this.loadLocked(tx, matchId);
+      const player = m.players.find((p) => p.userId === userId);
+      if (!player) throw appError(404, 'MATCH_NOT_FOUND', 'Match not found');
+      if (m.status !== 'ACTIVE') throw appError(409, 'MATCH_OVER', 'This match has ended');
+      const key = `${m.id}:${userId}`;
+      if (!this.auto.delete(key)) return undefined;
+      const engine = this.games.get(m.game);
+      if (m.turnSeat === player.seat) return this.advance(tx, m, m.state, m.turnSeat, engine?.turnTimeoutMs);
+      return this.advance(tx, m, m.state, m.turnSeat, undefined, true); // not their turn: just tell everyone
     });
     await this.run(after);
     return this.get(userId, matchId);

@@ -1,10 +1,11 @@
 import { GameType } from '../generated/prisma/client';
 import { EngineContext, GameEngine, IllegalMove, MoveResult, Outcome } from './engine';
+import { MAX_ADDED_TUBES, hasMoves, makeLevelPuzzle } from './watersort.levels';
 
 export const TUBE_CAPACITY = 4;
 export const COLOR_COUNT = 7;
 export const EMPTY_TUBES = 2;
-export const WATER_SORT_TIME_MS = 5 * 60_000;
+export const WATER_SORT_TIME_MS = 30 * 60_000;
 
 export interface WaterSortState {
   /** Each tube listed bottom to top; numbers are colours 0..COLOR_COUNT-1. */
@@ -14,6 +15,11 @@ export interface WaterSortState {
   moves: number[];
   /** Seat that solved it first. */
   solvedBy: number | null;
+  /** Solo levels only. */
+  level?: number;
+  initial?: number[][];
+  undo?: number[][][];
+  added?: number;
 }
 
 const topRun = (tube: number[]) => {
@@ -75,7 +81,12 @@ export class WaterSortEngine implements GameEngine<WaterSortState> {
   readonly simultaneous = true;
   readonly matchTimeoutMs = WATER_SORT_TIME_MS;
 
-  init(playerCount: number, ctx: EngineContext): { state: WaterSortState; turnSeat: number | null } {
+  init(playerCount: number, ctx: EngineContext, opts?: { level?: number }): { state: WaterSortState; turnSeat: number | null } {
+    if (playerCount === 1) {
+      const level = Math.max(1, Math.floor(opts?.level ?? 1));
+      const tubes = makeLevelPuzzle(level);
+      return { state: { tubes, boards: [tubes.map((t) => t.slice())], moves: [0], solvedBy: null, level, initial: tubes.map((t) => t.slice()), undo: [], added: 0 }, turnSeat: null };
+    }
     const tubes = generatePuzzle(ctx);
     return {
       state: {
@@ -89,8 +100,10 @@ export class WaterSortEngine implements GameEngine<WaterSortState> {
   }
 
   applyMove(state: WaterSortState, seat: number, move: unknown, _ctx?: EngineContext): MoveResult<WaterSortState> {
+    const act = (move as { action?: unknown } | null)?.action;
+    if (act !== undefined && state.boards.length === 1) return this.solo(state, act);
     const { from, to } = (move ?? {}) as { from?: unknown; to?: unknown };
-    const n = state.tubes.length;
+    const n = state.boards[seat]?.length ?? state.tubes.length;
     const ok = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < n;
     if (!ok(from) || !ok(to)) throw new IllegalMove('BAD_MOVE', `Pick tubes from 0 to ${n - 1}`);
     if (from === to) throw new IllegalMove('BAD_MOVE', 'Pick two different tubes');
@@ -110,10 +123,30 @@ export class WaterSortEngine implements GameEngine<WaterSortState> {
 
     const boards = state.boards.map((b, i) => (i === seat ? next : b));
     const moves = state.moves.map((m, i) => (i === seat ? m + 1 : m));
+    const undo = state.undo ? [...state.undo.slice(-99), board] : state.undo;
     if (isSolved(next)) {
-      return { state: { ...state, boards, moves, solvedBy: seat }, turnSeat: null, outcome: { type: 'WIN', winnerSeat: seat } };
+      return { state: { ...state, boards, moves, undo, solvedBy: seat }, turnSeat: null, outcome: { type: 'WIN', winnerSeat: seat } };
     }
-    return { state: { ...state, boards, moves }, turnSeat: null };
+    return { state: { ...state, boards, moves, undo }, turnSeat: null };
+  }
+
+  /** Solo helpers: take back the last pour, add an empty tube (twice per level), or start the level again. */
+  private solo(state: WaterSortState, act: unknown): MoveResult<WaterSortState> {
+    const board = state.boards[0];
+    if (act === 'undo') {
+      const stack = state.undo ?? [];
+      if (stack.length === 0) throw new IllegalMove('NOTHING_TO_UNDO', 'There is nothing to undo');
+      return { state: { ...state, boards: [stack[stack.length - 1]], undo: stack.slice(0, -1), moves: [state.moves[0] + 1] }, turnSeat: null };
+    }
+    if (act === 'addTube') {
+      if ((state.added ?? 0) >= MAX_ADDED_TUBES) throw new IllegalMove('NO_MORE_TUBES', 'You have used your extra tubes for this level');
+      return { state: { ...state, boards: [[...board.map((t) => t.slice()), []]], added: (state.added ?? 0) + 1, undo: [...(state.undo ?? []).slice(-99), board] }, turnSeat: null };
+    }
+    if (act === 'restart') {
+      const initial = (state.initial ?? state.tubes).map((t) => t.slice());
+      return { state: { ...state, boards: [initial], undo: [], added: 0, moves: [0] }, turnSeat: null };
+    }
+    throw new IllegalMove('BAD_MOVE', 'Unknown action');
   }
 
   /** Time is up with nobody finished. */
@@ -134,6 +167,9 @@ export class WaterSortEngine implements GameEngine<WaterSortState> {
     return {
       capacity: TUBE_CAPACITY,
       boards: state.boards,
+      ...(state.boards.length === 1
+        ? { level: state.level ?? 1, noMoves: !hasMoves(state.boards[0]), canUndo: (state.undo?.length ?? 0) > 0, tubesLeft: MAX_ADDED_TUBES - (state.added ?? 0) }
+        : {}),
       finished: state.boards.map((b) => progress(b)),
       moves: state.moves,
       solvedBy: state.solvedBy,

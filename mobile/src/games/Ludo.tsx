@@ -1,8 +1,8 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Polygon, Rect } from 'react-native-svg';
 import { Match } from '../types';
-import { Button, colors } from '../ui';
+import { sfx } from '../sfx';
 
 const STEP_MS = 120;
 const STARS = [8, 21, 34, 47];
@@ -10,6 +10,7 @@ const STARTS = [0, 13, 26, 39];
 const starPoints = (cx: number, cy: number, outer: number, inner: number) => Array.from({ length: 10 }, (_, i) => { const r = i % 2 === 0 ? outer : inner; const a = -Math.PI / 2 + (i * Math.PI) / 5; return `${(cx + r * Math.cos(a)).toFixed(3)},${(cy + r * Math.sin(a)).toFixed(3)}`; }).join(' ');
 
 interface State {
+  rolls?: number; moves: number;
   tokens: number[][]; turn: number; phase: 'ROLL' | 'MOVE'; dice: number | null; canMove: number[];
   lastRoll: { seat: number; value: number; skipped?: string } | null; home: number[]; ring: number;
   last: { seat: number; token: number; captured: Array<{ seat: number; token: number }> } | null;
@@ -108,9 +109,64 @@ const Pawn = memo(function Pawn({ seat, token, progress, u, offset, count, selec
   );
 });
 
-export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; mySeat: number; onMove: (move: object) => void; busy: boolean }) {
+const PIPS: Record<number, Array<[number, number]>> = {
+  1: [[1, 1]], 2: [[0, 0], [2, 2]], 3: [[0, 0], [1, 1], [2, 2]], 4: [[0, 0], [0, 2], [2, 0], [2, 2]],
+  5: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 2]], 6: [[0, 0], [1, 0], [2, 0], [0, 2], [1, 2], [2, 2]],
+};
+
+/** A die that tumbles (spins, bounces and flickers through faces) whenever a new roll arrives, then lands with a thud. Tapping it rolls. */
+function Dice({ value, rolls, color, size, canRoll, onRoll }: { value: number | null; rolls: number; color: string; size: number; canRoll: boolean; onRoll: () => void }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  const hop = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState<number>(value ?? 1);
+  const [rolling, setRolling] = useState(false);
+  const seen = useRef(rolls);
+
+  useEffect(() => {
+    if (rolls === seen.current) { if (value) setShown(value); return; }
+    seen.current = rolls;
+    setRolling(true);
+    sfx('dice_roll');
+    spin.setValue(0); hop.setValue(0);
+    const flick = setInterval(() => setShown(1 + Math.floor(Math.random() * 6)), 70);
+    Animated.parallel([
+      Animated.timing(spin, { toValue: 1, duration: 760, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.sequence([
+        Animated.timing(hop, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(hop, { toValue: 0, duration: 260, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.timing(hop, { toValue: 0.35, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(hop, { toValue: 0, duration: 110, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ]),
+    ]).start(() => { clearInterval(flick); setShown(value ?? 1); setRolling(false); sfx('dice_land'); });
+    return () => clearInterval(flick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rolls]);
+
+  useEffect(() => {
+    if (!canRoll) { glow.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([Animated.timing(glow, { toValue: 1, duration: 600, useNativeDriver: true }), Animated.timing(glow, { toValue: 0, duration: 600, useNativeDriver: true })]));
+    loop.start();
+    return () => loop.stop();
+  }, [canRoll, glow]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
+  const lift = hop.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.55] });
+  const pip = size * 0.16, pad = size * 0.16, cell = (size - pad * 2) / 3;
+  return (
+    <Pressable disabled={!canRoll} onPress={() => { if (!rolling) onRoll(); }} hitSlop={10}>
+      <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -6, top: -6, right: -6, bottom: -6, borderRadius: size * 0.3, backgroundColor: color, opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }) }} />
+      <Animated.View style={{ width: size, height: size, borderRadius: size * 0.22, backgroundColor: '#FFFFFF', borderWidth: 3, borderColor: color, transform: [{ translateY: lift }, { rotate }], shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 5, shadowOffset: { width: 0, height: 3 }, elevation: 6, opacity: value || rolling ? 1 : 0.85 }}>
+        {(PIPS[shown] ?? []).map(([r, c], i) => <View key={i} style={{ position: 'absolute', width: pip, height: pip, borderRadius: pip / 2, backgroundColor: '#1A1538', left: pad + c * cell + (cell - pip) / 2, top: pad + r * cell + (cell - pip) / 2 }} />)}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+export function Ludo({ match, mySeat, onMove, busy, height }: { match: Match<State>; mySeat: number; onMove: (move: object) => void; busy: boolean; height: number }) {
   const { width } = useWindowDimensions();
-  const size = Math.min(width - 32, 440);
+  // The board is square and must leave about 96px under it for the dice and player strip.
+  const size = Math.max(200, Math.min(width - 32, 440, height - 100));
   const inner = size - 12;
   const u = inner / 15;
   const s = match.state;
@@ -126,6 +182,9 @@ export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; myS
     return () => loop.stop();
   }, [pulse]);
 
+  const capSeen = useRef(s.moves);
+  useEffect(() => { if (s.moves !== capSeen.current) { capSeen.current = s.moves; if (s.last && s.last.captured.length > 0) sfx('capture'); } }, [s.moves]);
+
   const pawns = useMemo(() => {
     const list = match.players.flatMap((p) => s.tokens[p.seat].map((progress, token) => ({ seat: p.seat, token, progress, key: progress < 0 || progress > 55 ? `x${p.seat}${token}` : cellOf(p.seat, token, progress).join(':') })));
     const total = new Map<string, number>(); list.forEach((t) => total.set(t.key, (total.get(t.key) ?? 0) + 1));
@@ -135,7 +194,7 @@ export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; myS
   const markers = canPick && s.dice ? s.canMove.map((t) => { const p = s.tokens[mySeat][t]; const [r, c] = cellOf(mySeat, t, p < 0 ? 0 : p + s.dice!); return { t, r, c }; }) : [];
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ flex: 1, justifyContent: 'center', gap: 10 }}>
       <View style={{ alignSelf: 'center', backgroundColor: '#1A1538', borderRadius: 22, padding: 6, shadowColor: '#1A1538', shadowOpacity: 0.28, shadowRadius: 14, elevation: 8 }}>
         <View style={{ width: inner, height: inner, borderRadius: 12, overflow: 'hidden' }}>
           <BoardArt size={inner} />
@@ -151,20 +210,19 @@ export function Ludo({ match, mySeat, onMove, busy }: { match: Match<State>; myS
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS[POSITION[mySeat]] ?? '#888' }} />
-          <Text style={{ color: '#fff', fontWeight: '700' }}>You · {s.home[mySeat]}/4 home</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 4 }}>
+        <Dice value={s.lastRoll?.value ?? null} rolls={s.rolls ?? 0} color={COLORS[POSITION[s.lastRoll?.seat ?? match.turnSeat ?? mySeat]] ?? '#888'} size={52} canRoll={myTurn && s.phase === 'ROLL'} onRoll={() => onMove({ action: 'roll' })} />
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{ color: myTurn ? '#FFD21F' : 'rgba(255,255,255,.7)', fontWeight: '900', fontSize: 14 }}>
+            {match.status !== 'ACTIVE' ? 'Game over' : myTurn ? (s.phase === 'ROLL' ? 'Your turn: tap the dice to roll' : `Rolled ${s.dice}: tap a glowing token`) : `${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'Opponent'} is playing…`}
+          </Text>
+          {s.lastRoll?.skipped ? <Text style={{ color: 'rgba(255,255,255,.55)', fontSize: 11 }}>{s.lastRoll.seat === mySeat ? 'You' : 'They'} rolled {s.lastRoll.value}: {s.lastRoll.skipped === 'THREE_SIXES' ? 'three sixes, turn lost' : 'no move possible'}</Text> : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {match.players.map((p) => (
+              <Text key={p.userId} style={{ color: p.left ? 'rgba(255,255,255,.35)' : '#fff', fontSize: 11 }}><Text style={{ color: COLORS[POSITION[p.seat]] }}>●</Text> {p.seat === mySeat ? 'You' : p.displayName} {s.home[p.seat]}/4</Text>
+            ))}
+          </View>
         </View>
-        <Text style={{ color: '#fff', fontSize: 44 }}>{s.lastRoll ? FACE[s.lastRoll.value] : ''}</Text>
-      </View>
-      {s.lastRoll?.skipped ? <Text style={{ color: 'rgba(255,255,255,.6)', textAlign: 'center' }}>{s.lastRoll.seat === mySeat ? 'You' : 'They'} rolled {s.lastRoll.value}: {s.lastRoll.skipped === 'THREE_SIXES' ? 'three sixes, turn lost' : 'no move possible'}</Text> : null}
-      {myTurn && s.phase === 'ROLL' ? <Button title="Roll the dice" onPress={() => onMove({ action: 'roll' })} /> : null}
-      {canPick ? <Text style={{ color: '#FFD21F', textAlign: 'center', fontWeight: '800' }}>Tap a glowing token to move {s.dice}</Text> : null}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
-        {match.players.filter((p) => p.seat !== mySeat).map((p) => (
-          <Text key={p.userId} style={{ color: p.left ? 'rgba(255,255,255,.4)' : '#fff' }}><Text style={{ color: COLORS[POSITION[p.seat]] }}>●</Text> {p.displayName} {s.home[p.seat]}/4</Text>
-        ))}
       </View>
     </View>
   );

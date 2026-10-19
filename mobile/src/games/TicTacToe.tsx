@@ -18,19 +18,19 @@ function Mark({ v, size, color, text }: { v: number | null; size: number; color:
   return <Animated.Text style={{ fontSize: size * 0.58, lineHeight: size * 0.7, includeFontPadding: false, fontWeight: '900', color, transform: [{ scale: pop }] }}>{text}</Animated.Text>;
 }
 
-export function TicTacToe({ match, mySeat, onMove, busy }: { match: Match<State>; mySeat: number; onMove: (move: object) => void; busy: boolean }) {
+export function TicTacToe({ match, mySeat, onMove, busy, height }: { match: Match<State>; mySeat: number; onMove: (move: object) => void; busy: boolean; height: number }) {
   const { width } = useWindowDimensions();
   const s = match.state;
   const myTurn = match.status === 'ACTIVE' && match.turnSeat === mySeat && !busy;
   const pad = 12, gap = 10;
-  const outer = Math.min(width - 32, 400);
+  const outer = Math.max(180, Math.min(width - 32, 400, height - 110));
   const size = Math.floor((outer - pad * 2 - gap * 2) / 3);
   const line = new Set(s.winLine ?? []);
   const dim = line.size > 0;
   const col = (seat: number) => (seat === 0 ? T.x : T.o);
 
   return (
-    <View style={{ backgroundColor: T.panel, borderRadius: 26, padding: 14, gap: 12, alignItems: 'center' }}>
+    <View style={{ flex: 1, justifyContent: 'center', backgroundColor: T.panel, borderRadius: 26, padding: 14, gap: 12, alignItems: 'center' }}>
       <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 8, alignSelf: 'stretch' }}>
         {[0, 1].map((seat) => {
           const p = match.players.find((q) => q.seat === seat);

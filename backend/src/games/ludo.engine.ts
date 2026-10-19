@@ -29,6 +29,8 @@ export interface LudoState {
   moves: number;
   left: number[];
   lastRoll: { seat: number; value: number; skipped?: 'NO_MOVE' | 'THREE_SIXES' } | null;
+  /** Counts every roll so clients can tell two identical rolls apart and animate the dice. */
+  rolls?: number;
   last: { seat: number; token: number; from: number; to: number; captured: Array<{ seat: number; token: number }> } | null;
 }
 
@@ -81,11 +83,11 @@ export class LudoEngine implements GameEngine<LudoState> {
     const sixes = value === 6 ? state.sixes + 1 : 0;
     const pass = (skipped: 'NO_MOVE' | 'THREE_SIXES'): MoveResult<LudoState> => {
       const turn = this.nextSeat(state, seat);
-      return { state: { ...state, turn, phase: 'ROLL', dice: null, sixes: 0, lastRoll: { seat, value, skipped } }, turnSeat: turn };
+      return { state: { ...state, turn, phase: 'ROLL', dice: null, sixes: 0, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value, skipped } }, turnSeat: turn };
     };
     if (sixes >= 3) return pass('THREE_SIXES');
     if (legalTokens(state, seat, value).length === 0) return pass('NO_MOVE');
-    return { state: { ...state, phase: 'MOVE', dice: value, sixes, lastRoll: { seat, value } }, turnSeat: seat };
+    return { state: { ...state, phase: 'MOVE', dice: value, sixes, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value } }, turnSeat: seat };
   }
 
   private moveToken(state: LudoState, seat: number, token: unknown): MoveResult<LudoState> {
@@ -137,7 +139,7 @@ export class LudoEngine implements GameEngine<LudoState> {
     return {
       tokens: state.tokens, turn: state.turn, phase: state.phase, dice: state.dice,
       canMove: state.phase === 'MOVE' && state.dice !== null ? legalTokens(state, state.turn, state.dice) : [],
-      moves: state.moves, left: state.left, lastRoll: state.lastRoll, last: state.last,
+      moves: state.moves, rolls: state.rolls ?? 0, left: state.left, lastRoll: state.lastRoll, last: state.last,
       home: state.tokens.map((t) => t.filter((p) => p === HOME).length),
       startSquares: Array.from({ length: state.players }, (_, s) => startSquare(s)),
       ring: RING,

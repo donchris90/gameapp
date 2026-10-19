@@ -42,6 +42,16 @@ describe('Matches: a computer plays your turn when you time out', () => {
     expect(m.autoPlay).toEqual([]);
   });
 
+  it('lets the player take the turns back with one call', async () => {
+    process.env.AUTOPLAY_MAX_STEPS = '5';
+    const g = await start(0);
+    const late = g.bySeat(g.match.turnSeat);
+    await app.get(MatchesService).sweepTimeouts(Date.now() + 60_000);
+    const m = (await http().post(`/matches/${g.match.id}/resume`).set(bearer(late)).expect(200)).body;
+    expect(m.autoPlay).toEqual([]);
+    expect(m.status).toBe('ACTIVE');
+  });
+
   it('forfeits only after the allowed number of automatic turns', async () => {
     process.env.AUTOPLAY_MAX_STEPS = '1';
     const g = await start(100);

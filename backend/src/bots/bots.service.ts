@@ -68,6 +68,7 @@ export class BotsService implements OnModuleInit, OnModuleDestroy {
     const skip = new Set([...busy.map((b) => b.id), ...this.reserved]);
     const idle = await this.prisma.user.findMany({ where: { isBot: true, id: { notIn: [...skip] } }, select: { id: true }, take: 50 });
     const ids = idle.map((u) => u.id).sort(() => Math.random() - 0.5).slice(0, n);
+    for (const id of ids) await this.rename(id); // a fresh name every time, so the same account never looks familiar
     while (ids.length < n) ids.push(await this.create());
     for (const id of ids) this.reserved.add(id);
     return ids;
@@ -75,6 +76,20 @@ export class BotsService implements OnModuleInit, OnModuleDestroy {
 
   release(ids: string[]) {
     for (const id of ids) this.reserved.delete(id);
+  }
+
+  /** Gives an idle computer account a new random name. */
+  private async rename(id: string) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { username, displayName } = randomPlayerName();
+      if (/bot/i.test(username) || /bot/i.test(displayName)) continue;
+      try {
+        await this.prisma.user.update({ where: { id }, data: { username, usernameLower: username.toLowerCase(), displayName } });
+        return;
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'P2002') return; // name taken: try another
+      }
+    }
   }
 
   private async create(): Promise<string> {

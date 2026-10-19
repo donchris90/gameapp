@@ -41,6 +41,34 @@ describe('Matches: Water Sort (solo)', () => {
     await pour(p, m.id, 0, 1).expect(409); // already over
   });
 
+  it('has levels: solving level 1 opens level 2, which is harder', async () => {
+    const p = await newPlayer(app);
+    const l1 = (await start(p).expect(200)).body;
+    expect(l1.state.level).toBe(1);
+    expect(l1.state.boards[0]).toHaveLength(4);
+    for (const [from, to] of solve(l1.state.boards[0])!) await pour(p, l1.id, from, to).expect(200);
+    const l2 = (await start(p).expect(200)).body;
+    expect(l2.state.level).toBe(2);
+    // a level cannot be skipped ahead to, but an earlier one can be replayed
+    await http().post(`/matches/${l2.id}/forfeit`).set(bearer(p)).expect(200);
+    const jump = (await http().post('/matches/solo').set(bearer(p)).send({ game: 'WATER_SORT', level: 50 }).expect(200)).body;
+    expect(jump.state.level).toBe(2);
+    await http().post(`/matches/${jump.id}/forfeit`).set(bearer(p)).expect(200);
+    const again = (await http().post('/matches/solo').set(bearer(p)).send({ game: 'WATER_SORT', level: 1 }).expect(200)).body;
+    expect(again.state.level).toBe(1);
+  });
+
+  it('can undo, restart and add a tube through the move endpoint', async () => {
+    const p = await newPlayer(app);
+    const m = (await start(p).expect(200)).body;
+    const r = await http().post(`/matches/${m.id}/move`).set(bearer(p)).send({ move: { action: 'addTube' } }).expect(200);
+    expect(r.body.state.boards[0]).toHaveLength(m.state.boards[0].length + 1);
+    expect(r.body.state.tubesLeft).toBe(1);
+    const back = await http().post(`/matches/${m.id}/move`).set(bearer(p)).send({ move: { action: 'restart' } }).expect(200);
+    expect(back.body.state.boards).toEqual(m.state.boards);
+    expect((await http().post(`/matches/${m.id}/move`).set(bearer(p)).send({ move: { action: 'undo' } }).expect(400)).body.error).toBe('NOTHING_TO_UNDO');
+  });
+
   it('refuses illegal pours with a reason and keeps the board as it was', async () => {
     const p = await newPlayer(app);
     const m = (await start(p).expect(200)).body;
@@ -68,7 +96,7 @@ describe('Matches: Water Sort (solo)', () => {
     const m = (await start(p).expect(200)).body;
     const [a] = solve(m.state.boards[0])!;
     await pour(p, m.id, a[0], a[1]).expect(200); // some progress is not enough
-    await app.get(MatchesService).sweepTimeouts(Date.now() + 6 * 60_000);
+    await app.get(MatchesService).sweepTimeouts(Date.now() + 31 * 60_000);
     const done = await getMatch(p, m.id);
     expect(done).toMatchObject({ status: 'FINISHED', endReason: 'TIMEOUT', winnerId: null });
     expect(done.players[0].result).toBe('LOST');

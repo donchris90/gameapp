@@ -1,6 +1,6 @@
 import { GameType } from '../generated/prisma/client';
 import { EngineContext, GameEngine } from '../games/engine';
-import { legalMoves } from '../games/ayo.engine';
+import { legalMoves, simulateSow } from '../games/ayo.engine';
 import { legalTokens } from '../games/ludo.engine';
 import { WIN_LINES } from '../games/tictactoe.engine';
 
@@ -34,16 +34,17 @@ export function chooseMove(game: GameType, engine: GameEngine<any>, state: any, 
   }
 
   if (game === 'AYO') {
+    if (state.decision) return state.decision.seat === seat ? { decision: 'continue' } : null;
     if (state.turn !== seat) return null;
-    const options = legalMoves(state.pits, seat);
+    const options = legalMoves(state.pits, seat, state.owners);
     if (options.length === 0) return null;
     if (slip) return { pit: pickOne(options, ctx) };
-    // Look one move ahead with the real rules and prefer the biggest capture.
+    // Look one move ahead with the real rules: what I pack minus what my sowing packs for the opponent.
     let best: number[] = [];
     let bestScore = -Infinity;
     for (const pit of options) {
-      const r = engine.applyMove(state, seat, { pit }, ctx);
-      const score = r.state.captured[seat] - r.state.captured[1 - seat];
+      const r = simulateSow(state.pits, pit, seat, state.owners);
+      const score = r.packedBy[seat] - r.packedBy[1 - seat];
       if (score > bestScore) { bestScore = score; best = [pit]; } else if (score === bestScore) best.push(pit);
     }
     return { pit: pickOne(best, ctx) };

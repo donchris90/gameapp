@@ -37,7 +37,7 @@ export interface GameEngine<S = unknown> {
   readonly simultaneous?: boolean;
   /** Total time for a simultaneous match. */
   readonly matchTimeoutMs?: number;
-  init(playerCount: number, ctx: EngineContext): { state: S; turnSeat: number | null };
+  init(playerCount: number, ctx: EngineContext, opts?: { level?: number }): { state: S; turnSeat: number | null };
   /** Throws IllegalMove for a bad move. Must not mutate `state`. */
   applyMove(state: S, seat: number, move: unknown, ctx: EngineContext): MoveResult<S>;
   /**

@@ -64,7 +64,7 @@ describe('Water Sort engine', () => {
     const snapshot = JSON.stringify(state);
     const codeOf = (move: unknown, seat = 0) => { try { engine.applyMove(state, seat, move, ctx); return 'ok'; } catch (e) { return e instanceof IllegalMove ? e.code : 'other'; } };
     const empty = state.tubes.findIndex((t) => t.length === 0);
-    const full = state.tubes.findIndex((t) => t.length === TUBE_CAPACITY);
+    const full = Math.max(0, state.tubes.findIndex((t) => t.length === TUBE_CAPACITY));
     expect(codeOf({ from: empty, to: full })).toBe('EMPTY_TUBE');
     expect(codeOf({ from: 0, to: 0 })).toBe('BAD_MOVE');
     expect(codeOf({ from: -1, to: 0 })).toBe('BAD_MOVE');
@@ -106,5 +106,69 @@ describe('Water Sort engine', () => {
     const view: any = engine.publicState(fresh(2));
     expect(view).toMatchObject({ capacity: TUBE_CAPACITY, finished: [0, 0], moves: [0, 0], solvedBy: null });
     expect(view.boards).toHaveLength(2);
+  });
+});
+
+import { MAX_COLORS, hasMoves, isSolvable, levelSpec, makeLevelPuzzle } from './watersort.levels';
+
+describe('Water Sort levels', () => {
+  it('start small (4 tubes) and get harder: more colours as the levels go on, up to 10', () => {
+    expect(levelSpec(1)).toMatchObject({ colors: 2, spare: 2, tubes: 4 });
+    expect(levelSpec(4).colors).toBe(3);
+    expect(levelSpec(7).colors).toBe(4);
+    expect(levelSpec(100).colors).toBe(MAX_COLORS);
+    expect(levelSpec(100).spare).toBe(1);
+  });
+
+  it('every level opens mixed, has 4 layers of each colour, and can be solved', () => {
+    for (const level of [1, 2, 3, 5, 8, 12, 20, 30, 45, 70]) {
+      const tubes = makeLevelPuzzle(level);
+      const spec = levelSpec(level);
+      expect(tubes).toHaveLength(spec.tubes);
+      expect(tubes.some((t) => t.length === 4 && t.every((c) => c === t[0]))).toBe(false);
+      const counts = new Map<number, number>();
+      for (const t of tubes) for (const c of t) counts.set(c, (counts.get(c) ?? 0) + 1);
+      expect(counts.size).toBe(spec.colors);
+      for (const n of counts.values()) expect(n).toBe(4);
+      expect(solve(tubes)).not.toBeNull();
+      expect(hasMoves(tubes)).toBe(true);
+    }
+    expect(makeLevelPuzzle(9)).toEqual(makeLevelPuzzle(9)); // same level, same puzzle
+    expect(isSolvable(makeLevelPuzzle(3))).toBe(true);
+  }, 60000);
+});
+
+describe('Water Sort solo helpers', () => {
+  const solo = () => engine.init(1, ctx, { level: 5 }).state;
+  const firstPour = (tubes: number[][]) => {
+    for (let f = 0; f < tubes.length; f++) for (let t = 0; t < tubes.length; t++) {
+      if (f !== t && tubes[f].length && tubes[t].length < 4 && (!tubes[t].length || tubes[t][tubes[t].length - 1] === tubes[f][tubes[f].length - 1]) && !(tubes[t].length === 0 && tubes[f].every((c) => c === tubes[f][0]))) return { from: f, to: t };
+    }
+    throw new Error('no pour');
+  };
+
+  it('undoes a pour, restarts the level and adds at most two tubes', () => {
+    let s = solo();
+    expect(s.level).toBe(5);
+    const start = s.boards[0].map((t) => t.slice());
+    s = engine.applyMove(s, 0, firstPour(s.boards[0]), ctx).state;
+    expect(s.boards[0]).not.toEqual(start);
+    s = engine.applyMove(s, 0, { action: 'undo' }, ctx).state;
+    expect(s.boards[0]).toEqual(start);
+    expect(() => engine.applyMove(s, 0, { action: 'undo' }, ctx)).toThrow(IllegalMove);
+
+    s = engine.applyMove(s, 0, { action: 'addTube' }, ctx).state;
+    s = engine.applyMove(s, 0, { action: 'addTube' }, ctx).state;
+    expect(s.boards[0]).toHaveLength(start.length + 2);
+    expect(() => engine.applyMove(s, 0, { action: 'addTube' }, ctx)).toThrow(IllegalMove);
+
+    s = engine.applyMove(s, 0, { action: 'restart' }, ctx).state;
+    expect(s.boards[0]).toEqual(start);
+    expect(engine.publicState(s)).toMatchObject({ level: 5, noMoves: false, tubesLeft: 2 });
+  });
+
+  it('reports when there are no moves left', () => {
+    const s = { ...solo(), boards: [[[0, 1, 0, 1], [1, 0, 1, 0], [0, 1, 0, 1], [1, 0, 1, 0]]] };
+    expect(engine.publicState(s)).toMatchObject({ noMoves: true });
   });
 });

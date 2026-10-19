@@ -1,118 +1,88 @@
-import { AyoEngine, AyoState, legalMoves } from './ayo.engine';
+import { AyoEngine, AyoState, legalMoves, ownersFor } from './ayo.engine';
 
 const engine = new AyoEngine();
 const ctx = { randomInt: () => 0 };
-const mk = (pits: number[], turn = 0, captured: [number, number] = [0, 0], extra: Partial<AyoState> = {}): AyoState =>
-  ({ pits, captured, turn, moves: 0, sinceCapture: 0, last: null, ...extra });
+const mk = (pits: number[], extra: Partial<AyoState> = {}): AyoState =>
+  ({ pits, owners: ownersFor(6), captured: [0, 0], turn: 0, moves: 0, round: 1, roundTurns: 0, lastPacker: null, roundStarter: 0, decision: null, last: null, lastRound: null, ...extra });
 const play = (s: AyoState, pit: number) => engine.applyMove(s, s.turn, { pit }, ctx);
 const code = (s: AyoState, seat: number, move: unknown) => { try { engine.applyMove(s, seat, move, ctx); return 'ok'; } catch (e: any) { return e.code ?? 'other'; } };
 
-describe('Ayo engine', () => {
+describe('Ayo engine (relay sowing)', () => {
   it('starts with four seeds in every pit and a random first player', () => {
     const { state, turnSeat } = engine.init(2, { randomInt: () => 1 });
     expect(state.pits).toEqual(Array(12).fill(4));
+    expect(state.owners).toEqual(ownersFor(6));
     expect(turnSeat).toBe(1);
     expect(() => engine.init(3, ctx)).toThrow();
   });
 
-  it('sows one seed per pit round the board, counting 48 seeds always', () => {
-    const r = play(mk(Array(12).fill(4)), 2);
-    expect(r.state.pits).toEqual([4, 4, 0, 5, 5, 5, 5, 4, 4, 4, 4, 4]);
+  it('keeps sowing when the last seed lands in a pit that has seeds, and stops in an empty pit', () => {
+    const r = play(mk([1, 1, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5]), 0);
+    expect(r.state.pits).toEqual([0, 0, 1, 1, 0, 0, 5, 5, 5, 5, 5, 5]);
     expect(r.turnSeat).toBe(1);
-    expect(r.state.pits.reduce((a, b) => a + b, 0) + r.state.captured[0] + r.state.captured[1]).toBe(48);
+    expect(r.state.last!.events.filter((e) => e.t === 'pick')).toHaveLength(2);
   });
 
-  it('skips the starting pit on a lap of twelve or more', () => {
-    const pits = Array(12).fill(1); pits[0] = 12;
-    const r = play(mk(pits), 0);
-    expect(r.state.pits[0]).toBe(0);
-    expect(r.state.pits.slice(1)).toEqual([3, ...Array(10).fill(2)]); // 12 seeds over 11 pits: the first gets two
+  it('lets the sower pack a pit their last seed makes four, on either side', () => {
+    const r = play(mk([0, 0, 0, 0, 0, 1, 3, 5, 5, 5, 5, 5]), 5);
+    expect(r.state.captured).toEqual([4, 0]);
+    expect(r.state.pits[6]).toBe(0);
+    expect(r.turnSeat).toBe(1);
   });
 
-  it('captures a pit that ends on 2 or 3 and chains backwards', () => {
-    // seat 0 plays pit 5 (2 seeds) -> lands pit 7. Pits 6 and 7 hold 1,2 before => 2,3 after: both taken.
-    const pits = [0, 0, 0, 0, 0, 2, 1, 2, 5, 0, 0, 0];
-    const r = play(mk(pits), 5);
-    expect(r.state.captured).toEqual([5, 0]);
-    expect(r.state.pits.slice(6, 8)).toEqual([0, 0]);
-    expect(r.state.last).toMatchObject({ seat: 0, pit: 5, endPit: 7, captured: 5 });
+  it('gives a pit that hits four mid-sow to its owner', () => {
+    const r = play(mk([0, 0, 0, 0, 0, 2, 3, 0, 5, 5, 5, 5]), 5);
+    expect(r.state.captured).toEqual([0, 4]);
+    expect(r.state.pits.slice(6, 8)).toEqual([0, 1]);
   });
 
-  it('stops the chain at a pit that is not 2 or 3, and never captures from your own row', () => {
-    const pits = [0, 0, 0, 0, 2, 1, 1, 6, 1, 0, 0, 0]; // seat 0 pit 5 (1 seed) -> pit 6 becomes 2 : capture 2 only
-    const r = play(mk(pits), 5);
-    expect(r.state.captured[0]).toBe(2);
-    const own = play(mk([0, 0, 0, 1, 1, 0, 3, 3, 0, 0, 0, 0]), 3); // lands in own pit 4 = 2: no capture
-    expect(own.state.captured).toEqual([0, 0]);
-  });
-
-  it('a move that would take every seed on the opponent row captures nothing', () => {
-    const pits = [1, 0, 0, 0, 0, 1, 1, 2, 0, 0, 0, 0]; // pit 5 -> pit 6 becomes 2; opponent row total 4, so 2 taken is fine
-    const partial = play(mk(pits), 5);
-    expect(partial.state.captured[0]).toBe(2);
-    const all = [1, 0, 0, 0, 0, 2, 1, 1, 0, 0, 0, 0]; // pit 5 sows 6,7: 2 and 2, both captured would be everything
-    const r = play(mk(all, 0, [0, 0]), 5);
-    expect(r.state.captured).toEqual([0, 0]);
-    expect(r.state.pits.slice(6, 8)).toEqual([2, 2]);
-  });
-
-  it('wins at 25 captured', () => {
-    const pits = [0, 0, 0, 0, 0, 2, 1, 2, 5, 0, 0, 0];
-    const r = play(mk(pits, 0, [20, 0]), 5);
-    expect(r.outcome).toEqual({ type: 'WIN', winnerSeat: 0 });
-    expect(r.turnSeat).toBeNull();
-  });
-
-  it('forces you to feed an opponent with no seeds', () => {
-    const pits = [1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0]; // pit 0 cannot reach them; pit 5 (3 seeds) can
-    expect(legalMoves(pits, 0)).toEqual([5]);
-    expect(code(mk(pits), 0, { pit: 0 })).toBe('MUST_FEED');
-    expect(code(mk(pits), 0, { pit: 5 })).toBe('ok');
-  });
-
-  it('ends the game when the opponent cannot be fed: each side keeps its own seeds', () => {
-    // seat 0 plays its only seeds across; seat 1 then has seeds but nothing that can reach seat 0's empty row.
-    const pits = [0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0];
-    const r = play(mk(pits, 0, [10, 34]), 5);
-    expect(r.outcome).toEqual({ type: 'WIN', winnerSeat: 1 });
-    expect(r.state.captured).toEqual([10, 38]);
-    expect(r.state.pits).toEqual(Array(12).fill(0));
-  });
-
-  it('draws when a stalled game leaves both on 24', () => {
-    const r = play(mk(Array(12).fill(4), 0, [0, 0], { sinceCapture: 119 }), 0);
-    expect(r.outcome).toEqual({ type: 'DRAW' });
-    expect(r.state.captured).toEqual([24, 24]);
-  });
-
-  it('ends a game that stalls with no captures', () => {
-    const r = play(mk(Array(12).fill(4), 0, [0, 0], { sinceCapture: 119 }), 0);
-    expect(r.outcome).toBeDefined();
-    expect(r.state.captured[0] + r.state.captured[1]).toBe(48);
-  });
-
-  it('rejects bad, out of turn, wrong row and empty moves', () => {
-    const s = mk([0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]);
-    expect(code(s, 0, { pit: 12 })).toBe('BAD_MOVE');
-    expect(code(s, 0, { pit: '1' })).toBe('BAD_MOVE');
-    expect(code(s, 0, null)).toBe('BAD_MOVE');
-    expect(code(s, 1, { pit: 7 })).toBe('NOT_YOUR_TURN');
-    expect(code(s, 0, { pit: 7 })).toBe('NOT_YOUR_PIT');
-    expect(code(s, 0, { pit: 0 })).toBe('EMPTY_PIT');
-    expect(s.pits[1]).toBe(4); // untouched
-  });
-
-  it('always keeps 48 seeds across a long random game', () => {
-    let s = engine.init(2, { randomInt: () => 0 }).state, r: any;
-    let seed = 12345;
-    for (let i = 0; i < 600; i++) {
-      const moves = legalMoves(s.pits, s.turn);
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      r = play(s, moves[seed % moves.length]);
-      s = r.state;
-      expect(s.pits.reduce((a, b) => a + b, 0) + s.captured[0] + s.captured[1]).toBe(48);
+  it('always keeps 48 seeds on the table over a whole random game', () => {
+    let { state, turnSeat } = engine.init(2, ctx);
+    let seed = 7;
+    const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+    for (let i = 0; i < 3000 && turnSeat !== null; i++) {
+      const seat: number = turnSeat;
+      const move = state.decision ? { decision: 'continue' } : { pit: legalMoves(state.pits, seat, state.owners).sort(() => rnd(3) - 1)[0] };
+      const r = engine.applyMove(state, seat, move, ctx);
+      state = r.state; turnSeat = r.turnSeat;
+      expect(state.pits.reduce((a, b) => a + b, 0) + state.captured[0] + state.captured[1]).toBe(48);
       if (r.outcome) break;
     }
-    expect(r.outcome).toBeDefined();
+  });
+
+  it('starts the next round from what each player packed, and alternates the starter', () => {
+    const r = play(mk([0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0], { captured: [24, 20] }), 5);
+    expect(r.outcome).toBeUndefined();
+    expect(r.state.round).toBe(2);
+    expect(r.state.owners).toEqual(ownersFor(7));
+    expect(r.state.pits).toEqual(Array(12).fill(4));
+    expect(r.state.captured).toEqual([0, 0]);
+    expect(r.turnSeat).toBe(1);
+  });
+
+  it('gives a player with exactly two pits the choice to quit or continue', () => {
+    const r = play(mk([0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0], { captured: [40, 4] }), 5);
+    // 44 vs 4: seat 1 has one pit and has lost
+    expect(r.outcome).toEqual({ type: 'WIN', winnerSeat: 0 });
+
+    const two = play(mk([0, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0, 0], { captured: [36, 8] }), 5); // 40 vs 8 -> 10 pits vs 2
+    expect(two.outcome).toBeUndefined();
+    expect(two.state.decision).toEqual({ seat: 1 });
+    expect(two.turnSeat).toBe(1);
+    expect(code(two.state, 0, { pit: 0 })).toBe('NOT_YOUR_TURN');
+    expect(engine.applyMove(two.state, 1, { decision: 'quit' }, ctx).outcome).toEqual({ type: 'WIN', winnerSeat: 0 });
+    const cont = engine.applyMove(two.state, 1, { decision: 'continue' }, ctx);
+    expect(cont.outcome).toBeUndefined();
+    expect(cont.state.decision).toBeNull();
+    expect(cont.turnSeat).toBe(two.state.turn);
+  });
+
+  it('rejects illegal moves', () => {
+    const s = mk([0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]);
+    expect(code(s, 1, { pit: 6 })).toBe('NOT_YOUR_TURN');
+    expect(code(s, 0, { pit: 7 })).toBe('NOT_YOUR_PIT');
+    expect(code(s, 0, { pit: 0 })).toBe('EMPTY_PIT');
+    expect(code(s, 0, { pit: 99 })).toBe('BAD_MOVE');
+    expect(code(s, 0, {})).toBe('BAD_MOVE');
   });
 });

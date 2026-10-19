@@ -5,6 +5,7 @@ const FIRST = [
   'grace', 'john', 'mary', 'peter', 'sarah', 'mike', 'jane', 'sam', 'lara', 'kayode', 'ruth', 'daniel', 'esther', 'victor', 'joy',
   'felix', 'ola', 'kelvin', 'precious', 'ebube', 'tari', 'dami', 'ejike', 'ini', 'rita', 'ken', 'lola', 'tayo', 'nkem', 'bayo',
 ];
+const LAST = ['Okafor', 'Adeyemi', 'Bello', 'Eze', 'Balogun', 'Nwosu', 'Okonkwo', 'Yusuf', 'Ogunleye', 'Ibrahim', 'Obi', 'Adebayo', 'Musa', 'Udoh', 'Chukwu', 'Lawal', 'Okoye', 'Ajayi', 'Danjuma', 'Eke', 'Afolabi', 'Nnamdi', 'Salami', 'Ojo', 'Mba', 'Akpan', 'Aliyu', 'Oladipo'];
 const WORD = ['king', 'queen', 'boy', 'girl', 'gamer', 'pro', 'naija', 'lagos', 'abuja', 'vibes', 'legend', 'smart', 'swift', 'lucky', 'cool', 'sharp', 'ace', 'fire', 'star', 'wise'];
 
 const pick = <T,>(a: readonly T[], r: () => number) => a[Math.floor(r() * a.length)];
@@ -27,6 +28,7 @@ export function randomPlayerName(r: () => number = Math.random): { username: str
     () => `${f}_${num(r)}`,
   ];
   const username = styles[Math.floor(r() * styles.length)]().slice(0, 20);
-  const displayName = r() < 0.5 ? cap(username.replace(/[_.]/g, ' ').trim().split(' ')[0]) + (/\d+$/.test(username) ? username.match(/\d+$/)![0] : '') : username;
+  const roll = r();
+  const displayName = roll < 0.4 ? `${cap(f)} ${pick(LAST, r)}` : roll < 0.55 ? `${cap(f)} ${pick(LAST, r).charAt(0)}.` : r() < 0.5 ? cap(username.replace(/[_.]/g, ' ').trim().split(' ')[0]) + (/\d+$/.test(username) ? username.match(/\d+$/)![0] : '') : username;
   return { username, displayName: displayName.slice(0, 24) };
 }

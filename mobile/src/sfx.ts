@@ -8,6 +8,16 @@ const FILES = {
   win: require('../assets/sfx/win.wav'),
   lose: require('../assets/sfx/lose.wav'),
   draw: require('../assets/sfx/draw.wav'),
+  drop: require('../assets/sfx/drop.wav'),
+  tap: require('../assets/sfx/tap.wav'),
+  pack: require('../assets/sfx/pack.wav'),
+  dice_roll: require('../assets/sfx/dice_roll.wav'),
+  dice_land: require('../assets/sfx/dice_land.wav'),
+  pour: require('../assets/sfx/pour.wav'),
+  complete: require('../assets/sfx/complete.wav'),
+  nomoves: require('../assets/sfx/nomoves.wav'),
+  capture: require('../assets/sfx/capture.wav'),
+  round: require('../assets/sfx/round.wav'),
 };
 export type Sound = keyof typeof FILES;
 
@@ -16,15 +26,21 @@ let enabled = true;
 const players: Partial<Record<Sound, AudioPlayer>> = {};
 
 export const soundOn = () => enabled;
+const listeners = new Set<(on: boolean) => void>();
+export const onSoundChange = (fn: (on: boolean) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 export async function loadSoundSetting() {
   try { enabled = (await SecureStore.getItemAsync(KEY)) !== '0'; } catch { /* default on */ }
 }
 export async function setSoundOn(on: boolean) {
   enabled = on;
+  listeners.forEach((f) => f(on));
   try { await SecureStore.setItemAsync(KEY, on ? '1' : '0'); } catch { /* not saved, still applies now */ }
 }
 
 /** Play a short effect and buzz. Never throws: a missing audio device must not break a game. */
+/** Sounds that play many times a second must not buzz the phone each time. */
+const QUIET: Sound[] = ['drop', 'tap', 'pour', 'dice_roll'];
+
 export function sfx(name: Sound) {
   if (!enabled) return;
   try {
@@ -33,6 +49,6 @@ export function sfx(name: Sound) {
     p.play();
     if (name === 'win') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     else if (name === 'lose') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    else void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    else if (!QUIET.includes(name)) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   } catch { /* ignore */ }
 }

@@ -1,116 +1,161 @@
 import { GameType } from '../generated/prisma/client';
 import { EngineContext, GameEngine, IllegalMove, MoveResult, Outcome } from './engine';
 
-/** No capture for this many moves in a row ends the game: each side keeps the seeds on its own row. */
-export const STALL_LIMIT = 120;
-export const WIN_SCORE = 25;
+/**
+ * Ayo, house rules (the same game as the original app):
+ *  - 12 pits, 48 seeds. Round 1: each player owns 6 pits of 4 seeds. Sow counter-clockwise (increasing pit number).
+ *  - Relay: if your last seed lands in a pit that already had seeds, pick them all up and keep sowing.
+ *    The turn ends when the last seed lands in an EMPTY pit.
+ *  - Packing: a pit that reaches exactly 4 is packed. Mid-sow it goes to the pit's owner. If your LAST seed makes a
+ *    pit 4 (either side) you pack it and your turn ends.
+ *  - A player with no seeds on their pits skips their turn.
+ *  - When 4 or fewer seeds are left, they go to whoever packed the 4 before them, and the round ends.
+ *  - Next round: each player gets one pit of 4 for every 4 seeds they packed. Rounds alternate who starts.
+ *  - A player who starts a round with one pit or none has lost. With exactly two pits they choose: quit (lose) or continue.
+ */
+export const PITS = 12;
+export const MAX_SOW_STEPS = 2000;
+export const MAX_ROUND_TURNS = 400;
+export const MAX_ROUNDS = 30;
+
+export type AyoEvent =
+  | { t: 'pick'; pit: number; count: number }
+  | { t: 'drop'; pit: number }
+  | { t: 'pack'; pit: number; seat: number }
+  | { t: 'final'; seat: number; seeds: number }
+  | { t: 'round'; round: number };
 
 export interface AyoState {
-  /** 12 pits. Seat 0 owns pits 0-5, seat 1 owns pits 6-11. Seeds are sown in increasing pit order, wrapping round. */
+  /** The 12 pits. */
   pits: number[];
+  /** Who owns each pit this round. */
+  owners: number[];
+  /** Seeds packed this round, per seat. */
   captured: [number, number];
+  /** Seat whose move it is (or who starts once a pending choice is made). */
   turn: number;
+  /** Total moves made in the game. */
   moves: number;
-  sinceCapture: number;
-  /** The last move, so clients can animate it. */
-  last: { seat: number; pit: number; endPit: number; captured: number; pits: number[] } | null;
+  round: number;
+  roundTurns: number;
+  lastPacker: number | null;
+  roundStarter: number;
+  /** A player with exactly two pits must choose to quit or continue. */
+  decision: { seat: number } | null;
+  /** The last move, with everything a client needs to replay it seed by seed. */
+  last: { seat: number; pit: number; packed: number; before: number[]; ownersBefore: number[]; capturedBefore: [number, number]; events: AyoEvent[] } | null;
+  lastRound: { round: number; pits: [number, number] } | null;
 }
 
-const ownerOf = (pit: number) => (pit < 6 ? 0 : 1);
-const rowOf = (seat: number) => (seat === 0 ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11]);
-const seedsOn = (pits: number[], seat: number) => rowOf(seat).reduce((n, p) => n + pits[p], 0);
+export const ownersFor = (seat0Pits: number): number[] => Array.from({ length: PITS }, (_, i) => (i < seat0Pits ? 0 : 1));
+export const legalMoves = (pits: number[], seat: number, owners: number[] = ownersFor(6)): number[] =>
+  pits.map((n, i) => (owners[i] === seat && n > 0 ? i : -1)).filter((i) => i >= 0);
+const total = (b: number[]) => b.reduce((a, c) => a + c, 0);
 
-/** Pit where the last seed lands. The starting pit is skipped on laps of 12 or more. */
-function endPitOf(from: number, seeds: number): number {
-  let pos = from, left = seeds;
-  while (left > 0) { pos = (pos + 1) % 12; if (pos === from) continue; left--; }
-  return pos;
+/** One move's sowing, pure. Seeds are always conserved. */
+export function simulateSow(input: number[], pit: number, seat: number, owners: number[]) {
+  const board = input.slice();
+  let hand = board[pit];
+  board[pit] = 0;
+  let cur = pit, steps = 0;
+  const packedBy: [number, number] = [0, 0];
+  let lastReceiver: number | null = null;
+  const events: AyoEvent[] = [{ t: 'pick', pit, count: hand }];
+  while (hand > 0) {
+    cur = (cur + 1) % PITS; board[cur] += 1; hand -= 1; steps += 1;
+    events.push({ t: 'drop', pit: cur });
+    if (board[cur] === 4) {
+      const to = hand === 0 ? seat : owners[cur]; // last seed: the sower packs it, even on the other side
+      board[cur] = 0; packedBy[to] += 4; lastReceiver = to;
+      events.push({ t: 'pack', pit: cur, seat: to });
+      continue;
+    }
+    if (hand === 0 && board[cur] > 1) { hand = board[cur]; board[cur] = 0; events.push({ t: 'pick', pit: cur, count: hand }); }
+    if (steps >= MAX_SOW_STEPS && hand > 0) { board[cur] += hand; hand = 0; }
+  }
+  return { board, packedBy, lastReceiver, events };
 }
 
-/** Pits this seat may play. If the opponent has no seeds, only moves that give them some are legal. */
-export function legalMoves(pits: number[], seat: number): number[] {
-  const own = rowOf(seat).filter((p) => pits[p] > 0);
-  if (seedsOn(pits, 1 - seat) > 0) return own;
-  return own.filter((p) => {
-    // does any sown seed land on the opponent's row?
-    let pos = p, left = pits[p];
-    while (left > 0) { pos = (pos + 1) % 12; if (pos === p) continue; if (ownerOf(pos) !== seat) return true; left--; }
-    return false;
-  });
-}
-
-/**
- * Ayo (Oware, abapa rules). Pick a pit on your row and sow its seeds one by one round the board.
- * If the last seed makes a pit on the opponent's row hold 2 or 3, you capture it, and the pits before it
- * in the same row as long as they also hold 2 or 3. A move that would capture every seed on the
- * opponent's row captures nothing. You must give the opponent seeds if they have none. First to 25 wins.
- */
 export class AyoEngine implements GameEngine<AyoState> {
   readonly game: GameType = 'AYO';
 
   init(playerCount: number, ctx: EngineContext): { state: AyoState; turnSeat: number | null } {
     if (playerCount !== 2) throw new Error('Ayo is a two player game');
     const first = ctx.randomInt(2);
-    return { state: { pits: Array(12).fill(4), captured: [0, 0], turn: first, moves: 0, sinceCapture: 0, last: null }, turnSeat: first };
+    return {
+      state: { pits: Array(PITS).fill(4), owners: ownersFor(6), captured: [0, 0], turn: first, moves: 0, round: 1, roundTurns: 0, lastPacker: null, roundStarter: first, decision: null, last: null, lastRound: null },
+      turnSeat: first,
+    };
   }
 
   applyMove(state: AyoState, seat: number, move: unknown, _ctx?: EngineContext): MoveResult<AyoState> {
-    const pit = (move as { pit?: unknown } | null)?.pit;
-    if (typeof pit !== 'number' || !Number.isInteger(pit) || pit < 0 || pit > 11) throw new IllegalMove('BAD_MOVE', 'Pick a pit from 0 to 11');
+    const m = (move ?? {}) as { pit?: unknown; decision?: unknown };
+    if (state.decision) {
+      if (seat !== state.decision.seat) throw new IllegalMove('NOT_YOUR_TURN', 'Waiting for the other player to choose');
+      if (m.decision !== 'quit' && m.decision !== 'continue') throw new IllegalMove('BAD_MOVE', 'Choose quit or continue');
+      if (m.decision === 'quit') return { state: { ...state, decision: null }, turnSeat: null, outcome: { type: 'WIN', winnerSeat: 1 - seat } };
+      const next = { ...state, decision: null };
+      return { state: next, turnSeat: next.turn };
+    }
     if (seat !== state.turn) throw new IllegalMove('NOT_YOUR_TURN', 'It is not your turn');
-    if (ownerOf(pit) !== seat) throw new IllegalMove('NOT_YOUR_PIT', 'That pit is on your opponent\'s row');
-    if (state.pits[pit] === 0) throw new IllegalMove('EMPTY_PIT', 'That pit is empty');
-    if (!legalMoves(state.pits, seat).includes(pit)) throw new IllegalMove('MUST_FEED', 'Your opponent has no seeds: you must play a pit that gives them some');
+    const pit = m.pit;
+    if (typeof pit !== 'number' || !Number.isInteger(pit) || pit < 0 || pit >= PITS) throw new IllegalMove('BAD_MOVE', 'Pick one of your bowls');
+    if (state.owners[pit] !== seat) throw new IllegalMove('NOT_YOUR_PIT', 'That bowl is not yours');
+    if (state.pits[pit] === 0) throw new IllegalMove('EMPTY_PIT', 'That bowl is empty');
 
-    const pits = state.pits.slice();
-    const seeds = pits[pit];
-    pits[pit] = 0;
-    const end = endPitOf(pit, seeds);
-    let pos = pit, left = seeds;
-    while (left > 0) { pos = (pos + 1) % 12; if (pos === pit) continue; pits[pos]++; left--; }
+    const st: AyoState = { ...state, pits: state.pits.slice(), owners: state.owners.slice(), captured: [state.captured[0], state.captured[1]] };
+    const before = state.pits.slice(), ownersBefore = state.owners.slice(), capturedBefore: [number, number] = [state.captured[0], state.captured[1]];
+    const r = simulateSow(st.pits, pit, seat, st.owners);
+    st.pits = r.board;
+    st.captured[0] += r.packedBy[0]; st.captured[1] += r.packedBy[1];
+    if (r.lastReceiver !== null) st.lastPacker = r.lastReceiver;
+    st.roundTurns += 1; st.moves += 1;
+    const events = r.events;
 
-    // Capture: walk back from the last pit while it is the opponent's and holds 2 or 3.
-    let gain = 0;
-    const opp = 1 - seat;
-    const taken: number[] = [];
-    for (let p = end; ownerOf(p) === opp && (pits[p] === 2 || pits[p] === 3); p = (p + 11) % 12) taken.push(p);
-    const takenSeeds = taken.reduce((n, p) => n + pits[p], 0);
-    if (taken.length > 0 && takenSeeds < seedsOn(pits, opp)) { // taking everything is not allowed
-      for (const p of taken) { gain += pits[p]; pits[p] = 0; }
+    let outcome: Outcome | undefined;
+    const left = total(st.pits);
+    if (left === 0 || left <= 4 || st.roundTurns >= MAX_ROUND_TURNS) outcome = this.endRound(st, events);
+    else {
+      const next = 1 - seat;
+      if (legalMoves(st.pits, next, st.owners).length > 0) st.turn = next;
+      else if (legalMoves(st.pits, seat, st.owners).length > 0) st.turn = seat;
+      else outcome = this.endRound(st, events);
     }
-
-    const captured: [number, number] = [state.captured[0], state.captured[1]];
-    captured[seat] += gain;
-    const next: AyoState = {
-      pits, captured, turn: opp, moves: state.moves + 1,
-      sinceCapture: gain > 0 ? 0 : state.sinceCapture + 1,
-      last: { seat, pit, endPit: end, captured: gain, pits: pits.slice() },
-    };
-
-    if (captured[seat] >= WIN_SCORE) return this.finish(next, { type: 'WIN', winnerSeat: seat });
-
-    // The opponent cannot move (nothing they can play, e.g. empty and unfeedable) or the game is going nowhere:
-    // each player keeps the seeds on their own row.
-    if (legalMoves(pits, opp).length === 0 || next.sinceCapture >= STALL_LIMIT) {
-      const done = { ...next, captured: [captured[0] + seedsOn(pits, 0), captured[1] + seedsOn(pits, 1)] as [number, number], pits: Array(12).fill(0) };
-      return this.finish(done, this.verdict(done.captured));
-    }
-    return { state: next, turnSeat: opp };
+    st.last = { seat, pit, packed: r.packedBy[seat], before, ownersBefore, capturedBefore, events };
+    if (outcome) return { state: st, turnSeat: null, outcome };
+    return { state: st, turnSeat: st.decision ? st.decision.seat : st.turn };
   }
 
-  private verdict(c: [number, number]): Outcome {
-    if (c[0] === c[1]) return { type: 'DRAW' };
-    return { type: 'WIN', winnerSeat: c[0] > c[1] ? 0 : 1 };
-  }
-
-  private finish(state: AyoState, outcome: Outcome): MoveResult<AyoState> {
-    return { state, turnSeat: null, outcome };
+  /** Gives the leftover seeds away, then starts the next round or ends the game. Mutates `st`. */
+  private endRound(st: AyoState, events: AyoEvent[]): Outcome | undefined {
+    const left = total(st.pits);
+    if (left > 0) {
+      const to = st.lastPacker ?? (st.turn === 0 ? 1 : 0);
+      events.push({ t: 'final', seat: to, seeds: left });
+      st.captured[to] += left;
+      st.pits = Array(PITS).fill(0);
+    }
+    const pits: [number, number] = [Math.floor(st.captured[0] / 4), Math.floor(st.captured[1] / 4)];
+    st.lastRound = { round: st.round, pits };
+    if (pits[0] <= 1 || pits[1] <= 1) return { type: 'WIN', winnerSeat: pits[0] <= 1 ? 1 : 0 }; // one pit or none: lost
+    if (st.round >= MAX_ROUNDS) return pits[0] === pits[1] ? { type: 'DRAW' } : { type: 'WIN', winnerSeat: pits[0] > pits[1] ? 0 : 1 };
+    st.round += 1; st.roundTurns = 0;
+    st.owners = ownersFor(pits[0]);
+    st.pits = Array(PITS).fill(4);
+    st.captured = [0, 0];
+    st.lastPacker = null;
+    st.roundStarter = 1 - st.roundStarter;
+    st.turn = st.roundStarter;
+    const two = pits[0] === 2 ? 0 : pits[1] === 2 ? 1 : null;
+    st.decision = two === null ? null : { seat: two };
+    events.push({ t: 'round', round: st.round });
+    return undefined;
   }
 
   publicState(state: AyoState) {
     return {
-      pits: state.pits, captured: state.captured, turn: state.turn, moves: state.moves,
-      rows: { 0: [0, 1, 2, 3, 4, 5], 1: [6, 7, 8, 9, 10, 11] }, last: state.last,
+      pits: state.pits, owners: state.owners, captured: state.captured, turn: state.turn, moves: state.moves,
+      round: state.round, decision: state.decision, last: state.last, lastRound: state.lastRound,
     };
   }
 }

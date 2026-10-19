@@ -5,3 +5,4 @@ process.env.AUTH_RATE_PER_MINUTE = '100000';
 process.env.GLOBAL_RATE_PER_MINUTE = '100000';
 process.env.SIGNUP_BONUS_COINS = '1000';
 process.env.MIN_AGE_YEARS = '18';
+process.env.STORE_MODE = 'fake';

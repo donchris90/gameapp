@@ -111,6 +111,9 @@ model User {
   invitesSent      RoomInvite[]  @relation("InviteFrom")
   invitesReceived  RoomInvite[]  @relation("InviteTo")
   matchPlayers     MatchPlayer[]
+  purchases        Purchase[]
+  dailyClaims      DailyClaim[]
+  adViews          AdView[]
 }
 
 // One coin balance per user. Balance only ever changes through
@@ -288,4 +291,64 @@ model MatchPlayer {
   @@unique([matchId, userId])
   @@unique([matchId, seat])
   @@index([userId])
+}
+
+enum StorePlatform {
+  GOOGLE
+  APPLE
+}
+
+enum AdViewStatus {
+  PENDING
+  REWARDED
+  EXPIRED
+}
+
+// A coin pack bought through Google Play or the App Store. The store's own transaction id is
+// unique per platform, so a receipt can never be turned into coins twice.
+model Purchase {
+  id            String        @id @default(uuid())
+  userId        String
+  platform      StorePlatform
+  productId     String
+  transactionId String
+  coins         BigInt
+  createdAt     DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, transactionId])
+  @@index([userId])
+}
+
+// One row per user per day they took the daily bonus. `day` is the local date (see DAY_OFFSET_MINUTES).
+model DailyClaim {
+  id        String   @id @default(uuid())
+  userId    String
+  day       String
+  streak    Int
+  coins     BigInt
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+}
+
+// A rewarded ad the player is about to watch. The ad network's server-to-server callback
+// carries `nonce`, and that callback (never the app) is what pays the coins.
+model AdView {
+  id            String       @id @default(uuid())
+  userId        String
+  nonce         String       @unique
+  day           String
+  status        AdViewStatus @default(PENDING)
+  transactionId String?      @unique
+  coins         BigInt       @default(0)
+  createdAt     DateTime     @default(now())
+  rewardedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, day])
 }

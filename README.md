@@ -104,6 +104,25 @@ Standard Ayo/Oware (abapa) rules for two players, 4 seeds in each of 12 pits. Se
 
 All four games are now playable. `GET /games` reports every one as available.
 
+## Step 7: Buying and earning coins
+
+All three ways in end up in the same single wallet, through the same ledger.
+
+**Coin packs (Google Play and App Store)**: `GET /store/packs` lists them (edit `src/economy/packs.ts`; create the same product ids as *consumable* in both stores). After a purchase the app sends `POST /store/purchases { platform: "GOOGLE"|"APPLE", productId, token }` (Google: purchase token, Apple: transaction id). The server asks the store itself whether the purchase is real, paid and for that product, then credits the coins once. The same receipt sent again credits nothing; another account sending it gets `RECEIPT_ALREADY_USED`. Google purchases are consumed so the pack can be bought again.
+
+**Daily bonus**: `GET /rewards` shows what is available, `POST /rewards/daily` claims. 50 coins, +10 per streak day up to day 7; missing a day restarts the streak. The day resets at local midnight (`DAY_OFFSET_MINUTES=60` for Nigeria).
+
+**Rewarded ads**: the app calls `POST /ads/rewarded/start` and gets `{ nonce, userId }`. It shows the ad with AdMob server-side verification options `userId` = that userId and `customData` = the nonce. AdMob then calls `GET /ads/ssv` on your server; the server checks AdMob's ECDSA signature, matches the nonce, and only then pays (25 coins, 10 ads a day). The app never tells the server an ad was watched, so it cannot fake one. Each ad pays once, and the cap holds even when callbacks arrive together.
+
+In the AdMob console set the rewarded ad unit's server-side verification callback URL to `https://<your-api>/ads/ssv`.
+
+**Setup you must do before launch**
+1. Google Play: create a service account with access to the Play Console API, put its JSON in `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` and the app id in `GOOGLE_PLAY_PACKAGE_NAME`.
+2. App Store: create an In-App Purchase key; set `APPLE_BUNDLE_ID`, `APPLE_ISSUER_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`.
+3. Keep `STORE_MODE=live`. `STORE_MODE=fake` (tests and local development only) accepts `fake:<transactionId>:<productId>` receipts and unsigned ad callbacks, and the server refuses to start with it in production. Without store credentials, live mode answers `STORE_NOT_CONFIGURED` rather than ever giving free coins.
+
+Honest note: the Google, Apple and AdMob checks are tested here against simulated store responses and locally generated keys. They have not been run against the real services, so run one sandbox purchase on each store and one test ad before release.
+
 ## Run it
 
 ```bash

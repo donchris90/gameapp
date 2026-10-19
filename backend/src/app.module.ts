@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppConfig, CONFIG, ConfigModule } from './config/config';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { EconomyModule } from './economy/economy.module';
 import { GamesModule } from './games/games.module';
 import { MatchesModule } from './matches/matches.module';
 import { FriendsModule } from './friends/friends.module';
@@ -30,6 +31,7 @@ import { WalletModule } from './wallet/wallet.module';
     RoomsModule,
     MatchmakingModule,
     MatchesModule,
+    EconomyModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

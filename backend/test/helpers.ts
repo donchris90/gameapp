@@ -1,11 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-export async function createApp(): Promise<INestApplication> {
-  const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+export async function createApp(customize: (b: TestingModuleBuilder) => TestingModuleBuilder = (b) => b): Promise<INestApplication> {
+  const mod = await customize(Test.createTestingModule({ imports: [AppModule] })).compile();
   const app = mod.createNestApplication();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   await app.init();

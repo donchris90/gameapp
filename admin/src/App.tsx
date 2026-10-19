@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
 import { ApiError, api, login, logout, setLogoutHandler, signedIn } from './api';
 
-type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'reports' } | { page: 'purchases' } | { page: 'audit' };
+type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'reports' } | { page: 'purchases' } | { page: 'audit' } | { page: 'ads' };
 
 const n = (v: number) => v.toLocaleString();
 const when = (s: string) => new Date(s).toLocaleString();
@@ -35,7 +35,7 @@ export function App() {
     <div className="layout">
       <nav className="side">
         <h1>🎮 PlayCircle</h1>
-        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('reports', 'Reports')}{nav('purchases', 'Purchases')}{nav('audit', 'Audit log')}
+        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('reports', 'Reports')}{nav('purchases', 'Purchases')}{nav('ads', 'Ads')}{nav('audit', 'Audit log')}
         <div style={{ flex: 1 }} />
         <a onClick={async () => { await logout(); setAuthed(false); }}>Log out</a>
       </nav>
@@ -47,6 +47,7 @@ export function App() {
         {view.page === 'reports' && <Reports onOpen={(id) => setView({ page: 'user', id })} />}
         {view.page === 'purchases' && <Purchases />}
         {view.page === 'audit' && <Audit />}
+        {view.page === 'ads' && <Ads />}
       </main>
     </div>
   );
@@ -326,6 +327,39 @@ function Audit() {
           {items.length === 0 && !busy ? <tr><td colSpan={5} className="dim">Nothing yet.</td></tr> : null}</tbody>
       </table>
       <Pager cursor={cursor} onMore={more} more={busy} />
+    </>
+  );
+}
+
+const AD_GAMES: Array<[string, string]> = [['TICTACTOE', '❌⭕ Tic Tac Toe'], ['AYO', '🌰 Ayo'], ['LUDO', '🎲 Ludo'], ['WATER_SORT', '🧪 Water Sort']];
+
+function Ads() {
+  const { data, error, reload } = useLoad<Record<string, number>>('/admin/settings/ads');
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [msgText, setMsgText] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => { if (data) setVals(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))); }, [data]);
+  const save = async () => {
+    setErr(''); setMsgText('');
+    try {
+      const body = Object.fromEntries(AD_GAMES.map(([g]) => [g, Number(vals[g])]));
+      await api('/admin/settings/ads', 'POST', body);
+      setMsgText('Saved. Players get the new setting the next time a game ends.'); reload();
+    } catch (e) { setErr(msg(e)); }
+  };
+  return (
+    <>
+      <h2>Ads after games</h2>
+      <p className="dim">A full-screen ad plays after every Nth finished game of each kind. <b>1</b> = after every game, <b>3</b> = after every third game, <b>0</b> = no ad. The count is kept per player and per game. Rewarded ads (Watch ad for coins) are not affected.</p>
+      {error || err ? <div className="err">{error || err}</div> : null}
+      {msgText ? <p className="pos">{msgText}</p> : null}
+      <table>
+        <thead><tr><th>Game</th><th>Ad after every … games (0 to 20)</th></tr></thead>
+        <tbody>{AD_GAMES.map(([g, label]) => (
+          <tr key={g}><td>{label}</td><td><input type="number" min={0} max={20} step={1} style={{ maxWidth: 120 }} value={vals[g] ?? ''} onChange={(e) => setVals({ ...vals, [g]: e.target.value })} /></td></tr>
+        ))}</tbody>
+      </table>
+      <div className="row" style={{ marginTop: 14 }}><button onClick={save}>Save</button></div>
     </>
   );
 }

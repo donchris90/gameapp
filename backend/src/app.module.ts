@@ -17,6 +17,7 @@ import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { SocialModule } from './social/social.module';
+import { SettingsModule } from './settings/settings.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
 
@@ -28,6 +29,7 @@ import { WalletModule } from './wallet/wallet.module';
       useFactory: (c: AppConfig) => [{ ttl: 60_000, limit: c.globalRatePerMinute }],
     }),
     PrismaModule,
+    SettingsModule,
     GamesModule,
     WalletModule,
     AuthModule,

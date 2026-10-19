@@ -1,4 +1,6 @@
+import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { api } from './api';
 
 // Google's public test ad units. Replace with your own through EXPO_PUBLIC_ADMOB_REWARDED_* before release.
 const TEST_UNIT = Platform.select({ ios: 'ca-app-pub-3940256099942544/1712485313', default: 'ca-app-pub-3940256099942544/5224354917' })!;
@@ -72,4 +74,22 @@ export async function showInterstitial(): Promise<void> {
     ad.show().catch(done);
     setTimeout(done, 120_000);
   });
+}
+
+// ---- how often: an admin sets "every Nth game" per game (0 = never) ----
+const COUNT_KEY = 'playcircle.adcounts';
+let counts: Record<string, number> | null = null;
+
+/** Counts one finished game and says whether this one is followed by an ad, using the admin's setting for that game. */
+export async function adDue(game: string): Promise<boolean> {
+  let every = 1; // if the setting cannot be fetched, keep the default: an ad after every game
+  try { const g = await api<{ adEvery?: Record<string, number> }>('/games', { auth: false }); every = g.adEvery?.[game] ?? 1; } catch { /* default */ }
+  if (every <= 0) return false;
+  if (!counts) { try { counts = JSON.parse((await SecureStore.getItemAsync(COUNT_KEY)) ?? '{}'); } catch { counts = {}; } }
+  const c = counts!;
+  c[game] = (c[game] ?? 0) + 1;
+  const due = c[game] >= every;
+  if (due) c[game] = 0;
+  try { await SecureStore.setItemAsync(COUNT_KEY, JSON.stringify(c)); } catch { /* counting in memory is enough */ }
+  return due;
 }

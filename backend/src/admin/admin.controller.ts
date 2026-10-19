@@ -1,8 +1,9 @@
 import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsIn, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UserStatus } from '../generated/prisma/client';
+import { SettingsService } from '../settings/settings.service';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 
@@ -18,12 +19,24 @@ class AdjustDto {
   @IsInt() @Min(-10_000_000) @Max(10_000_000) amount!: number;
   @IsString() @MinLength(3) @MaxLength(200) reason!: string;
 }
+class AdPolicyDto {
+  @IsOptional() @IsInt() @Min(0) @Max(20) TICTACTOE?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(20) WATER_SORT?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(20) AYO?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(20) LUDO?: number;
+}
 const lim = (n: number) => Math.min(Math.max(n, 1), 100);
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly settings: SettingsService) {}
+
+  @Get('settings/ads')
+  adPolicy() { return this.settings.adPolicy(); }
+
+  @Post('settings/ads') @HttpCode(200)
+  setAdPolicy(@CurrentUser() a: AuthUser, @Body() dto: AdPolicyDto) { return this.settings.setAdPolicy(a.id, { ...dto }); }
 
   @Get('stats') stats() { return this.admin.stats(); }
 

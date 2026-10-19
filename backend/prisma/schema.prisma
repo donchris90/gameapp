@@ -454,3 +454,10 @@ model ChatReport {
   @@unique([reporterId, messageId])
   @@index([status, createdAt])
 }
+
+// Admin-editable settings, one row per setting (value is JSON). See SettingsService.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

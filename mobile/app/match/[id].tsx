@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
-import { preloadInterstitial, showInterstitial } from '../../src/ads';
+import { adDue, preloadInterstitial, showInterstitial } from '../../src/ads';
 import { Ayo } from '../../src/games/Ayo';
 import { Ludo } from '../../src/games/Ludo';
 import { TicTacToe } from '../../src/games/TicTacToe';
@@ -43,8 +43,8 @@ export default function MatchScreen() {
       if (m.status === 'FINISHED' && prev?.status !== 'FINISHED') {
         const r = m.players.find((p) => p.userId === user.id)?.result;
         sfx(r === 'WON' ? 'win' : r === 'LOST' ? 'lose' : 'draw');
-        // Every finished game is followed by a full-screen ad. Coins were already paid by the server, so this never delays a payout.
-        if (prev && !adShown.current) { adShown.current = true; setTimeout(() => { void showInterstitial(); }, 2200); }
+        // A finished game is followed by a full-screen ad as often as the admin has set for that game. Coins were already paid by the server, so this never delays a payout.
+        if (prev && !adShown.current) { adShown.current = true; void adDue(m.game).then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 2200); }); }
       } else if (prev && m.status === 'ACTIVE') {
         sfx(m.turnSeat === seat && prev.turnSeat !== seat ? 'turn' : 'move');
       }

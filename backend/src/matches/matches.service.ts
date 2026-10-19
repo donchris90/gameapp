@@ -279,7 +279,16 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           const move = this.autoPicker(m.game, engine, m.state, late.seat);
           if (move) {
             try {
-              const res = engine.applyMove(m.state, late.seat, move, ctx);
+              let res = engine.applyMove(m.state, late.seat, move, ctx);
+              // Ludo: the computer rolls AND counts out the move (and any extra turns from a six or a capture) in one go.
+              let hold = res.holdMs ?? 0;
+              for (let i = 0; i < 12 && m.game === 'LUDO' && !res.outcome && res.turnSeat === late.seat; i++) {
+                const nextMove = this.autoPicker(m.game, engine, res.state, late.seat);
+                if (!nextMove) break;
+                res = engine.applyMove(res.state, late.seat, nextMove, ctx);
+                hold += (res.holdMs ?? 0) + 900;
+              }
+              res = { ...res, holdMs: hold };
               this.auto.set(key, steps + 1);
               if (res.outcome) { this.auto.delete(key); return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state); }
               return this.advance(tx, m, res.state, res.turnSeat, (engine.turnTimeoutMs ?? this.config.turnTimeoutMs) + (res.holdMs ?? 0)); // the next turn gets the normal clock

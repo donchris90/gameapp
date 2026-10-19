@@ -41,11 +41,20 @@ describe('Ludo engine', () => {
 
   it('passes the turn after an ordinary move and lets the same player go again after a six', () => {
     const start = mk([[10, YARD, YARD, YARD], yard()]);
-    let r = engine.applyMove(start, 0, { action: 'roll' }, dice(4));
-    r = engine.applyMove(r.state, 0, { action: 'move', token: 0 }, dice());
+    const r = engine.applyMove(start, 0, { action: 'roll' }, dice(4)); // only one token can move, so it is counted out automatically
     expect(r.state.tokens[0][0]).toBe(14);
+    expect(r.state.lastRoll).toMatchObject({ value: 4 });
     expect(r.turnSeat).toBe(1);
     expect(r.state.moves).toBe(1);
+  });
+
+  it('waits for a choice when two tokens can move', () => {
+    const start = mk([[10, 20, YARD, YARD], yard()]);
+    const r = engine.applyMove(start, 0, { action: 'roll' }, dice(4));
+    expect(r.state.phase).toBe('MOVE');
+    expect(r.turnSeat).toBe(0);
+    const m = engine.applyMove(r.state, 0, { action: 'move', token: 1 }, dice());
+    expect(m.state.tokens[0][1]).toBe(24);
   });
 
   it('takes the turn away after three sixes in a row', () => {
@@ -53,7 +62,7 @@ describe('Ludo engine', () => {
     const d = dice(6, 6, 6);
     for (let i = 0; i < 2; i++) {
       let r = engine.applyMove(s, 0, { action: 'roll' }, d);
-      r = engine.applyMove(r.state, 0, { action: 'move', token: 0 }, d);
+      if (r.state.phase === 'MOVE') r = engine.applyMove(r.state, 0, { action: 'move', token: 0 }, d); // a six also lets yard tokens out, so there is a choice
       expect(r.turnSeat).toBe(0);
       s = r.state;
       expect(s.sixes).toBe(i + 1);

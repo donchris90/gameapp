@@ -87,7 +87,14 @@ export class LudoEngine implements GameEngine<LudoState> {
     };
     if (sixes >= 3) return pass('THREE_SIXES');
     if (legalTokens(state, seat, value).length === 0) return pass('NO_MOVE');
-    return { state: { ...state, phase: 'MOVE', dice: value, sixes, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value } }, turnSeat: seat };
+    const rolled: LudoState = { ...state, phase: 'MOVE', dice: value, sixes, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value } };
+    // Only one token can move: there is nothing to choose, so the server counts it out straight away.
+    const only = legalTokens(rolled, seat, value);
+    if (only.length === 1) {
+      const res = this.moveToken(rolled, seat, only[0]);
+      return { ...res, holdMs: (res.holdMs ?? 0) + 1400 };
+    }
+    return { state: rolled, turnSeat: seat };
   }
 
   private moveToken(state: LudoState, seat: number, token: unknown): MoveResult<LudoState> {

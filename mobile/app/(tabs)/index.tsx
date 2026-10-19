@@ -1,3 +1,4 @@
+import { AdBanner } from '../../src/AdBanner';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -116,6 +117,7 @@ export default function Home() {
           <Button title="Join" onPress={join} busy={busy === 'join'} disabled={code.trim().length !== 6} style={{ marginTop: 0 }} />
         </View>
       </ScrollView>
+      <AdBanner />
     </Screen>
   );
 }

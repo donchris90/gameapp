@@ -1,3 +1,4 @@
+import { AdBanner } from '../../src/AdBanner';
 import { useFocusEffect } from 'expo-router';
 import { useIAP } from '../../src/iap';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -98,6 +99,7 @@ export default function Shop() {
         </View>
         <Dim style={{ marginTop: 16, fontSize: 12 }}>Free coins: take the daily bonus and watch rewarded ads on the Play tab.</Dim>
       </ScrollView>
+      <AdBanner />
     </Screen>
   );
 }

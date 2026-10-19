@@ -86,7 +86,7 @@ export default function MatchScreen() {
   return (
     <Screen style={{ backgroundColor: bg }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-        <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title}</Body>
+        <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title} <Text style={{ color: '#FFD21F', fontSize: 10 }}>· new look v3</Text></Body>
         {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo puzzle' : 'Friendly'}</Dim>}
       </View>
 

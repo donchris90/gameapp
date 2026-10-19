@@ -1,0 +1,81 @@
+# PlayCircle
+
+Friends-first multiplayer games (Tic Tac Toe, Water Sort, Ayo, Ludo) played with coins. No real money anywhere.
+
+## Coin rules (decided, enforced in code)
+
+- **One coin balance per player.** Bought coins, ad coins, bonuses and winnings all land in the same balance.
+- Coins **can be bought** (Google Play / Apple in-app purchase only) and **earned** (rewarded ads with a daily cap, daily bonus, winning matches).
+- Coins can **never be withdrawn or converted to cash.** There is no payout code, bank code or KYC in this repo.
+- Players can **stake coins** on matches. The winner takes the pot minus a house cut (planned: 10%, configurable). A draw refunds both stakes.
+- Coins are spent in the **cosmetic shop** and on stakes.
+- **18+ only.** Registration needs a birth date, an "I am 18 or older" confirmation and acceptance of the terms.
+
+## Layout
+
+```
+backend/   NestJS + Prisma 7 + PostgreSQL   <- step 1, done
+mobile/    Expo app (iOS + Android)          <- step 2 onward
+admin/     small admin panel                 <- last
+```
+
+## Build order
+
+1. Foundation: auth, coin wallet, ledger, age gate  **(done)**
+2. Friends and rooms: friend requests, friend codes, private rooms, invites, quick match, sockets  **(done)**
+3. Tic Tac Toe with staking, end to end
+4. Water Sort
+5. Ayo, then Ludo
+6. Coin packs (Google Play / Apple, server-side receipt checks) and rewarded ads (AdMob, server-side verification, daily caps)
+7. Cosmetic shop
+8. Admin panel
+
+## Step 1: what exists
+
+- `POST /auth/register` `/login` `/refresh` `/logout`, `GET/PATCH /users/me`
+- `GET /wallet`, `GET /wallet/ledger?limit=&cursor=`
+- Passwords hashed with argon2. Access JWT (15 min) plus rotating opaque refresh tokens; replaying an old refresh token revokes the whole session family. Suspending or banning a user cuts off their existing access token on the next request.
+- **Wallet ledger.** `WalletService` is the only code allowed to change a balance. Every change is a ledger row written in the same transaction as the balance update, under a row lock. Retrying with the same idempotency key is safe; reusing a key for a different movement is rejected. The database also has a `CHECK (balance >= 0)`.
+- Ledger types are tied to a direction (for example `GAME_STAKE` can only remove coins, `AD_REWARD` can only add them), so a bug can't turn a stake into a credit.
+
+## Step 2: friends, rooms, quick match, realtime
+
+Commands go over REST, the socket pushes events. Connect with `io(url, { auth: { token: accessToken } })`.
+
+**Friends**: `GET /friends`, `GET /friends/requests`, `GET /friends/search?q=`, `POST /friends/requests` (`{username}` or `{friendCode}`), `POST /friends/requests/:id/accept`, `DELETE /friends/requests/:id` (cancel or decline), `DELETE /friends/:userId`, `GET /blocks`, `POST|DELETE /blocks/:userId`.
+Asking someone who already asked you makes you friends. A blocked player gets the same "No player found" as for an unknown name.
+
+**Rooms** (one room per player at a time): `POST /rooms` (`{game, stake, maxPlayers?}`), `POST /rooms/join` (`{code}`), `GET /rooms/current`, `POST /rooms/current/ready|start|leave|invite`, `POST /rooms/current/kick/:userId`, `GET /rooms/invites`, `POST /rooms/invites/:id/accept`, `DELETE /rooms/invites/:id`.
+Stakes come from a fixed list (0, 50, 100, 250, 500, 1000, 5000; 0 is a friendly game). Coins are only checked here, not taken: **the stake is debited from the ledger when a game actually begins (step 3)**. Start re-checks everyone's balance and names who is short.
+Player counts: Tic Tac Toe 2, Ayo 2, Ludo 2 to 4, Water Sort race 2 to 4.
+The host role passes to the next player when the host leaves; a lobby is deleted when empty; players offline for 10 minutes are removed from a lobby that is not mid-game.
+
+**Quick match**: `POST /matchmaking/queue` (`{game, stake, size?}`), `DELETE /matchmaking/queue`. Pairs by game, stake and table size, skips blocked pairs, times out after 90 seconds. The queue is in memory, so run one server instance until it moves to Redis.
+
+**Socket events to the client**: `friend:request`, `friend:accepted`, `friend:online`, `friend:offline`, `room:update`, `room:started`, `room:aborted`, `room:kicked`, `room:invite`, `room:chat`, `match:found`, `match:failed`, `match:timeout`.
+**From the client**: `room:chat` `{text}` (max 200 characters, 5 messages per 5 seconds, members only; acknowledges `{ok}`).
+
+**Hooks for step 3**: `RoomsService.start()` flips a room to `IN_PROGRESS`; the game engine takes over from there, debits stakes through `WalletService`, and calls `RoomsService.finishGame(roomId)` to return everyone to the lobby for a rematch. If players leave and too few remain, the room emits `room:aborted` (stakes get refunded there).
+
+## Run it
+
+```bash
+cd backend
+cp .env.example .env            # set DATABASE_URL and a real JWT_ACCESS_SECRET
+npm install
+npx prisma migrate dev          # creates the tables from prisma/migrations
+npm run start:dev
+```
+
+Tests need a throwaway Postgres database whose name contains "test" (it is wiped each run):
+
+```bash
+# set TEST_DATABASE_URL in .env, then
+npm test
+```
+
+## Notes
+
+- The first migration was written by hand because the build sandbox could not download Prisma's migration engine. Run `npx prisma migrate dev` once on your machine; if Prisma reports any drift from `schema.prisma`, accept its generated migration instead and delete mine.
+- Socket.io CORS is open (`origin: true`) for now. Restrict it once the admin web panel exists.
+- Prisma 7 generates the client into `src/generated/prisma` (git-ignored). `npm install` then `npx prisma generate` recreates it.

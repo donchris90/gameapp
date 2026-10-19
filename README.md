@@ -169,7 +169,7 @@ Players spend coins on looks only: avatar frames, titles and board themes (`back
 - Sound and vibration: short effects for moves, your turn, win, loss and draw (`mobile/src/sfx.ts`, files in `mobile/assets/sfx`). Players can switch it off in the Me tab. Effects are plain generated tones; swap the .wav files for nicer ones any time.
 
 ## Going live
-See `docs/DEPLOY.md` for the full checklist. `docker-compose.yml` runs Postgres, the API and HTTPS (Caddy) on one server.
+See `docs/DEPLOY_RENDER_SUPABASE.md` (Supabase database + Render API, with `render.yaml`) and `docs/DEPLOY.md` (checklist, or a single VPS with Docker). `docker-compose.yml` runs Postgres, the API and HTTPS (Caddy) on one server.
 
 ## Legal
 `docs/PRIVACY_POLICY.md` and `docs/TERMS_OF_SERVICE.md` are drafts with [PLACEHOLDERS]. Fill them in, have a lawyer check them, host them on a public web page, and use the page links in both store listings. Players can delete their own account in the app (Me tab); this is required by Google Play and the App Store.

@@ -1,0 +1,39 @@
+# Render Blueprint: creates the API service from this repo. The database lives on Supabase.
+services:
+  - type: web
+    name: playcircle-api
+    runtime: node
+    plan: starter            # keep on a paid plan: free services go to sleep and would drop live games
+    rootDir: backend
+    region: frankfurt        # pick the region closest to your Supabase project
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npx prisma migrate deploy && node dist/main
+    healthCheckPath: /health
+    numInstances: 1          # must stay 1: live games and timers are held in memory
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: STORE_MODE
+        value: live
+      - key: DATABASE_SSL
+        value: no-verify
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false           # paste the Supabase session pooler URL in the Render dashboard
+      - key: CORS_ORIGINS
+        sync: false           # your admin website address
+      - key: GOOGLE_PLAY_PACKAGE_NAME
+        sync: false
+      - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: APPLE_BUNDLE_ID
+        sync: false
+      - key: APPLE_ISSUER_ID
+        sync: false
+      - key: APPLE_KEY_ID
+        sync: false
+      - key: APPLE_PRIVATE_KEY
+        sync: false

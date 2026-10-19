@@ -1,5 +1,7 @@
 # Taking PlayCircle live
 
+> Using Supabase + Render? Follow `DEPLOY_RENDER_SUPABASE.md` for steps 1 to 3, then continue here from step 4. The Docker route below is for a single VPS.
+
 Do these in order. Each step says what you need and how to know it worked.
 
 ## 0. Before anything: one server only

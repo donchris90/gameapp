@@ -11,6 +11,7 @@ export default function TabsLayout() {
       tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.line }, sceneStyle: { backgroundColor: colors.bg },
     }}>
       <Tabs.Screen name="index" options={{ title: 'Play', tabBarIcon: icon('🎮') }} />
+      <Tabs.Screen name="shop" options={{ title: 'Coins', tabBarIcon: icon('🪙') }} />
       <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥') }} />
       <Tabs.Screen name="me" options={{ title: 'Me', tabBarIcon: icon('🙂') }} />
     </Tabs>

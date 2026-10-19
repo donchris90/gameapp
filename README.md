@@ -125,7 +125,7 @@ Honest note: the Google, Apple and AdMob checks are tested here against simulate
 
 ## Mobile app
 
-The Expo app lives in `mobile/` (see `mobile/README.md`). Sign up and log in, free coins, quick match, friends, rooms and chat, and boards for all four games. The coin shop screen comes next.
+The Expo app lives in `mobile/` (see `mobile/README.md`). Sign up and log in, free coins, quick match, friends, rooms and chat, and boards for all four games. The Coins tab (store purchases) is in; it needs the store products and credentials described in `mobile/README.md`.
 
 ## Run it
 

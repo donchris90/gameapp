@@ -123,6 +123,10 @@ In the AdMob console set the rewarded ad unit's server-side verification callbac
 
 Honest note: the Google, Apple and AdMob checks are tested here against simulated store responses and locally generated keys. They have not been run against the real services, so run one sandbox purchase on each store and one test ad before release.
 
+## Mobile app
+
+The Expo app lives in `mobile/` (see `mobile/README.md`). First slice: sign up and log in, free coins, quick match, friends, rooms and chat, Tic Tac Toe. The other three boards and the coin shop screen come next.
+
 ## Run it
 
 ```bash

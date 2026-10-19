@@ -21,6 +21,8 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   BANNED
+  // Closed by the player. Personal details are erased; the coin ledger stays for the books.
+  DELETED
 }
 
 // Every coin movement has exactly one of these types. The wallet balance is

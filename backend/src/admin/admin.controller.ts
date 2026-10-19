@@ -1,5 +1,5 @@
 import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsEnum, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UserStatus } from '../generated/prisma/client';
@@ -7,7 +7,8 @@ import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 
 class StatusDto {
-  @IsEnum(UserStatus) status!: UserStatus;
+  // Deleting is the player's own choice and cannot be set or undone from here.
+  @IsIn(['ACTIVE', 'SUSPENDED', 'BANNED']) status!: UserStatus;
   @IsString() @MinLength(3) @MaxLength(200) reason!: string;
 }
 class AdjustDto {

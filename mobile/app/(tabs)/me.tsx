@@ -88,6 +88,7 @@ export default function Me() {
           </View>
         )}
 
+        <Text onPress={() => router.push('/delete-account')} style={{ color: colors.dim, textAlign: 'center', marginTop: 18, textDecorationLine: 'underline' }}>Delete my account</Text>
         <Button title="Log out" kind="ghost" style={{ marginTop: 24 }} onPress={() => Alert.alert('Log out', 'Log out of PlayCircle?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Log out', style: 'destructive', onPress: () => void signOut() }])} />
       </ScrollView>
     </Screen>

@@ -89,6 +89,7 @@ export class AdminService {
     return this.prisma.$transaction(async (tx) => {
       const t = await tx.user.findUnique({ where: { id: targetId }, select: { id: true, role: true, status: true } });
       if (!t) throw appError(404, 'USER_NOT_FOUND', 'No such player');
+      if (t.status === 'DELETED') throw appError(409, 'DELETED', 'This account was deleted by the player');
       if (t.role === 'ADMIN') throw appError(403, 'IS_ADMIN', 'Admins cannot be suspended or banned here');
       await tx.user.update({ where: { id: targetId }, data: { status } });
       if (status !== 'ACTIVE') await tx.refreshToken.updateMany({ where: { userId: targetId, revokedAt: null }, data: { revokedAt: new Date() } });

@@ -92,6 +92,18 @@ Standard Ayo/Oware (abapa) rules for two players, 4 seeds in each of 12 pits. Se
 - First to 25 wins; 24-24 is a draw (stakes refunded). A game with no capture for 120 moves ends the same way as a no-feed ending.
 - `match:state` carries `last` (pit played, where it ended, seeds captured) so clients can animate.
 
+## Step 6: Ludo
+
+2-4 players. The **server rolls the dice** (cryptographic random), so nobody can pick a number. Two moves: `{ "move": { "action": "roll" } }` then, if `canMove` is not empty, `{ "move": { "action": "move", "token": 0-3 } }`, each with the match `version`.
+
+- 4 tokens each. Need a 6 to leave the yard. Token progress: -1 yard, 0 start square, 0-50 on the 52 square ring, 51-55 home column, 56 home. Exact roll needed to finish.
+- A 6, a capture, or getting a token home gives another roll. Three 6s in a row lose the turn. No legal move: the turn passes by itself (`lastRoll.skipped`).
+- Landing on a ring square held by opponents sends all their tokens there back to the yard. Start squares and the four star squares (ring squares 0, 8, 13, 21, 26, 34, 39, 47) are safe. No blocks.
+- First to bring all four tokens home wins the pot. Two players sit opposite each other (`startSquares` in the state).
+- Each action (roll or move) has its own 30 s clock; running out removes you from the table. With 3-4 players the game goes on without you (your tokens leave the board, turns skip you), with 2 the opponent wins.
+
+All four games are now playable. `GET /games` reports every one as available.
+
 ## Run it
 
 ```bash

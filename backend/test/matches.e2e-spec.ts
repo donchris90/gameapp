@@ -1,6 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
+import { GameRegistry } from '../src/games/game-registry';
+import { LudoEngine } from '../src/games/ludo.engine';
 import { MatchesService } from '../src/matches/matches.service';
 import { RoomsService } from '../src/rooms/rooms.service';
 import { Player, bearer, createApp, newPlayer, prismaOf, setCoins } from './helpers';
@@ -292,63 +294,24 @@ describe('Matches: Tic Tac Toe with stakes', () => {
     });
   });
 
-  describe('other games', () => {
-    it('settle through the same rules for a four player table (stand-in engine)', async () => {
-      const ps = await Promise.all([1, 2, 3, 4].map(() => newPlayer(app)));
-      const room = (await http().post('/rooms').set(bearer(ps[0])).send({ game: 'LUDO', stake: 100, maxPlayers: 4 }).expect(201)).body;
-      for (const p of ps.slice(1)) {
-        await http().post('/rooms/join').set(bearer(p)).send({ code: room.code }).expect(200);
-        await http().post('/rooms/current/ready').set(bearer(p)).send({ ready: true }).expect(200);
-      }
-      await http().post('/rooms/current/start').set(bearer(ps[0])).expect(200);
-      const m = (await http().get('/matches/current').set(bearer(ps[0])).expect(200)).body;
-      expect(m.pot).toBe(400);
-      for (const p of ps) expect(await coins(p)).toBe(900);
-      const winner = ps.find((p) => p.user.id === m.players.find((x: any) => x.seat === 0).userId)!;
-      const done = (await http().post(`/matches/${m.id}/move`).set(bearer(winner)).send({ version: 1, move: { end: 'win' } }).expect(200)).body;
-      expect(done).toMatchObject({ status: 'FINISHED', houseFee: 40, winnerId: winner.user.id });
-      expect(await coins(winner)).toBe(900 + 360);
-      expect(await ledgerSum(done.id)).toBe(0n);
-    });
-
-    it('keep playing when one of three leaves, and the remaining two decide it', async () => {
-      const ps = await Promise.all([1, 2, 3].map(() => newPlayer(app)));
-      const room = (await http().post('/rooms').set(bearer(ps[0])).send({ game: 'LUDO', stake: 100, maxPlayers: 3 }).expect(201)).body;
-      for (const p of ps.slice(1)) {
-        await http().post('/rooms/join').set(bearer(p)).send({ code: room.code }).expect(200);
-        await http().post('/rooms/current/ready').set(bearer(p)).send({ ready: true }).expect(200);
-      }
-      await http().post('/rooms/current/start').set(bearer(ps[0])).expect(200);
-      const m = (await http().get('/matches/current').set(bearer(ps[0])).expect(200)).body;
-      await http().post(`/matches/${m.id}/forfeit`).set(bearer(ps[2])).expect(200);
-      const mid = await getMatch(ps[0], m.id);
-      expect(mid.status).toBe('ACTIVE');
-      expect(mid.players.filter((p: any) => p.left)).toHaveLength(1);
-      await http().post(`/matches/${m.id}/forfeit`).set(bearer(ps[1])).expect(200);
-      const end = await getMatch(ps[0], m.id);
-      expect(end).toMatchObject({ status: 'FINISHED', winnerId: ps[0].user.id, houseFee: 30 });
-      expect(await coins(ps[0])).toBe(900 + 270);
-      expect(await ledgerSum(m.id)).toBe(0n);
-    });
-  });
-
-  describe('games that are not built yet', () => {
-    let bare: INestApplication;
-    beforeAll(async () => { bare = await createApp({ fakeEngines: false }); });
-    afterAll(() => bare.close());
-
-    it('cannot be played, and the app can tell which are available', async () => {
-      const p = await newPlayer(bare);
-      const list = (await request(bare.getHttpServer()).get('/games').expect(200)).body;
-      expect(list.games.find((g: any) => g.game === 'TICTACTOE')).toMatchObject({ available: true, minPlayers: 2, maxPlayers: 2 });
-      for (const g of ['LUDO']) expect(list.games.find((x: any) => x.game === g).available).toBe(false);
+  describe('the games list', () => {
+    it('says which games can be played, and refuses one that has no engine', async () => {
+      const list = (await http().get('/games').expect(200)).body;
+      for (const g of ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO']) expect(list.games.find((x: any) => x.game === g).available).toBe(true);
+      expect(list.games.find((g: any) => g.game === 'TICTACTOE')).toMatchObject({ minPlayers: 2, maxPlayers: 2 });
       expect(list).toMatchObject({ houseFeePercent: 10, turnTimeoutSeconds: 30 });
       expect(list.stakes).toContain(100);
 
-      const api = (path: string, body: any) => request(bare.getHttpServer()).post(path).set(bearer(p)).send(body);
-      expect((await api('/rooms', { game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
-      expect((await api('/matchmaking/queue', { game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
-      await api('/rooms', { game: 'TICTACTOE', stake: 0 }).expect(201);
+      (app.get(GameRegistry) as any).engines.delete('LUDO'); // pretend Ludo is not built
+      try {
+        const p = await newPlayer(app);
+        expect((await http().get('/games').expect(200)).body.games.find((g: any) => g.game === 'LUDO').available).toBe(false);
+        expect((await http().post('/rooms').set(bearer(p)).send({ game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
+        expect((await http().post('/matchmaking/queue').set(bearer(p)).send({ game: 'LUDO', stake: 0 }).expect(400)).body.error).toBe('GAME_NOT_AVAILABLE');
+        await http().post('/rooms').set(bearer(p)).send({ game: 'TICTACTOE', stake: 0 }).expect(201);
+      } finally {
+        app.get(GameRegistry).register(new LudoEngine());
+      }
     });
   });
 

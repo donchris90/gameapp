@@ -5,10 +5,12 @@ import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, api, explain } from '../src/api';
 import { SessionProvider, useSession, useSocketEvent } from '../src/session';
+import { loadSoundSetting } from '../src/sfx';
 import { colors } from '../src/ui';
 import { Match } from '../src/types';
 
 function Gate() {
+  useEffect(() => { void loadSoundSetting(); }, []);
   const { ready, user, refreshCoins } = useSession();
   const segments = useSegments();
   const router = useRouter();

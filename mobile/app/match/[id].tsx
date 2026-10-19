@@ -11,6 +11,7 @@ import { useSession, useSocketEvent } from '../../src/session';
 import { Match } from '../../src/types';
 import { useCountdown } from '../../src/useCountdown';
 import { titleText } from '../../src/cosmetics';
+import { sfx } from '../../src/sfx';
 import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../../src/ui';
 
 export default function MatchScreen() {
@@ -22,12 +23,24 @@ export default function MatchScreen() {
   const [missing, setMissing] = useState(false);
   const latest = useRef(0);
 
+  const lastSeen = useRef<{ status: string; turnSeat: number | null } | null>(null);
   const accept = useCallback((m: Match) => {
     if (m.id !== id || m.version < latest.current) return;
     latest.current = m.version;
+    if (user) {
+      const seat = m.players.find((p) => p.userId === user.id)?.seat;
+      const prev = lastSeen.current;
+      if (m.status === 'FINISHED' && prev?.status !== 'FINISHED') {
+        const r = m.players.find((p) => p.userId === user.id)?.result;
+        sfx(r === 'WON' ? 'win' : r === 'LOST' ? 'lose' : 'draw');
+      } else if (prev && m.status === 'ACTIVE') {
+        sfx(m.turnSeat === seat && prev.turnSeat !== seat ? 'turn' : 'move');
+      }
+    }
+    lastSeen.current = { status: m.status, turnSeat: m.turnSeat };
     setMatch(m);
     if (m.status === 'FINISHED') void refreshCoins();
-  }, [id, refreshCoins]);
+  }, [id, refreshCoins, user]);
 
   useEffect(() => { api<Match>(`/matches/${id}`).then(accept).catch(() => setMissing(true)); }, [id, accept]);
   useSocketEvent<Match>('match:state', accept);

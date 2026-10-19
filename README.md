@@ -162,3 +162,8 @@ Players spend coins on looks only: avatar frames, titles and board themes (`back
 - Buying writes the item and the `SHOP_PURCHASE` ledger debit in one transaction, so a failed payment gives no item and a double tap charges once.
 - Frame and title are shown to other players in rooms and matches; the board theme is applied to your own Tic Tac Toe and Ayo boards.
 - Mobile: Me tab, "Customize" (`mobile/app/cosmetics.tsx`). To add an item, add it to `items.ts` and, for frames/titles, to the maps in `mobile/src/cosmetics.ts`.
+
+## Step 9: Polish
+
+- How to play: a collapsible rules card on each game's lobby screen (`mobile/src/howto.ts`).
+- Sound and vibration: short effects for moves, your turn, win, loss and draw (`mobile/src/sfx.ts`, files in `mobile/assets/sfx`). Players can switch it off in the Me tab. Effects are plain generated tones; swap the .wav files for nicer ones any time.

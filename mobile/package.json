@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "expo": "~58.0.16",
+    "expo-audio": "~58.0.9",
     "expo-clipboard": "~58.0.3",
     "expo-constants": "~58.0.12",
     "expo-haptics": "~58.0.7",

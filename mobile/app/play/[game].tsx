@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
 import { GAME_INFO } from '../../src/games';
+import { HOW_TO_PLAY } from '../../src/howto';
 import { useSession, useSocketEvent } from '../../src/session';
 import { GameType, GamesInfo } from '../../src/types';
 import { Body, Button, Card, Chip, Coins, Dim, H1, Screen, colors } from '../../src/ui';
@@ -18,6 +19,7 @@ export default function PlayScreen() {
   const [size, setSize] = useState(2);
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [help, setHelp] = useState(false);
 
   useEffect(() => { api<GamesInfo>('/games', { auth: false }).then(setMeta).catch(() => undefined); void refreshCoins(); }, [refreshCoins]);
   const cfg = meta?.games.find((g) => g.game === game);
@@ -53,7 +55,11 @@ export default function PlayScreen() {
         <Pressable onPress={() => router.back()} style={{ paddingVertical: 12 }}><Text style={{ color: colors.accent, fontWeight: '700' }}>‹ Back</Text></Pressable>
         <Text style={{ fontSize: 44 }}>{info.emoji}</Text>
         <H1>{info.title}</H1>
-        <Dim style={{ marginBottom: 18 }}>{info.blurb}</Dim>
+        <Dim style={{ marginBottom: 10 }}>{info.blurb}</Dim>
+        <Card style={{ marginBottom: 16, gap: 6 }}>
+          <Text onPress={() => setHelp((h) => !h)} style={{ color: colors.text, fontWeight: '800' }}>{help ? '▾' : '▸'} How to play</Text>
+          {help ? HOW_TO_PLAY[game].map((t, i) => <Dim key={i}>{i + 1}. {t}</Dim>) : null}
+        </Card>
 
         <Body style={{ fontWeight: '800', marginBottom: 8 }}>Stake per player</Body>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

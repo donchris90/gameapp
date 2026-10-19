@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 import { api } from '../../src/api';
 import { titleText, useShop } from '../../src/cosmetics';
+import { setSoundOn, soundOn } from '../../src/sfx';
 import { GAME_INFO } from '../../src/games';
 import { useSession } from '../../src/session';
 import { GameType } from '../../src/types';
@@ -24,6 +25,7 @@ export default function Me() {
   const shop = useShop();
   const equipped = shop?.equipped;
   const router = useRouter();
+  const [sound, setSound] = useState(soundOn());
   const [tab, setTab] = useState<'games' | 'coins'>('games');
 
   useFocusEffect(useCallback(() => {
@@ -52,6 +54,8 @@ export default function Me() {
         </Card>
 
         <Button style={{ marginTop: 12 }} kind="ghost" title="✨ Customize: frames, titles, boards" onPress={() => router.push('/cosmetics')} />
+
+        <Button style={{ marginTop: 10 }} kind="ghost" title={sound ? '🔊 Sound and vibration: on' : '🔇 Sound and vibration: off'} onPress={() => { const n = !sound; setSound(n); void setSoundOn(n); }} />
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
           <Button style={{ flex: 1 }} kind={tab === 'games' ? 'primary' : 'ghost'} title={`Games (${wins} won)`} onPress={() => setTab('games')} />

@@ -1,13 +1,15 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiError, api, explain } from '../src/api';
 import { SessionProvider, useSession, useSocketEvent } from '../src/session';
 import { listenForNotificationTaps } from '../src/push';
 import { loadSoundSetting } from '../src/sfx';
 import { colors } from '../src/ui';
+import { CallBar, answerCall } from '../src/Voice';
+import { leaveVoice } from '../src/voice';
 import { Match } from '../src/types';
 
 function Gate() {
@@ -40,7 +42,28 @@ function Gate() {
     ]);
   });
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />;
+  useSocketEvent<{ callId: string; from: { displayName: string }; ringMs: number }>('call:incoming', (c) => {
+    Alert.alert('📞 Incoming call', `${c.from.displayName} is calling you.`, [
+      { text: 'Decline', style: 'cancel', onPress: () => void answerCall(c.callId, false) },
+      { text: 'Answer', onPress: () => void answerCall(c.callId, true) },
+    ], { cancelable: false });
+  });
+  useSocketEvent('call:ended', () => { void leaveVoice(); });
+  useSocketEvent('call:declined', () => { void leaveVoice(); Alert.alert('Call', 'They declined the call.'); });
+  useSocketEvent<{ matchId: string; from: { displayName: string } }>('match:rematch', (e) => {
+    if (segments[0] === 'match') return; // the match screen shows its own banner
+    Alert.alert('Rematch?', `${e.from.displayName} wants to play again.`, [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Go to room', onPress: () => router.push('/room') },
+    ]);
+  });
+
+  return (
+    <View style={{ flex: 1 }}>
+      <CallBar />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+    </View>
+  );
 }
 
 export default function Root() {

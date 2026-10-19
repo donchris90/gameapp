@@ -3,10 +3,12 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api, explain } from '../../src/api';
 import { useSocketEvent } from '../../src/session';
-import { Conversation, UserSummary } from '../../src/types';
+import { callFriend } from '../../src/Voice';
+import { GAME_INFO } from '../../src/games';
+import { Activity, Conversation, UserSummary } from '../../src/types';
 import { Avatar, Body, Button, Card, Dim, Empty, Field, H1, Screen, colors } from '../../src/ui';
 
-type Friend = UserSummary & { online: boolean };
+type Friend = UserSummary & { online: boolean; activity: Activity };
 type Req = { id: string; user: UserSummary };
 
 export default function Friends() {
@@ -33,6 +35,9 @@ export default function Friends() {
   useSocketEvent('friend:accepted', load);
   useSocketEvent<{ friendId?: string; userId?: string }>('friend:online', load);
   useSocketEvent('friend:offline', load);
+  useSocketEvent('room:update', load);
+  useSocketEvent('match:started', load);
+  useSocketEvent('match:ended', load);
   useSocketEvent('chat:message', load);
 
   const search = async (text: string) => {
@@ -61,6 +66,16 @@ export default function Friends() {
       router.push('/room');
     } catch (e) { Alert.alert('Invite', explain(e)); }
   };
+  const join = async (code: string) => {
+    try { await api('/rooms/join', { method: 'POST', body: { code } }); router.push('/room'); }
+    catch (e) { Alert.alert('Join game', explain(e)); }
+  };
+  const doing = (f: Friend) => {
+    const a = f.activity;
+    if (a.state === 'playing') return `Playing ${GAME_INFO[a.game].title}`;
+    if (a.state === 'lobby') return `In a ${GAME_INFO[a.game].title} room${a.stake ? ` · ${a.stake} coins` : ''}`;
+    return f.online ? 'Online' : 'Offline';
+  };
   const remove = (f: Friend) => Alert.alert('Remove friend', `Remove ${f.displayName}?`, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Remove', style: 'destructive', onPress: () => api(`/friends/${f.id}`, { method: 'DELETE' }).then(load).catch((e) => Alert.alert('Friends', explain(e))) },
@@ -71,7 +86,10 @@ export default function Friends() {
   return (
     <Screen>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.text} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
-        <H1>Friends</H1>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <H1>Friends</H1>
+          <Pressable onPress={() => router.push('/leaderboard')} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card }}><Text style={{ color: colors.text, fontWeight: '800' }}>🏆 Leaderboard</Text></Pressable>
+        </View>
         <Field label="" placeholder="Find by username or friend code" value={q} onChangeText={search} />
         {looksLikeCode ? <Button title="Add by friend code" kind="ghost" onPress={addByCode} style={{ marginBottom: 12 }} /> : null}
         {results.map((u) => (
@@ -97,16 +115,20 @@ export default function Friends() {
         {friends.length === 0 ? <Empty text="No friends yet. Search for a username above or share your friend code from the Me tab." /> : null}
         {friends.map((f) => (
           <Card key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <Avatar name={f.displayName} online={f.online} />
-            <View style={{ flex: 1 }}>
+            <Pressable onPress={() => router.push({ pathname: '/player/[id]', params: { id: f.id } })}><Avatar name={f.displayName} online={f.online} /></Pressable>
+            <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/player/[id]', params: { id: f.id } })}>
               <Body style={{ fontWeight: '700' }}>{f.displayName}</Body>
-              {talks[f.id] ? <Dim numberOfLines={1} style={{ color: talks[f.id].unread > 0 ? colors.text : colors.dim }}>{talks[f.id].last.mine ? 'You: ' : ''}{talks[f.id].last.body}</Dim> : <Dim>{f.online ? 'Online' : 'Offline'}</Dim>}
-            </View>
+              <Dim numberOfLines={1} style={{ color: f.activity.state === 'lobby' || f.activity.state === 'playing' ? colors.gold : colors.dim }}>{doing(f)}</Dim>
+              {talks[f.id] && talks[f.id].unread > 0 ? <Dim numberOfLines={1} style={{ color: colors.text }}>{talks[f.id].last.mine ? 'You: ' : ''}{talks[f.id].last.body}</Dim> : null}
+            </Pressable>
             <Pressable onPress={() => router.push({ pathname: '/chat/[userId]', params: { userId: f.id, name: f.displayName } })} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
               <Text style={{ fontSize: 24 }}>💬</Text>
               {talks[f.id]?.unread > 0 ? <View style={{ position: 'absolute', top: 0, right: 0, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.bad, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{talks[f.id].unread}</Text></View> : null}
             </Pressable>
-            <Button title="Invite" kind="ghost" onPress={() => invite(f)} style={{ minHeight: 40 }} />
+            {f.activity.state === 'lobby' && f.activity.joinable
+              ? <Button title="Join" onPress={() => join((f.activity as Extract<Activity, { state: 'lobby' }>).code)} style={{ minHeight: 40 }} />
+              : <Button title="Invite" kind="ghost" onPress={() => invite(f)} style={{ minHeight: 40 }} />}
+            {f.online ? <Pressable onPress={() => void callFriend(f.id)} hitSlop={6}><Text style={{ fontSize: 22 }}>📞</Text></Pressable> : null}
             <Text onPress={() => remove(f)} style={{ color: colors.dim, fontSize: 22, paddingHorizontal: 6 }}>⋯</Text>
           </Card>
         ))}

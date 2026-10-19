@@ -12,6 +12,8 @@ import { Match } from '../../src/types';
 import { useCountdown } from '../../src/useCountdown';
 import { titleText } from '../../src/cosmetics';
 import { onSoundChange, setSoundOn, sfx, soundOn } from '../../src/sfx';
+import { EmoteControls } from '../../src/Emotes';
+import { VoiceButton } from '../../src/Voice';
 import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../../src/ui';
 
 export default function MatchScreen() {
@@ -24,6 +26,8 @@ export default function MatchScreen() {
   const latest = useRef(0);
   const [gameH, setGameH] = useState(0);
   const [sound, setSound] = useState(soundOn());
+  const [rematchBusy, setRematchBusy] = useState(false);
+  const [theyWant, setTheyWant] = useState<string | null>(null);
   useEffect(() => onSoundChange(setSound), []);
 
   const lastSeen = useRef<{ status: string; turnSeat: number | null } | null>(null);
@@ -48,6 +52,8 @@ export default function MatchScreen() {
   useEffect(() => { api<Match>(`/matches/${id}`).then(accept).catch(() => setMissing(true)); }, [id, accept]);
   useSocketEvent<Match>('match:state', accept);
   useSocketEvent<Match>('match:ended', accept);
+
+  useSocketEvent<{ matchId: string; from: { displayName: string } }>('match:rematch', (e) => { if (e.matchId === id) setTheyWant(e.from.displayName); });
 
   const seconds = useCountdown(match?.status === 'ACTIVE' ? match.turnDeadline : null);
 
@@ -76,6 +82,14 @@ export default function MatchScreen() {
     try { const m = await api<Match>('/matches/solo', { method: 'POST', body: { game: match.game, ...(match.game === 'WATER_SORT' && mine?.result !== 'WON' ? { level: match.state.level } : {}) } }); router.replace(`/match/${m.id}`); }
     catch (e) { Alert.alert('New puzzle', explain(e)); } finally { setBusy(false); }
   };
+  const rematch = async () => {
+    setRematchBusy(true);
+    try { await api(`/social/rematch/${match.id}`, { method: 'POST' }); router.replace('/room'); }
+    catch (e: any) {
+      if (e?.code === 'VS_COMPUTER') router.replace(`/play/${match.game}`); // against the computer a rematch is a new search
+      else Alert.alert('Rematch', explain(e));
+    } finally { setRematchBusy(false); }
+  };
   const goBack = async () => {
     const room = await api('/rooms/current').catch(() => null);
     router.replace(room ? '/room' : '/(tabs)');
@@ -97,6 +111,8 @@ export default function MatchScreen() {
         <Text numberOfLines={1} style={{ flex: 1, color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : colors.accent, fontWeight: '900', fontSize: 13 }}>{status}</Text>
         {seconds !== null ? <Text style={{ color: !solo && seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', fontSize: 13 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}
         {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo' : 'Friendly'}</Dim>}
+        {solo ? null : <VoiceButton />}
+        {solo ? null : <EmoteControls matchId={match.id} />}
         <Pressable onPress={() => void setSoundOn(!sound)} hitSlop={10}><Text style={{ fontSize: 18 }}>{sound ? '🔊' : '🔇'}</Text></Pressable>
       </View>
 
@@ -124,9 +140,11 @@ export default function MatchScreen() {
           {mine?.result === 'DRAW' && match.stake > 0 ? <Body>Your {match.stake.toLocaleString()} coins were returned</Body> : null}
           {mine?.result === 'LOST' && match.stake > 0 ? <Body>You lost {match.stake.toLocaleString()} coins</Body> : null}
           {solo ? null : match.endReason === 'TIMEOUT' ? <Dim>Out of time</Dim> : match.endReason === 'FORFEIT' ? <Dim>Resigned</Dim> : null}
+          {theyWant ? <Body style={{ color: colors.gold, fontWeight: '800' }}>🔁 {theyWant} wants a rematch</Body> : null}
           <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
+            {solo ? null : <Button title={theyWant ? 'Accept rematch' : 'Rematch'} onPress={rematch} busy={rematchBusy} style={{ flex: 1 }} />}
             {solo ? <Button title={mine?.result === 'WON' ? 'Next level' : 'Try again'} onPress={playAgain} busy={busy} style={{ flex: 1 }} /> : null}
-            <Button title={solo ? 'Home' : 'Back to lobby'} kind={solo ? 'ghost' : 'primary'} onPress={goBack} style={{ flex: 1 }} />
+            <Button title={solo ? 'Home' : 'Back to lobby'} kind="ghost" onPress={goBack} style={{ flex: 1 }} />
           </View>
         </Card>
       )}

@@ -126,9 +126,26 @@ export class FriendsService {
       include: { userA: { select: SUMMARY }, userB: { select: SUMMARY } },
       orderBy: { respondedAt: 'desc' },
     });
-    return rows
-      .map((r) => (r.userAId === meId ? r.userB : r.userA))
-      .map((u) => ({ ...u, online: this.presence.isOnline(u.id) }))
+    const friends = rows.map((r) => (r.userAId === meId ? r.userB : r.userA));
+    const ids = friends.map((f) => f.id);
+    const [members, playing] = await Promise.all([
+      this.prisma.roomMember.findMany({ where: { userId: { in: ids } }, select: { userId: true, room: { select: { code: true, game: true, stake: true, status: true, maxPlayers: true, _count: { select: { members: true } } } } } }),
+      this.prisma.matchPlayer.findMany({ where: { userId: { in: ids }, leftAt: null, match: { status: 'ACTIVE' } }, select: { userId: true, match: { select: { game: true } } } }),
+    ]);
+    const roomOf = new Map(members.map((m) => [m.userId, m.room]));
+    const matchOf = new Map(playing.map((p) => [p.userId, p.match.game]));
+    return friends
+      .map((u) => {
+        const online = this.presence.isOnline(u.id);
+        const room = roomOf.get(u.id);
+        const game = matchOf.get(u.id) ?? (room?.status === 'IN_PROGRESS' ? room.game : undefined);
+        // What they are doing right now. A friend in a waiting room can be joined; one in a running game can only be watched for.
+        const activity = !online ? { state: 'offline' as const }
+          : game ? { state: 'playing' as const, game }
+          : room ? { state: 'lobby' as const, game: room.game, code: room.code, stake: Number(room.stake), joinable: room.status === 'WAITING' && room._count.members < room.maxPlayers }
+          : { state: 'online' as const };
+        return { ...u, online, activity };
+      })
       .sort((x, y) => Number(y.online) - Number(x.online) || x.displayName.localeCompare(y.displayName));
   }
 

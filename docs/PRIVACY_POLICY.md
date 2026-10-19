@@ -11,6 +11,7 @@
 - **Account details:** email address, username, display name, date of birth (to check you are 18 or older) and a password (stored only as a one-way hash, never readable).
 - **Gameplay data:** games you play, moves, results, coin stakes and winnings, friends, friend requests, blocks, room invitations, items you own and equip.
 - **Private messages:** the messages you send to friends, kept for 30 days and then deleted, and deleted at once when you delete your account. If a player reports a message, we keep a copy of it and the few messages around it to review the report.
+- **Voice chat:** if you join voice chat or a call, your voice is carried live through Agora's service. We do not record it or keep it.
 - **Notification token:** if you allow notifications, an identifier for your phone, used only to send you message and game invite notifications through Expo's notification service. It is removed when you sign out or delete your account.
 - **Coin and purchase records:** your coin balance, a ledger of every coin movement, and records of purchases (store, product, order id). We do not see or store your card details; payments are handled by Google Play or the Apple App Store.
 - **Advertising:** the app shows ads through Google AdMob. AdMob may collect your device's advertising id and other device information to serve ads and verify that you watched one. See Google's policy: https://policies.google.com/privacy

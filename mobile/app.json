@@ -12,7 +12,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.playcircle.app",
-      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "PlayCircle uses the microphone for voice chat with your friends."
+      }
     },
     "android": {
       "package": "com.playcircle.app",
@@ -22,7 +25,12 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH_CONNECT"
+      ]
     },
     "plugins": [
       "expo-router",

@@ -7,6 +7,8 @@ import type { Server, Socket } from 'socket.io';
 import { FriendsService } from '../friends/friends.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { isEmote } from '../social/emotes';
+import { SocialService } from '../social/social.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { PresenceService } from './presence.service';
 import { RealtimeService } from './realtime.service';
@@ -22,7 +24,8 @@ const CHAT_WINDOW_MS = 5_000;
  * Connect with `io(url, { auth: { token: accessToken } })`.
  * Events sent to a player: friend:request, friend:accepted, friend:online, friend:offline,
  * room:update, room:started, room:aborted, room:kicked, room:invite, room:chat,
- * match:found, match:failed, match:timeout.
+ * match:found, match:failed, match:timeout, match:emote, match:rematch, call:incoming, call:answered, call:declined, call:ended.
+ * From the client: room:chat, match:emote.
  */
 @WebSocketGateway({ cors: { origin: true } })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -37,6 +40,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly friends: FriendsService,
     private readonly rooms: RoomsService,
     private readonly matchmaking: MatchmakingService,
+    private readonly social: SocialService,
   ) {}
 
   afterInit(server: Server) {
@@ -73,9 +77,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!userId) return;
     if (this.presence.remove(userId, socket.id)) {
       this.matchmaking.leave(userId);
+      this.social.dropCalls(userId);
       void this.friends.notifyPresence(userId, false).catch(() => undefined);
       void this.rooms.notifyPresence(userId).catch((e) => this.log.warn(e));
     }
+  }
+
+  /** A quick reaction during a game: `{ matchId, emote }`. Only ids from the fixed list are accepted. */
+  @SubscribeMessage('match:emote')
+  async emote(@ConnectedSocket() socket: Socket, @MessageBody() body: { matchId?: unknown; emote?: unknown }) {
+    const userId: string | undefined = socket.data.userId;
+    if (!userId) return { ok: false, error: 'UNAUTHORIZED' };
+    if (typeof body?.matchId !== 'string' || !isEmote(body.emote)) return { ok: false, error: 'BAD_EMOTE' };
+    return this.social.emote(userId, body.matchId, body.emote);
   }
 
   @SubscribeMessage('room:chat')

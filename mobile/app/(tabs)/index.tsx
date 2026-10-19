@@ -70,7 +70,10 @@ export default function Home() {
         contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <View><Dim>Hi,</Dim><H1>{user?.displayName}</H1></View>
-          <Card style={{ paddingVertical: 10, paddingHorizontal: 14 }}><Coins amount={coins} size={20} /></Card>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <Pressable onPress={() => router.push('/leaderboard')}><Card style={{ paddingVertical: 10, paddingHorizontal: 12 }}><Text style={{ fontSize: 20 }}>🏆</Text></Card></Pressable>
+            <Card style={{ paddingVertical: 10, paddingHorizontal: 14 }}><Coins amount={coins} size={20} /></Card>
+          </View>
         </View>
 
         <Card style={{ marginTop: 14, gap: 10 }}>

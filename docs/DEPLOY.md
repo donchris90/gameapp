@@ -75,3 +75,9 @@ Ads and purchases only work in these builds, not in Expo Go.
 - Age rating: the app has coin staking, so answer the questionnaires honestly (simulated gambling, no real money). Apple and Google both have rules for this: coins must have no cash value and be impossible to withdraw, which is how the app is built. Set the audience to 18+.
 - Data safety form (Google) and privacy labels (Apple): you collect email, username, birth date, purchases and gameplay data.
 - Screenshots of each game, an icon (1024x1024) and a short description.
+
+## 4c. Voice calls (Agora)
+
+1. Create a project at console.agora.io, choose "Secured: APP ID + Token", and copy the App ID and the Primary Certificate.
+2. On Render set `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE`. Without them voice answers "not switched on" and everything else works.
+3. Voice needs a development or store build of the app (`eas build`), not Expo Go. The microphone permission text is already in `app.json`.

@@ -16,6 +16,7 @@ import { FriendsModule } from './friends/friends.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RoomsModule } from './rooms/rooms.module';
+import { SocialModule } from './social/social.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
 
@@ -40,6 +41,7 @@ import { WalletModule } from './wallet/wallet.module';
     ShopModule,
     PushModule,
     ChatModule,
+    SocialModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

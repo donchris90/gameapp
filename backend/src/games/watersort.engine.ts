@@ -67,7 +67,7 @@ export function generatePuzzle(ctx: EngineContext): number[][] {
 }
 
 /**
- * Water Sort race: every player solves the same puzzle at once and the first to finish wins.
+ * Water Sort: one player solves a puzzle against the clock (the app uses it solo). The engine also supports a race: every player solves the same puzzle at once and the first to finish wins.
  * Not turn based. If the clock runs out, whoever has the most finished tubes wins; a tie is a draw.
  */
 export class WaterSortEngine implements GameEngine<WaterSortState> {
@@ -118,6 +118,7 @@ export class WaterSortEngine implements GameEngine<WaterSortState> {
 
   /** Time is up with nobody finished. */
   onDeadline(state: WaterSortState, activeSeats: number[]): { state: WaterSortState; outcome: Outcome } {
+    if (state.boards.length === 1) return { state, outcome: { type: 'NONE' } }; // solo: out of time without solving it
     const scores = activeSeats.map((s) => ({ seat: s, done: progress(state.boards[s]) }));
     const best = Math.max(...scores.map((s) => s.done));
     const leaders = scores.filter((s) => s.done === best);

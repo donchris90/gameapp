@@ -60,7 +60,7 @@ export function WaterSort({ match, mySeat, onMove, busy }: { match: Match<State>
           </View>
         ))}
       </View>
-      <Text style={{ color: colors.dim, textAlign: 'center' }}>Tap a tube, then the tube to pour into. Your moves: {s.moves[mySeat]} · Finished tubes: {s.finished[mySeat]}</Text>
+      <Text style={{ color: colors.dim, textAlign: 'center' }}>Tap a tube, then the tube to pour into. Moves: {s.moves[mySeat]} · Finished tubes: {s.finished[mySeat]} of {LIQUID.length}</Text>
     </View>
   );
 }

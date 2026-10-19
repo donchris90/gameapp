@@ -173,3 +173,9 @@ See `docs/DEPLOY_RENDER_SUPABASE.md` (Supabase database + Render API, with `rend
 
 ## Legal
 `docs/PRIVACY_POLICY.md` and `docs/TERMS_OF_SERVICE.md` are drafts with [PLACEHOLDERS]. Fill them in, have a lawyer check them, host them on a public web page, and use the page links in both store listings. Players can delete their own account in the app (Me tab); this is required by Google Play and the App Store.
+
+## Step 10: Computer opponents and solo Water Sort
+
+- **Computer opponents (free games only).** In quick match with a stake of 0, a player who has waited 6 to 12 seconds gets computer opponents for the empty seats (Tic Tac Toe, Ayo, Ludo). They are ordinary accounts with random ordinary usernames (`backend/src/bots/bot-names.ts`), flagged `isBot` in the database: they cannot log in, never appear in friend search, and are left out of admin counts (admin match lists mark them with a robot). They play only legal moves, checked with the real game rules, and slip now and then so they can be beaten (`bot-policy.ts`). A game against them ends and closes its room, so "rematch" means searching again. **Games with coins at stake never use them.** Timings can be changed with `BOT_FILL_MS_MIN/MAX`, `BOT_MOVE_MS_MIN/MAX`, and `BOTS_ENABLED=false` turns them off.
+- **Water Sort is solo.** One player, a new always-solvable puzzle each time, 5 minutes, no stake and no coins. Start with `POST /matches/solo {game:'WATER_SORT'}`. Running out of time or giving up ends it with no winner.
+- The Terms of Service draft says some opponents in free games may be computer-controlled. Keep that sentence.

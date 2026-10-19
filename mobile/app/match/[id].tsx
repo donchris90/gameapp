@@ -64,27 +64,32 @@ export default function MatchScreen() {
     catch (e) { Alert.alert('Move', explain(e)); const fresh = await api<Match>(`/matches/${match.id}`).catch(() => null); if (fresh) accept(fresh); }
     finally { setBusy(false); }
   };
-  const resign = () => Alert.alert('Resign?', match.stake > 0 ? 'You will lose your stake.' : 'This ends the game.', [
+  const resign = () => Alert.alert(match.players.length === 1 ? 'Give up?' : 'Resign?', match.stake > 0 ? 'You will lose your stake.' : 'This ends the game.', [
     { text: 'Keep playing', style: 'cancel' },
-    { text: 'Resign', style: 'destructive', onPress: () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Resign', explain(e))) },
+    { text: match.players.length === 1 ? 'Give up' : 'Resign', style: 'destructive', onPress: () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Resign', explain(e))) },
   ]);
+  const playAgain = async () => {
+    setBusy(true);
+    try { const m = await api<Match>('/matches/solo', { method: 'POST', body: { game: match.game } }); router.replace(`/match/${m.id}`); }
+    catch (e) { Alert.alert('New puzzle', explain(e)); } finally { setBusy(false); }
+  };
   const goBack = async () => {
     const room = await api('/rooms/current').catch(() => null);
     router.replace(room ? '/room' : '/(tabs)');
   };
 
-  const resultText = !over ? '' : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
-  const race = match.game === 'WATER_SORT';
-  const status = over ? resultText : race ? 'Solve it first!' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
+  const solo = match.players.length === 1; // a puzzle played alone (Water Sort)
+  const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? 'Solved! 🎉' : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
+  const status = over ? resultText : solo ? 'Sort the colours' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : `Waiting for ${match.players.find((p) => p.seat === match.turnSeat)?.displayName ?? 'opponent'}`;
 
   return (
     <Screen>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
         <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title}</Body>
-        {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>Friendly</Dim>}
+        {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo puzzle' : 'Friendly'}</Dim>}
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12, display: solo ? 'none' : 'flex' }}>
         {match.players.map((p) => {
           const active = !over && match.turnSeat === p.seat;
           return (
@@ -100,7 +105,7 @@ export default function MatchScreen() {
 
       <View style={{ alignItems: 'center', marginBottom: 16 }}>
         <Text style={{ color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : myTurn ? colors.accent : colors.dim, fontSize: 20, fontWeight: '900' }}>{status}</Text>
-        {seconds !== null ? <Text style={{ color: seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', marginTop: 4 }}>{seconds}s</Text> : null}
+        {seconds !== null ? <Text style={{ color: seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', marginTop: 4 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
@@ -110,14 +115,15 @@ export default function MatchScreen() {
           : <WaterSort match={match} mySeat={mySeat} onMove={send} busy={busy} />}
       </ScrollView>
       {!over ? (
-        <Button title="Resign" kind="ghost" onPress={resign} style={{ marginBottom: 16 }} />
+        <Button title={solo ? 'Give up' : 'Resign'} kind="ghost" onPress={resign} style={{ marginBottom: 16 }} />
       ) : (
         <Card style={{ marginBottom: 16, gap: 10, alignItems: 'center' }}>
           {mine?.result === 'WON' ? <Body>You won <Text style={{ color: colors.gold, fontWeight: '900' }}>{mine.payout.toLocaleString()}</Text> coins</Body> : null}
           {mine?.result === 'DRAW' && match.stake > 0 ? <Body>Your {match.stake.toLocaleString()} coins were returned</Body> : null}
           {mine?.result === 'LOST' && match.stake > 0 ? <Body>You lost {match.stake.toLocaleString()} coins</Body> : null}
-          {match.endReason === 'TIMEOUT' ? <Dim>Out of time</Dim> : match.endReason === 'FORFEIT' ? <Dim>Resigned</Dim> : null}
-          <Button title="Back to lobby" onPress={goBack} style={{ alignSelf: 'stretch' }} />
+          {solo ? null : match.endReason === 'TIMEOUT' ? <Dim>Out of time</Dim> : match.endReason === 'FORFEIT' ? <Dim>Resigned</Dim> : null}
+          {solo ? <Button title="New puzzle" onPress={playAgain} busy={busy} style={{ alignSelf: 'stretch' }} /> : null}
+          <Button title={solo ? 'Home' : 'Back to lobby'} kind={solo ? 'ghost' : 'primary'} onPress={goBack} style={{ alignSelf: 'stretch' }} />
         </Card>
       )}
     </Screen>

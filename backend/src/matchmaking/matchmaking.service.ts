@@ -4,7 +4,8 @@ import { appError } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { GameRegistry } from '../games/game-registry';
-import { GAME_CONFIG, STAKE_OPTIONS } from '../rooms/game-config';
+import { GAME_CONFIG, STAKE_OPTIONS, isSolo } from '../rooms/game-config';
+import { BotsService, botSettings } from '../bots/bots.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { InsufficientCoinsException } from '../wallet/wallet.service';
 
@@ -13,11 +14,15 @@ export const QUEUE_TIMEOUT_MS = 90_000;
 interface Ticket {
   userId: string;
   at: number;
+  /** Free games only: when a computer opponent may be added if nobody else turned up. */
+  fillAt: number | null;
 }
 
 /**
  * Quick match: players who want the same game, stake and table size are paired
  * first come, first served, skipping pairs where one blocked the other.
+ * In free (no stake) games, a player still waiting after a few seconds gets computer opponents.
+ * Games with coins at stake only ever pair real players.
  * The queue lives in memory, so it is per server instance (move to Redis to scale out).
  */
 @Injectable()
@@ -27,21 +32,26 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private readonly running = new Set<string>();
   private readonly dirty = new Set<string>();
   private timer?: NodeJS.Timeout;
+  private fillTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeService,
     private readonly games: GameRegistry,
+    private readonly bots: BotsService,
   ) {}
 
   onModuleInit() {
     this.timer = setInterval(() => this.sweepTimeouts(), 5_000);
     this.timer.unref();
+    this.fillTimer = setInterval(() => void this.fillWithBots().catch(() => undefined), 1_000);
+    this.fillTimer.unref();
   }
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    if (this.fillTimer) clearInterval(this.fillTimer);
   }
 
   static key(game: GameType, stake: number, size: number) {
@@ -55,6 +65,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   async join(userId: string, dto: { game: GameType; stake: number; size?: number }) {
     const cfg = GAME_CONFIG[dto.game];
     if (!this.games.isAvailable(dto.game)) throw appError(400, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
+    if (isSolo(dto.game)) throw appError(400, 'SOLO_GAME', 'This game is played alone: start it from the game screen');
     const size = dto.size ?? cfg.max;
     if (!STAKE_OPTIONS.includes(dto.stake)) throw appError(400, 'BAD_STAKE', `Stake must be one of ${STAKE_OPTIONS.join(', ')}`);
     if (size < cfg.min || size > cfg.max) throw appError(400, 'BAD_PLAYER_COUNT', `${dto.game} supports ${cfg.min} to ${cfg.max} players`);
@@ -67,7 +78,9 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     if (this.keyOf.has(userId)) throw appError(409, 'ALREADY_QUEUED', 'You are already searching for a match');
     this.keyOf.set(userId, key);
     const q = this.queues.get(key) ?? [];
-    q.push({ userId, at: Date.now() });
+    const now = Date.now();
+    const s = botSettings();
+    q.push({ userId, at: now, fillAt: dto.stake === 0 && s.enabled ? now + s.fillMin + Math.floor(Math.random() * Math.max(1, s.fillMax - s.fillMin)) : null });
     this.queues.set(key, q);
     void this.tryMatch(key);
     return { queued: true, key, size, timeoutMs: QUEUE_TIMEOUT_MS };
@@ -135,6 +148,35 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     }
     if (group.length < size) return false;
 
+    await this.startGroup(key, group, []);
+    return true;
+  }
+
+  /** Free games: a player who has waited long enough gets computer opponents for the empty seats. */
+  async fillWithBots(now = Date.now()) {
+    for (const [key, q] of [...this.queues]) {
+      const [, stake, sizeStr] = key.split(':');
+      if (stake !== '0' || !q.some((t) => t.fillAt !== null && t.fillAt <= now)) continue;
+      const size = Number(sizeStr);
+      const humans = q.slice(0, size).map((t) => t.userId);
+      const need = size - humans.length;
+      if (need <= 0) continue; // enough real players: the normal matching handles it
+      const botIds = await this.bots.acquire(need);
+      try {
+        // A real player may have joined or left while the computer accounts were being found.
+        if (!humans.every((id) => this.keyOf.get(id) === key)) continue;
+        await this.startGroup(key, humans, botIds);
+      } finally {
+        this.bots.release(botIds);
+      }
+    }
+  }
+
+  /** Starts a room for a group that was just formed (real players, and in free games possibly computer ones). */
+  private async startGroup(key: string, humans: string[], computers: string[]): Promise<void> {
+    const group = [...humans, ...computers];
+    const [game, stakeStr, sizeStr] = key.split(':');
+    const size = Number(sizeStr);
     // Take them out of the queue before the slow part so nobody is matched twice.
     for (const id of group) this.remove(id, key);
     const { room, dropped } = await this.rooms.createQuickRoom(game as GameType, BigInt(stakeStr), group, size);
@@ -145,11 +187,10 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     } else {
       // Not enough valid players left: put the ones who are still fine back in line.
       const droppedIds = new Set(dropped.map((d) => d.userId));
-      for (const id of group.filter((g) => !droppedIds.has(g))) {
+      for (const id of humans.filter((g) => !droppedIds.has(g))) {
         this.keyOf.set(id, key);
-        this.queues.set(key, [...(this.queues.get(key) ?? []), { userId: id, at: Date.now() }]);
+        this.queues.set(key, [...(this.queues.get(key) ?? []), { userId: id, at: Date.now(), fillAt: stakeStr === '0' && botSettings().enabled ? Date.now() + botSettings().fillMin : null }]);
       }
     }
-    return true;
   }
 }

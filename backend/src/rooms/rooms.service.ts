@@ -8,7 +8,7 @@ import { PresenceService } from '../realtime/presence.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { InsufficientCoinsException } from '../wallet/wallet.service';
 import { GameRegistry } from '../games/game-registry';
-import { GAME_CONFIG, INVITE_TTL_MS, ROOM_CODE_LENGTH, ROOM_IDLE_MS, STAKE_OPTIONS } from './game-config';
+import { GAME_CONFIG, INVITE_TTL_MS, isSolo, ROOM_CODE_LENGTH, ROOM_IDLE_MS, STAKE_OPTIONS } from './game-config';
 
 export type Tx = Prisma.TransactionClient;
 export type AfterCommit = () => void | Promise<void>;
@@ -89,6 +89,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   async create(userId: string, dto: { game: GameType; stake: number; maxPlayers?: number }) {
     const cfg = GAME_CONFIG[dto.game];
     if (!this.games.isAvailable(dto.game)) throw appError(400, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
+    if (isSolo(dto.game)) throw appError(400, 'SOLO_GAME', 'This game is played alone: start it from the game screen');
     if (!STAKE_OPTIONS.includes(dto.stake)) throw appError(400, 'BAD_STAKE', `Stake must be one of ${STAKE_OPTIONS.join(', ')}`);
     const maxPlayers = dto.maxPlayers ?? cfg.max;
     if (maxPlayers < cfg.min || maxPlayers > cfg.max) throw appError(400, 'BAD_PLAYER_COUNT', `${dto.game} supports ${cfg.min} to ${cfg.max} players`);
@@ -287,6 +288,17 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     if (!updated) return null;
     this.broadcast(updated);
     return this.view(updated);
+  }
+
+  /** Closes a room whose game ended against computer opponents. Everyone goes back to the home screen. */
+  async dissolve(roomId: string) {
+    const room = await this.prisma.$transaction(async (tx) => {
+      await this.lock(tx, roomId);
+      const r = await tx.room.findUnique({ where: { id: roomId }, include: roomInclude });
+      if (r) await tx.room.delete({ where: { id: roomId } });
+      return r;
+    });
+    if (room) for (const m of room.members) this.realtime.leaveRoomChannel(m.userId, roomId);
   }
 
   // ---- invites ----

@@ -246,7 +246,7 @@ function Matches() {
         <tbody>{items.map((m) => (
           <tr key={m.id}>
             <td className="dim">{when(m.createdAt)}</td><td>{m.game}</td>
-            <td>{m.players.map((p: any) => <span key={p.userId} style={{ marginRight: 10 }}>{p.username}{p.result ? <> <span className={`pill ${p.result}`}>{p.result}</span></> : null}</span>)}</td>
+            <td>{m.players.map((p: any) => <span key={p.userId} style={{ marginRight: 10 }}>{p.username}{p.computer ? ' 🤖' : ''}{p.result ? <> <span className={`pill ${p.result}`}>{p.result}</span></> : null}</span>)}</td>
             <td>{n(m.stake)}</td><td>{n(m.houseFee)}</td><td>{m.status === 'ACTIVE' ? 'Playing' : m.endReason}</td>
           </tr>))}</tbody>
       </table>

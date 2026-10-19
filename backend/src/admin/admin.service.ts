@@ -27,9 +27,9 @@ export class AdminService {
       return num(r[0].s);
     };
     const [users, newToday, byStatus, wallets, active, matchesToday, matchesAll, purchasesToday, purchasesAll, feeToday, feeAll, adsToday, dailyToday, playersToday] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.user.count({ where: { createdAt: { gte: since } } }),
-      this.prisma.user.groupBy({ by: ['status'], _count: true }),
+      this.prisma.user.count({ where: { isBot: false } }),
+      this.prisma.user.count({ where: { isBot: false, createdAt: { gte: since } } }),
+      this.prisma.user.groupBy({ by: ['status'], where: { isBot: false }, _count: true }),
       this.prisma.wallet.aggregate({ _sum: { balance: true } }),
       this.prisma.match.count({ where: { status: 'ACTIVE' } }),
       this.prisma.match.count({ where: { startedAt: { gte: since } } }),
@@ -37,7 +37,7 @@ export class AdminService {
       this.prisma.purchase.count({ where: { createdAt: { gte: since } } }),
       this.prisma.purchase.count(),
       sum('HOUSE_FEE', since), sum('HOUSE_FEE'), sum('AD_REWARD', since), sum('DAILY_BONUS', since),
-      this.prisma.matchPlayer.findMany({ where: { match: { startedAt: { gte: since } } }, distinct: ['userId'], select: { userId: true } }),
+      this.prisma.matchPlayer.findMany({ where: { match: { startedAt: { gte: since } }, user: { isBot: false } }, distinct: ['userId'], select: { userId: true } }),
     ]);
     const coinsSold = await this.prisma.purchase.aggregate({ _sum: { coins: true } });
     const coinsSoldToday = await this.prisma.purchase.aggregate({ _sum: { coins: true }, where: { createdAt: { gte: since } } });
@@ -52,7 +52,7 @@ export class AdminService {
   async users(opts: { q?: string; limit: number; cursor?: string }) {
     const q = opts.q?.trim().toLowerCase();
     const rows = await this.prisma.user.findMany({
-      where: q ? { OR: [{ usernameLower: { contains: q } }, { email: { contains: q } }, { friendCode: { equals: q.toUpperCase() } }] } : undefined,
+      where: { isBot: false, ...(q ? { OR: [{ usernameLower: { contains: q } }, { email: { contains: q } }, { friendCode: { equals: q.toUpperCase() } }] } : {}) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: opts.limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
       include: { wallet: { select: { balance: true } } },
@@ -117,13 +117,13 @@ export class AdminService {
       where: opts.status ? { status: opts.status } : undefined,
       orderBy: [{ startedAt: 'desc' }, { id: 'desc' }], take: opts.limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
-      include: { players: { include: { user: { select: { username: true } } } } },
+      include: { players: { include: { user: { select: { username: true, isBot: true } } } } },
     });
     const page = rows.slice(0, opts.limit);
     return {
       matches: page.map((m) => ({
         id: m.id, game: m.game, status: m.status, endReason: m.endReason, stake: num(m.stake), pot: num(m.pot), houseFee: num(m.houseFee), createdAt: m.startedAt, finishedAt: m.finishedAt,
-        players: m.players.map((p) => ({ userId: p.userId, username: p.user.username, result: p.result, payout: num(p.payout) })),
+        players: m.players.map((p) => ({ userId: p.userId, username: p.user.username, computer: p.user.isBot, result: p.result, payout: num(p.payout) })),
       })),
       nextCursor: rows.length > opts.limit ? page[page.length - 1].id : null,
     };

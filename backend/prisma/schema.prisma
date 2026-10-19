@@ -97,6 +97,8 @@ model User {
   ageConfirmedAt  DateTime
   termsAcceptedAt DateTime
   role            UserRole   @default(USER)
+  // Computer-controlled opponent used to fill free games. Never shown in search, never logs in.
+  isBot           Boolean    @default(false)
   status          UserStatus @default(ACTIVE)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt

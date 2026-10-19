@@ -47,7 +47,7 @@ export class FriendsService {
       : await this.prisma.user.findUnique({ where: { usernameLower: t.username!.trim().toLowerCase() } });
     if (target?.id === meId) throw appError(400, 'SELF', 'You cannot add yourself');
     // Same answer for "does not exist", "inactive" and "blocked you", so blocking can't be detected.
-    if (!target || target.status !== 'ACTIVE' || (await this.isBlocked(meId, target.id))) throw appError(404, 'PLAYER_NOT_FOUND', 'No player found');
+    if (!target || target.isBot || target.status !== 'ACTIVE' || (await this.isBlocked(meId, target.id))) throw appError(404, 'PLAYER_NOT_FOUND', 'No player found');
     return target;
   }
 
@@ -154,7 +154,7 @@ export class FriendsService {
     });
     const hidden = new Set<string>([meId, ...blocks.flatMap((b) => [b.blockerId, b.blockedId])]);
     const rows = await this.prisma.user.findMany({
-      where: { usernameLower: { startsWith: needle }, status: 'ACTIVE', id: { notIn: [...hidden] } },
+      where: { usernameLower: { startsWith: needle }, status: 'ACTIVE', isBot: false, id: { notIn: [...hidden] } },
       select: SUMMARY, orderBy: { usernameLower: 'asc' }, take: 10,
     });
     return rows;

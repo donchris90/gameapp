@@ -1,15 +1,15 @@
 import { GameType } from '../generated/prisma/client';
 
-/**
- * Player counts per game. Water Sort is a solo puzzle most of the time (no room
- * needed); a room makes it a race where everyone gets the same level.
- */
+/** Player counts per game. Water Sort is a solo puzzle: one player, no room, no stake. */
 export const GAME_CONFIG: Record<GameType, { min: number; max: number }> = {
   TICTACTOE: { min: 2, max: 2 },
   AYO: { min: 2, max: 2 },
   LUDO: { min: 2, max: 4 },
-  WATER_SORT: { min: 2, max: 4 },
+  WATER_SORT: { min: 1, max: 1 },
 };
+
+/** Games played alone. They have no rooms, no quick match and no stakes. */
+export const isSolo = (game: GameType) => GAME_CONFIG[game].max === 1;
 
 /** Allowed stakes per player. 0 is a friendly game with no coins at risk. */
 export const STAKE_OPTIONS: readonly number[] = [0, 50, 100, 250, 500, 1000, 5000];

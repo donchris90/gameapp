@@ -1,5 +1,6 @@
 import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsInt, IsObject, IsOptional, Min } from 'class-validator';
+import { IsEnum, IsInt, IsObject, IsOptional, Min } from 'class-validator';
+import { GameType } from '../generated/prisma/client';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MatchesService } from './matches.service';
@@ -10,10 +11,18 @@ class MoveDto {
   @IsObject() move!: Record<string, unknown>;
 }
 
+class SoloDto {
+  @IsEnum(GameType) game!: GameType;
+}
+
 @Controller('matches')
 @UseGuards(JwtAuthGuard)
 export class MatchesController {
   constructor(private readonly matches: MatchesService) {}
+
+  /** Starts a game played alone (Water Sort). */
+  @Post('solo') @HttpCode(200)
+  solo(@CurrentUser() u: AuthUser, @Body() dto: SoloDto) { return this.matches.startSolo(u.id, dto.game); }
 
   @Get('current')
   current(@CurrentUser() u: AuthUser) { return this.matches.current(u.id); }

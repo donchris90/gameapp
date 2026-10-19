@@ -1,7 +1,9 @@
 import { GameType } from '../generated/prisma/client';
 
-/** How a match ends. Water Sort and Ludo also fit: the first to finish wins. */
-export type Outcome = { type: 'WIN'; winnerSeat: number } | { type: 'DRAW' };
+/**
+ * How a match ends. `NONE` is for solo games where the player did not finish: nobody wins and nobody is paid.
+ */
+export type Outcome = { type: 'WIN'; winnerSeat: number } | { type: 'DRAW' } | { type: 'NONE' };
 
 export interface MoveResult<S> {
   state: S;

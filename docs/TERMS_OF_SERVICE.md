@@ -19,6 +19,8 @@ You must be 18 or older and legally able to agree to these Terms. One account pe
 - Cosmetic items (frames, titles, board themes) are decoration only, are bought with coins, and are not refundable.
 - Games run on our servers and the server's record of a game is final.
 
+Some opponents in free games (games with no coins at stake) may be controlled by the app when no other player is available. Games with coins at stake are only ever played against other real players.
+
 ## 4. Fair play
 No cheating, bots, scripts, exploiting bugs, collusion, multiple accounts, abuse of the ad or bonus system, or harassment, hate, threats, sexual content or impersonation in names or messages. We may warn, suspend or ban accounts that break these rules; banned accounts may lose their coins.
 

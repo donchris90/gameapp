@@ -45,6 +45,29 @@ export default function PlayScreen() {
   };
 
   if (!info) return null;
+  const solo = cfg ? cfg.maxPlayers === 1 : game === 'WATER_SORT';
+  if (solo) {
+    const startSolo = async () => {
+      setBusy(true);
+      try { const m = await api<{ id: string }>('/matches/solo', { method: 'POST', body: { game } }); router.replace(`/match/${m.id}`); }
+      catch (e) { Alert.alert(info.title, explain(e)); } finally { setBusy(false); }
+    };
+    return (
+      <Screen>
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+          <Pressable onPress={() => router.back()} style={{ paddingVertical: 12 }}><Text style={{ color: colors.accent, fontWeight: '700' }}>‹ Back</Text></Pressable>
+          <Text style={{ fontSize: 44 }}>{info.emoji}</Text>
+          <H1>{info.title}</H1>
+          <Dim style={{ marginBottom: 10 }}>A puzzle just for you. Sort the colours before the clock runs out.</Dim>
+          <Card style={{ marginBottom: 16, gap: 6 }}>
+            <Body style={{ fontWeight: '800' }}>How to play</Body>
+            {HOW_TO_PLAY[game].map((t, i) => <Dim key={i}>{i + 1}. {t}</Dim>)}
+          </Card>
+          <Button title="Start puzzle" onPress={startSolo} busy={busy} />
+        </ScrollView>
+      </Screen>
+    );
+  }
   const stakes = meta?.stakes ?? [0, 50, 100, 250, 500, 1000, 5000];
   const pot = stake * (ranged ? size : 2);
   const fee = Math.floor((pot * (meta?.houseFeePercent ?? 10)) / 100);

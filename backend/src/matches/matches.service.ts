@@ -1,17 +1,18 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomInt, randomUUID } from 'crypto';
 import { AppConfig, CONFIG } from '../config/config';
-import { Prisma } from '../generated/prisma/client';
+import { GameType, Prisma } from '../generated/prisma/client';
 import { appError } from '../common/errors';
 import { EngineContext, IllegalMove, Outcome } from '../games/engine';
 import { GameRegistry } from '../games/game-registry';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { isSolo } from '../rooms/game-config';
 import { AfterCommit, RoomFull, RoomsService, Tx } from '../rooms/rooms.service';
 import { WalletService } from '../wallet/wallet.service';
 
 const matchInclude = {
-  players: { include: { user: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true } } }, orderBy: { seat: 'asc' as const } },
+  players: { include: { user: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true, isBot: true } } }, orderBy: { seat: 'asc' as const } },
 } satisfies Prisma.MatchInclude;
 type MatchFull = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
 
@@ -28,6 +29,8 @@ const refOf = (matchId: string) => `match:${matchId}`;
 export class MatchesService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('Matches');
   private timer?: NodeJS.Timeout;
+  /** Set by the bots module: told about every live match so a computer opponent can take its turn. */
+  private botDriver?: (m: MatchFull) => void;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -49,6 +52,10 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  setBotDriver(fn: (m: MatchFull) => void) {
+    this.botDriver = fn;
   }
 
   // ---- views ----
@@ -73,7 +80,8 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
 
   private emit(m: MatchFull, event: string) {
     const v = this.view(m);
-    for (const p of m.players) this.realtime.emitToUser(p.userId, event, v);
+    for (const p of m.players) if (!p.user.isBot) this.realtime.emitToUser(p.userId, event, v);
+    if (event !== 'match:ended') this.botDriver?.(m);
   }
 
   async get(userId: string, matchId: string) {
@@ -88,6 +96,26 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     });
     if (!m) throw appError(404, 'NO_ACTIVE_MATCH', 'You are not in a match');
     return this.view(m);
+  }
+
+  /**
+   * Starts a solo game (Water Sort): no room, no stake, nobody to wait for. A player can only have one live match.
+   */
+  async startSolo(userId: string, game: GameType) {
+    const engine = this.games.get(game);
+    if (!engine || !isSolo(game)) throw appError(400, 'NOT_SOLO', 'That game is not played alone');
+    const busy = await this.prisma.matchPlayer.count({ where: { userId, leftAt: null, match: { status: 'ACTIVE' } } });
+    if (busy > 0) throw appError(409, 'ALREADY_IN_MATCH', 'Finish your current game first');
+    const init = engine.init(1, ctx);
+    const id = randomUUID();
+    await this.prisma.match.create({
+      data: {
+        id, game, stake: 0n, pot: 0n, state: init.state as Prisma.InputJsonValue, turnSeat: null,
+        turnDeadline: new Date(Date.now() + (engine.matchTimeoutMs ?? 5 * 60_000)),
+        players: { create: [{ userId, seat: 0, stake: 0n }] },
+      },
+    });
+    return this.get(userId, id);
   }
 
   async history(userId: string, opts: { limit: number; cursor?: string }) {
@@ -272,6 +300,9 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     const remaining = m.players.filter((p) => p.id !== player.id && !p.leftAt);
     const updated = { ...m, players: m.players.map((p) => (p.id === player.id ? { ...p, leftAt: new Date() } : p)) };
 
+    if (m.players.length === 1) return this.settle(tx, updated, { type: 'NONE' }, reason, m.state); // solo: giving up ends it with no winner
+    // Only computer players left: nobody is watching, so end it instead of letting them play each other.
+    if (remaining.length >= 2 && remaining.every((p) => p.user.isBot)) return this.settle(tx, updated, { type: 'NONE' }, reason, m.state);
     if (remaining.length === 1) return this.settle(tx, updated, { type: 'WIN', winnerSeat: remaining[0].seat }, reason, m.state);
     if (remaining.length === 0) return this.settle(tx, updated, { type: 'DRAW' }, reason, m.state);
 
@@ -305,6 +336,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       }
       if (fee > 0n) await this.wallet.recordPlatformEntry({ type: 'HOUSE_FEE', amount: fee, reference, idempotencyKey: `fee:${m.id}` }, tx);
       for (const p of m.players) results.set(p.userId, p.userId === winner.userId ? { result: 'WON', payout } : { result: 'LOST', payout: 0n });
+    } else if (outcome.type === 'NONE') {
+      for (const p of ordered) {
+        if (p.stake > 0n) await this.wallet.credit({ userId: p.userId, amount: p.stake, type: 'GAME_REFUND', reference, idempotencyKey: `refund:${m.id}:${p.userId}` }, tx);
+        results.set(p.userId, { result: 'LOST', payout: p.stake });
+      }
     } else {
       for (const p of ordered) {
         if (p.stake > 0n) {
@@ -328,7 +364,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
 
     return async () => {
       this.emit(await this.prisma.match.findUniqueOrThrow({ where: { id: m.id }, include: matchInclude }), 'match:ended');
-      if (m.roomId) await this.rooms.finishGame(m.roomId); // back to the lobby for a rematch
+      if (m.roomId) {
+        // A game against computer opponents closes its room: rematching means searching again.
+        if (m.players.some((p) => p.user.isBot)) await this.rooms.dissolve(m.roomId);
+        else await this.rooms.finishGame(m.roomId); // back to the lobby for a rematch
+      }
     };
   }
 }

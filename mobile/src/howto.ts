@@ -7,9 +7,9 @@ export const HOW_TO_PLAY: Record<GameType, string[]> = {
     'A full board with no line is a draw and everyone gets their stake back.',
   ],
   WATER_SORT: [
-    'Both players get the exact same puzzle at the same time.',
+    'Every puzzle is new and can always be solved.',
     'Tap a tube, then tap another to pour. You can only pour onto the same colour or an empty tube, and only if there is room.',
-    'First to sort every tube into one colour wins. If time runs out, whoever sorted more tubes wins.',
+    'Sort every tube into a single colour before the 5 minutes run out. It is free and no coins are involved.',
   ],
   AYO: [
     'Each side has six pits. Tap one of your pits to pick up its seeds and sow them one by one, counter-clockwise.',

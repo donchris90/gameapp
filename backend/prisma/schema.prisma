@@ -114,6 +114,8 @@ model User {
   purchases        Purchase[]
   dailyClaims      DailyClaim[]
   adViews          AdView[]
+  auditsMade       AuditLog[]   @relation("AuditAdmin")
+  auditsAbout      AuditLog[]   @relation("AuditTarget")
 }
 
 // One coin balance per user. Balance only ever changes through
@@ -351,4 +353,20 @@ model AdView {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, day])
+}
+
+// Everything an admin does to a player is written here, and cannot be edited from the app.
+model AuditLog {
+  id           String   @id @default(uuid())
+  adminId      String
+  action       String
+  targetUserId String?
+  data         Json?
+  createdAt    DateTime @default(now())
+
+  admin  User  @relation("AuditAdmin", fields: [adminId], references: [id])
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id])
+
+  @@index([createdAt])
+  @@index([targetUserId])
 }

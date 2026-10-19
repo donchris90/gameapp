@@ -12,7 +12,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "make-admin": "ts-node scripts/make-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

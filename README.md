@@ -127,6 +127,10 @@ Honest note: the Google, Apple and AdMob checks are tested here against simulate
 
 The Expo app lives in `mobile/` (see `mobile/README.md`). Sign up and log in, free coins, quick match, friends, rooms and chat, and boards for all four games. The Coins tab (store purchases) is in; it needs the store products and credentials described in `mobile/README.md`.
 
+## Admin website
+
+`admin/` is a small React site for running the game (dashboard, players, coin adjustments, suspend/ban, games, purchases, audit log). See `admin/README.md`. Backend side: `/admin/*` endpoints, admin role only, every action recorded in the audit log. Make yourself admin with `npm run make-admin -- you@example.com` in `backend/`, and set `CORS_ORIGINS` to the admin site's address.
+
 ## Run it
 
 ```bash

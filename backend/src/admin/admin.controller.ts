@@ -1,0 +1,49 @@
+import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { IsEnum, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UserStatus } from '../generated/prisma/client';
+import { AdminGuard } from './admin.guard';
+import { AdminService } from './admin.service';
+
+class StatusDto {
+  @IsEnum(UserStatus) status!: UserStatus;
+  @IsString() @MinLength(3) @MaxLength(200) reason!: string;
+}
+class AdjustDto {
+  @IsInt() @Min(-10_000_000) @Max(10_000_000) amount!: number;
+  @IsString() @MinLength(3) @MaxLength(200) reason!: string;
+}
+const lim = (n: number) => Math.min(Math.max(n, 1), 100);
+
+@Controller('admin')
+@UseGuards(JwtAuthGuard, AdminGuard)
+export class AdminController {
+  constructor(private readonly admin: AdminService) {}
+
+  @Get('stats') stats() { return this.admin.stats(); }
+
+  @Get('users')
+  users(@Query('q') q?: string, @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit = 25, @Query('cursor') cursor?: string) {
+    return this.admin.users({ q, limit: lim(limit), cursor });
+  }
+
+  @Get('users/:id') user(@Param('id', ParseUUIDPipe) id: string) { return this.admin.user(id); }
+
+  @Post('users/:id/status') @HttpCode(200)
+  status(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StatusDto) { return this.admin.setStatus(a.id, id, dto.status, dto.reason); }
+
+  @Post('users/:id/adjust') @HttpCode(200)
+  adjust(@CurrentUser() a: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdjustDto) { return this.admin.adjust(a.id, id, dto.amount, dto.reason); }
+
+  @Get('matches')
+  matches(@Query('status') status?: string, @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit = 25, @Query('cursor') cursor?: string) {
+    return this.admin.matches({ status: status === 'ACTIVE' || status === 'FINISHED' ? status : undefined, limit: lim(limit), cursor });
+  }
+
+  @Get('purchases')
+  purchases(@Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit = 25, @Query('cursor') cursor?: string) { return this.admin.purchases({ limit: lim(limit), cursor }); }
+
+  @Get('audit')
+  audit(@Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit = 25, @Query('cursor') cursor?: string) { return this.admin.audit({ limit: lim(limit), cursor }); }
+}

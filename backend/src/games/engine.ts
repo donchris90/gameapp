@@ -31,6 +31,10 @@ export interface GameEngine<S = unknown> {
   readonly game: GameType;
   /** Override the default time allowed per move. */
   readonly turnTimeoutMs?: number;
+  /** Everyone plays at once (Water Sort race): no turns, no version check, one clock for the whole match. */
+  readonly simultaneous?: boolean;
+  /** Total time for a simultaneous match. */
+  readonly matchTimeoutMs?: number;
   init(playerCount: number, ctx: EngineContext): { state: S; turnSeat: number | null };
   /** Throws IllegalMove for a bad move. Must not mutate `state`. */
   applyMove(state: S, seat: number, move: unknown, ctx: EngineContext): MoveResult<S>;
@@ -40,6 +44,8 @@ export interface GameEngine<S = unknown> {
    * Not needed for two player games: the opponent simply wins.
    */
   onSeatLeft?(state: S, seat: number, activeSeats: number[]): MoveResult<S>;
+  /** Simultaneous games only: the clock ran out with no winner. Decide by progress. */
+  onDeadline?(state: S, activeSeats: number[]): { state: S; outcome: Outcome };
   /** What clients are allowed to see. Hide anything secret here. */
   publicState(state: S): unknown;
 }

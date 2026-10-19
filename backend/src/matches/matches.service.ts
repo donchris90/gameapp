@@ -125,7 +125,9 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       data: {
         id, roomId: room.id, game: room.game, stake, pot: stake * BigInt(members.length),
         state: init.state as Prisma.InputJsonValue, turnSeat: init.turnSeat,
-        turnDeadline: init.turnSeat === null ? null : new Date(Date.now() + timeout),
+        turnDeadline: engine.simultaneous
+          ? new Date(Date.now() + (engine.matchTimeoutMs ?? 5 * 60_000))
+          : init.turnSeat === null ? null : new Date(Date.now() + timeout),
         players: { create: members.map((m) => ({ userId: m.userId, seat: m.seat, stake })) },
       },
     });
@@ -143,18 +145,20 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
 
   // ---- moves ----
 
-  async move(userId: string, matchId: string, dto: { version: number; move: unknown }) {
+  async move(userId: string, matchId: string, dto: { version?: number; move: unknown }) {
     const after = await this.prisma.$transaction(async (tx) => {
       const m = await this.loadLocked(tx, matchId);
       const player = m.players.find((p) => p.userId === userId);
       if (!player) throw appError(404, 'MATCH_NOT_FOUND', 'Match not found');
       if (m.status !== 'ACTIVE') throw appError(409, 'MATCH_OVER', 'This match has ended');
       if (player.leftAt) throw appError(409, 'MATCH_OVER', 'You have left this match');
-      if (dto.version !== m.version) throw appError(409, 'STALE_STATE', 'The game changed, refresh and try again', { version: m.version });
-      if (m.turnSeat !== player.seat) throw appError(409, 'NOT_YOUR_TURN', 'It is not your turn');
-
       const engine = this.games.get(m.game);
       if (!engine) throw appError(409, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
+      if (!engine.simultaneous) {
+        if (typeof dto.version !== 'number') throw appError(400, 'VERSION_REQUIRED', 'Send the match version with every move');
+        if (dto.version !== m.version) throw appError(409, 'STALE_STATE', 'The game changed, refresh and try again', { version: m.version });
+        if (m.turnSeat !== player.seat) throw appError(409, 'NOT_YOUR_TURN', 'It is not your turn');
+      }
       let res;
       try {
         res = engine.applyMove(m.state, player.seat, dto.move, ctx);
@@ -163,7 +167,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         throw e;
       }
       if (res.outcome) return this.settle(tx, m, res.outcome, res.outcome.type === 'DRAW' ? 'DRAW' : 'NORMAL', res.state);
-      return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs);
+      return this.advance(tx, m, res.state, res.turnSeat, engine.turnTimeoutMs, engine.simultaneous);
     });
     await this.run(after);
     return this.get(userId, matchId);
@@ -190,7 +194,15 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     for (const { id } of due) {
       const after = await this.prisma.$transaction(async (tx) => {
         const m = await this.loadLocked(tx, id);
-        if (m.status !== 'ACTIVE' || !m.turnDeadline || m.turnDeadline.getTime() >= now || m.turnSeat === null) return undefined;
+        if (m.status !== 'ACTIVE' || !m.turnDeadline || m.turnDeadline.getTime() >= now) return undefined;
+        const engine = this.games.get(m.game);
+        if (engine?.simultaneous) {
+          // Race games have one clock for everyone: decide by progress.
+          const seats = m.players.filter((p) => !p.leftAt).map((p) => p.seat);
+          const r = engine.onDeadline?.(m.state, seats);
+          return r ? this.settle(tx, m, r.outcome, 'TIMEOUT', r.state) : undefined;
+        }
+        if (m.turnSeat === null) return undefined;
         const late = m.players.find((p) => p.seat === m.turnSeat);
         return late ? this.eliminate(tx, m, late.userId, 'TIMEOUT') : undefined;
       });
@@ -231,13 +243,13 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async advance(tx: Tx, m: MatchFull, state: unknown, turnSeat: number | null, timeoutMs?: number): Promise<AfterCommit> {
+  private async advance(tx: Tx, m: MatchFull, state: unknown, turnSeat: number | null, timeoutMs?: number, keepDeadline = false): Promise<AfterCommit> {
     const wait = timeoutMs ?? this.config.turnTimeoutMs;
     await tx.match.update({
       where: { id: m.id },
       data: {
         state: state as Prisma.InputJsonValue, turnSeat, version: { increment: 1 },
-        turnDeadline: turnSeat === null ? null : new Date(Date.now() + wait),
+        ...(keepDeadline ? {} : { turnDeadline: turnSeat === null ? null : new Date(Date.now() + wait) }),
       },
     });
     return async () => this.emit(await this.prisma.match.findUniqueOrThrow({ where: { id: m.id }, include: matchInclude }), 'match:state');
@@ -267,7 +279,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     const engine = this.games.get(m.game);
     const r = engine?.onSeatLeft?.(m.state, player.seat, remaining.map((p) => p.seat));
     if (r?.outcome) return this.settle(tx, updated, r.outcome, reason, r.state);
-    return this.advance(tx, updated, r?.state ?? m.state, r ? r.turnSeat : m.turnSeat, engine?.turnTimeoutMs);
+    return this.advance(tx, updated, r?.state ?? m.state, r ? r.turnSeat : m.turnSeat, engine?.turnTimeoutMs, engine?.simultaneous);
   }
 
   /**

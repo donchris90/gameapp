@@ -32,7 +32,7 @@ export async function createApp(opts: { fakeEngines?: boolean } = {}): Promise<I
   await app.init();
   if (opts.fakeEngines !== false) {
     const registry = app.get(GameRegistry);
-    for (const g of ['AYO', 'LUDO', 'WATER_SORT'] as const) registry.register(fakeEngine(g));
+    for (const g of ['AYO', 'LUDO'] as const) registry.register(fakeEngine(g));
   }
   return app;
 }

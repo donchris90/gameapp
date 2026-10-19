@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GameType } from '../generated/prisma/client';
 import { GameEngine } from './engine';
 import { TicTacToeEngine } from './tictactoe.engine';
+import { WaterSortEngine } from './watersort.engine';
 
 /** The games that can actually be played right now. Others are added as their engines land. */
 @Injectable()
@@ -10,6 +11,7 @@ export class GameRegistry {
 
   constructor() {
     this.register(new TicTacToeEngine());
+    this.register(new WaterSortEngine());
   }
 
   register(engine: GameEngine<any>) {

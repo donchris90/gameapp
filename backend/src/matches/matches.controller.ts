@@ -1,12 +1,12 @@
 import { Body, Controller, DefaultValuePipe, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsInt, IsObject, Min } from 'class-validator';
+import { IsInt, IsObject, IsOptional, Min } from 'class-validator';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MatchesService } from './matches.service';
 
 class MoveDto {
   /** The version of the match the player was looking at. */
-  @IsInt() @Min(1) version!: number;
+  @IsOptional() @IsInt() @Min(1) version?: number;
   @IsObject() move!: Record<string, unknown>;
 }
 

@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { api } from './api';
@@ -5,6 +6,8 @@ import { api } from './api';
 // Google's public test ad units. Replace with your own through EXPO_PUBLIC_ADMOB_REWARDED_* before release.
 const TEST_UNIT = Platform.select({ ios: 'ca-app-pub-3940256099942544/1712485313', default: 'ca-app-pub-3940256099942544/5224354917' })!;
 const REAL_UNIT = Platform.select({ ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS, default: process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID });
+
+const inExpoGo = Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
 
 export type AdResult = 'watched' | 'closed' | 'unavailable';
 
@@ -14,7 +17,7 @@ export type AdResult = 'watched' | 'closed' | 'unavailable';
  */
 export async function showRewardedAd(opts: { userId: string; nonce: string }): Promise<AdResult> {
   let ads: any;
-  try { ads = require('react-native-google-mobile-ads'); } catch { return 'unavailable'; }
+  if (inExpoGo) return 'unavailable'; try { ads = require('react-native-google-mobile-ads'); } catch { return 'unavailable'; }
   if (!ads?.RewardedAd) return 'unavailable';
   const unit = __DEV__ ? TEST_UNIT : REAL_UNIT || TEST_UNIT;
   const ad = ads.RewardedAd.createForAdRequest(unit, { serverSideVerificationOptions: { userId: opts.userId, customData: opts.nonce } });
@@ -43,6 +46,7 @@ let loaded: { ad: any; ads: any; ready: boolean } | null = null;
 export function preloadInterstitial() {
   if (loaded) return;
   let ads: any;
+  if (inExpoGo) return;
   try { ads = require('react-native-google-mobile-ads'); } catch { return; }
   if (!ads?.InterstitialAd) return;
   try {

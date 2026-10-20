@@ -142,7 +142,7 @@ function createCar(scene: THREE.Scene, paint: number, style?: CarStyle) {
 }
 
 /** Procedural African tour scene. Each destination swaps its own biome, landmarks, road dressing and skyline. */
-export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions = [], bestTimes = {}, championshipPoints = {}, onExit, onWorkshop, onRegionComplete }: { carId: string; paint?: number; style?: CarStyle; completedRegions?: string[]; bestTimes?: Record<string, number>; championshipPoints?: Record<string, number>; onExit: () => void; onWorkshop: () => void; onRegionComplete: (regionId: AfricaRegionId, reward: number, elapsedSeconds: number, points: number) => void }) {
+export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions = [], bestTimes = {}, championshipPoints = {}, quality = 2, onExit, onWorkshop, onRegionComplete }: { carId: string; paint?: number; style?: CarStyle; completedRegions?: string[]; bestTimes?: Record<string, number>; championshipPoints?: Record<string, number>; quality?: number; onExit: () => void; onWorkshop: () => void; onRegionComplete: (regionId: AfricaRegionId, reward: number, elapsedSeconds: number, points: number) => void }) {
   const [regionId, setRegionId] = useState<AfricaRegionId>(() => (AFRICA_REGIONS.find((r) => !completedRegions.includes(r.id)) ?? AFRICA_REGIONS[0]).id);
   const completionSent = useRef(0);
   const runToken = useRef(0);
@@ -177,8 +177,8 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
     renderer.setPixelRatio(1); renderer.setSize(w, h, false); renderer.setClearColor(region.sky, 1); renderer.shadowMap.enabled = false; rendererRef.current = renderer;
-    const scene = new THREE.Scene(); sceneRef.current = scene; scene.background = new THREE.Color(region.sky); scene.fog = new THREE.Fog(region.sky, 125, 340);
-    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 650);
+    const scene = new THREE.Scene(); sceneRef.current = scene; scene.background = new THREE.Color(region.sky); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(region.sky, 125 * qf, 340 * qf);
+    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 650 * qf);
     scene.add(new THREE.HemisphereLight(0xe6f3ff, region.ground, 2.0));
     const sun = new THREE.DirectionalLight(0xffe2bd, 2.15); sun.position.set(-35, 70, 25); scene.add(sun);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(650, 650), new THREE.MeshStandardMaterial({ color: region.ground, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.12; scene.add(ground);
@@ -283,7 +283,7 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
     rival.position.set(3.7, 0, 9); scene.add(rival);
     const rivalMotion = rivalMotionRef.current; rivalMotion.x = 3.7; rivalMotion.z = 9; rivalMotion.segment = 0; rivalMotion.progress = 0; rivalMotion.elapsed = 0;
     const token = ++modelToken.current;
-    void loadCarModel(carId).then((model) => {
+    void (quality === 0 ? loadCarModel(`${carId}_lo`).then((m) => m ?? loadCarModel(carId)) : loadCarModel(carId)).then((model) => {
       if (!model || !alive.current || token !== modelToken.current || !car.parent) return;
       const imported = new THREE.Group(); const cache = new Map<any, THREE.Material>();
       for (const [name, part] of Object.entries(model.parts)) {

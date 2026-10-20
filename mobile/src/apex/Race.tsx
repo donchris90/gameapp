@@ -12,7 +12,7 @@ import { randomName } from './names';
 import { loadCarModel, MODELS } from './model';
 import { CarStyle } from './style';
 import { RIVAL_MODELS, lookFor } from './cars';
-import { ApexScene, CameraMode, Frame } from './scene';
+import { ApexScene, CameraMode, Frame, Theme } from './scene';
 import { MiniMap } from './MiniMap';
 import { trackPath, TrackPath } from './trackpath';
 import { carStats, DT, driftAt, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
@@ -32,7 +32,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, autoGas = true, quality = 2, onDone, onFlip }: { autoGas?: boolean; quality?: number; level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, autoGas = true, quality = 2, skin, onDone, onFlip }: { skin?: Partial<Theme>; autoGas?: boolean; quality?: number; level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -117,7 +117,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     const lowId = `${carId}_lo`;
     if (quality === 0) await loadCarModel(lowId);
     const heroId = quality === 0 && MODELS.byId[lowId] ? lowId : carId;
-    const view = new ApexScene(world, heroId, bodyTier, style?.paint ?? paint, { ...lookFor(upgrades), style });
+    const view = new ApexScene(world, heroId, bodyTier, style?.paint ?? paint, { ...lookFor(upgrades), style }, skin);
     view.setQuality(quality);
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);

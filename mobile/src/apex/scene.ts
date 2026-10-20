@@ -24,7 +24,7 @@ export const PALETTE = [0xd9283c, 0x2563eb, 0xf5c518, 0x22a06b, 0x7c3aed, 0xff7a
 const hash = (n: number) => { let x = (n | 0) + 0x9e3779b9; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35); return ((x ^ (x >>> 16)) >>> 0) / 4294967296; };
 
 // ---- time of day: the level picks the light ----
-interface Theme { sky: number; horizon: number; fog: number; sun: number; sunPower: number; ambient: number; ground: number; night: boolean; lamps: boolean }
+export interface Theme { sky: number; horizon: number; fog: number; sun: number; sunPower: number; ambient: number; ground: number; night: boolean; lamps: boolean }
 const THEMES: Theme[] = [
   { sky: 0x3a8ee6, horizon: 0xbfe4ff, fog: 0xbfe4ff, sun: 0xfff1d6, sunPower: 2.2, ambient: 0xcfe6ff, ground: 0x6f8f4e, night: false, lamps: false }, // day
   { sky: 0x5b3a8c, horizon: 0xffa46b, fog: 0xe58a5e, sun: 0xffb27a, sunPower: 1.7, ambient: 0xffd2b0, ground: 0x7a6a45, night: false, lamps: true }, // sunset
@@ -562,9 +562,9 @@ export class ApexScene {
   private carId = 'hero';
   private look: CarLook = {};
 
-  constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c, look: CarLook = {}) {
+  constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c, look: CarLook = {}, skin?: Partial<Theme>) {
     const info = trackInfo(world.track);
-    this.theme = info ? { ...THEMES[info.theme], ground: info.ground } : themeFor(world.level);
+    this.theme = { ...(info ? { ...THEMES[info.theme], ground: info.ground } : themeFor(world.level)), ...(skin ?? {}) };
     this.carId = car; this.look = look;
     this.buildPath();
     this.build(tier, color);

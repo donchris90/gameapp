@@ -21,8 +21,8 @@ function addBox(scene: THREE.Scene, x: number, y: number, z: number, w: number, 
 }
 
 /** First playable, code-built Lagos district slice. It is a prototype environment, not a finished open world. */
-export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = false, onExit, onWorkshop, onComplete }: {
-  carId: string; paint?: number; style?: CarStyle; rewardClaimed?: boolean; onExit: () => void; onWorkshop: () => void; onComplete: (result: LagosDriveResult) => void;
+export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = false, quality = 2, onExit, onWorkshop, onComplete }: {
+  carId: string; paint?: number; style?: CarStyle; rewardClaimed?: boolean; quality?: number; onExit: () => void; onWorkshop: () => void; onComplete: (result: LagosDriveResult) => void;
 }) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const carModelLoadRef = useRef(0);
@@ -39,8 +39,8 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
     renderer.setPixelRatio(1); renderer.setSize(w, h, false); renderer.setClearColor(0x121b32, 1);
     renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;
-    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8bb5d7); scene.fog = new THREE.Fog(0x8bb5d7, 115, 310);
-    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8bb5d7); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(0x8bb5d7, 115 * qf, 310 * qf);
+    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500 * qf);
     scene.add(new THREE.HemisphereLight(0xdceeff, 0x48513d, 2.0));
     const sun = new THREE.DirectionalLight(0xffe0b0, 2.2); sun.position.set(-35, 70, 20); scene.add(sun);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshStandardMaterial({ color: 0x68784d, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08; scene.add(ground);
@@ -109,7 +109,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
     // Replace the placeholder with the player's actual garage car when its GLB is available.
     // The placeholder stays visible if loading fails, so free drive can still start immediately.
     const loadToken = ++carModelLoadRef.current;
-    void loadCarModel(carId).then((model) => {
+    void (quality === 0 ? loadCarModel(`${carId}_lo`).then((m) => m ?? loadCarModel(carId)) : loadCarModel(carId)).then((model) => {
       if (!model || !alive.current || loadToken !== carModelLoadRef.current || !car.parent) return;
       const imported = new THREE.Group();
       const materialCache = new Map<any, THREE.Material>();

@@ -13,7 +13,8 @@ import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_S
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
-import { AFRICA_STORY, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, storyMissionComplete } from '../src/apex/story';
+import { AFRICA_STORY, africaCampaignDone, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, STORY_SKINS, STORY_TALK, storyMissionComplete } from '../src/apex/story';
+import { EuropeInvitation, StoryScene } from '../src/apex/StoryScene';
 import { LagosDrive } from '../src/apex/LagosDrive';
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { sfx } from '../src/sfx';
@@ -28,13 +29,14 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [notice, setNotice] = useState('');
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
+  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe' } | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
 
@@ -85,13 +87,17 @@ export default function Apex() {
       unlocked: nextUnlocked,
       storyCompleted,
     });
-    if (storyWon) setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}`);
+    if (storyWon) { const talk = STORY_TALK[activeMission!.id]; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}`); setActiveStoryMissionId(null); }
     else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) setNotice(`Mission not complete yet: ${activeMission.objective}`);
     else if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
     setPhase('result');
     sfx(r.rank === 1 ? 'win' : r.rank <= 3 ? 'complete' : 'lose');
     void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); });
   };
+
+  useEffect(() => {
+    if (phase === 'menu' && !storyScene && settings.storyCompleted && !settings.europeInvitationSeen && africaCampaignDone(settings.storyCompleted, settings.africaRegionsCompleted ?? [])) setStoryScene({ kind: 'europe' });
+  }, [phase, storyScene, settings.storyCompleted, settings.africaRegionsCompleted, settings.europeInvitationSeen]);
 
   const startRace = (nextLevel = level) => { setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
   const startStoryMission = (missionId: string) => {
@@ -130,10 +136,15 @@ export default function Apex() {
     <Dim style={{ fontSize: 11 }}>{onCircuit ? 'LAPS' : 'ROUNDS'}</Dim>
     {roundChoices.map((n) => <Pressable key={n} onPress={() => update(onCircuit ? { laps: n } : { roadLaps: n })} style={{ paddingVertical: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: roundsNow === n ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: roundsNow === n ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{n}</Text></Pressable>)}
   </View>;
-  if (phase === 'drive') return <LagosDrive carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); }} />;
-  if (phase === 'africa') return <AfricaScene carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); }} />;
+  if (phase === 'menu' && storyScene) {
+    if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
+    const m = STORY_MISSIONS.find((x) => x.id === storyScene.id); const talk = m ? STORY_TALK[m.id] : undefined;
+    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { setStoryScene(null); startStoryMission(m.id); }} onSkip={() => setStoryScene(null)} />;
+  }
+  if (phase === 'drive') return <LagosDrive quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); }} />;
+  if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); }} />;
 
-  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} skin={activeStoryMissionId ? STORY_SKINS[activeStoryMissionId] : undefined} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -359,7 +370,7 @@ export default function Apex() {
                 <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#145044' : '#1b2a4a' }}><Text style={{ color: '#fff', fontWeight: '900' }}>{complete ? '✓' : String(index + 1).padStart(2, '0')}</Text></View>
                 <View style={{ flex: 1, gap: 3 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text></View>
               </View>
-              {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => startStoryMission(mission.id)} /> : null}
+              {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => (STORY_TALK[mission.id] && mission.level <= settings.unlocked ? setStoryScene({ kind: 'mission', id: mission.id }) : startStoryMission(mission.id))} /> : null}
             </Card>;
           };
           return <>
@@ -398,7 +409,7 @@ export default function Apex() {
               {!lagosProgress.complete ? <Card style={{ gap: 6, borderColor: colors.line }}><Text style={{ color: '#fff', fontWeight: '900' }}>AFRICA TOUR LOCKED</Text><Dim>Finish all five Lagos missions to earn your invitation to the continental tour.</Dim></Card> : null}
               {AFRICA_STORY.map((mission, index) => renderMission(mission, index, lagosProgress.complete))}
               {africaProgress.complete && !africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#b98237', backgroundColor: '#2b2115' }}><Text style={{ color: colors.gold, fontWeight: '900', fontSize: 16 }}>AFRICAN CHAMPIONSHIP WON</Text><Dim>All eleven story races are complete. Finish all ten regional driving challenges above to complete the full Africa milestone.</Dim></Card> : null}
-              {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All eleven African story events and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
+              {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Button title="VIEW EUROPE INVITATION  →" onPress={() => setStoryScene({ kind: 'europe' })} /><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All eleven African story events and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
             </View>
             <Button title="BACK HOME" kind="ghost" onPress={() => setPanel('home')} style={{ marginTop: 14 }} />
           </>;

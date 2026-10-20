@@ -1,4 +1,5 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Alert, View } from 'react-native';
@@ -14,6 +15,8 @@ import { Match } from '../src/types';
 
 function Gate() {
   useEffect(() => { void loadSoundSetting(); }, []);
+  // every screen is upright except the Apex Run race, which turns the phone sideways itself
+  useEffect(() => { void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined); }, []);
   const { ready, user, refreshCoins } = useSession();
   const segments = useSegments();
   const router = useRouter();

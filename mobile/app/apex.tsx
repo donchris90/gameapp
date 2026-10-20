@@ -1,7 +1,7 @@
-import { Accelerometer } from 'expo-sensors';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { adDue, preloadInterstitial, showInterstitial } from '../src/ads';
 import { Race, RaceResult } from '../src/apex/Race';
 import { levelSpec, MAX_LEVEL, TICKS_PER_SECOND } from '../src/apex/sim';
@@ -19,23 +19,14 @@ export default function Apex() {
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
-  const [lean, setLean] = useState(0);
-  const base = useRef<number | null>(null);
-
+  
   useEffect(() => { loadApex().then((s) => { setSettings(s); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
 
-  // live tilt test on the menu so you can see which way the phone steers
+  // the menu is upright; the race itself is sideways so the road is wide and the buttons have room
   useEffect(() => {
-    if (phase !== 'menu' || !settings.tilt) return;
-    base.current = null;
-    Accelerometer.setUpdateInterval(50);
-    const sub = Accelerometer.addListener(({ x }) => {
-      if (base.current === null) base.current = x;
-      const sign = (Platform.OS === 'ios' ? 1 : -1) * (settings.invert ? -1 : 1);
-      setLean(Math.max(-1, Math.min(1, (x - base.current) * sign * 3.2)));
-    });
-    return () => sub.remove();
-  }, [phase, settings.tilt, settings.invert]);
+    void ScreenOrientation.lockAsync(phase === 'race' ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+  }, [phase]);
+  useEffect(() => () => { void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined); }, []);
 
   const update = (p: Partial<ApexSettings>) => { const s = { ...settings, ...p }; setSettings(s); void saveApex(s); };
   const spec = levelSpec(level);
@@ -50,7 +41,7 @@ export default function Apex() {
     void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); });
   };
 
-  if (phase === 'race') return <Race key={run} level={level} tilt={settings.tilt} invert={settings.invert} onDone={done} />;
+  if (phase === 'race') return <Race key={run} level={level} tilt={settings.tilt} invert={settings.invert} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -105,14 +96,7 @@ export default function Apex() {
             <Button title={settings.tilt ? 'Tilt: on' : 'Tilt: off'} kind={settings.tilt ? 'primary' : 'ghost'} onPress={() => update({ tilt: !settings.tilt })} style={{ flex: 1, minHeight: 42 }} />
             <Button title="Flip tilt" kind="ghost" onPress={() => update({ invert: !settings.invert })} style={{ flex: 1, minHeight: 42 }} disabled={!settings.tilt} />
           </View>
-          {settings.tilt ? (
-            <View>
-              <Dim style={{ fontSize: 12 }}>Hold the phone upright and lean it. The dot should move the way you lean. If it goes the wrong way, press Flip tilt.</Dim>
-              <View style={{ height: 14, borderRadius: 7, backgroundColor: colors.cardAlt, marginTop: 8, justifyContent: 'center' }}>
-                <View style={{ position: 'absolute', left: `${50 + lean * 46}%`, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, marginLeft: -10 }} />
-              </View>
-            </View>
-          ) : <Dim style={{ fontSize: 12 }}>Use the ◀ ▶ buttons on screen.</Dim>}
+          <Dim style={{ fontSize: 12 }}>{settings.tilt ? 'The race is played sideways. Hold the phone like a steering wheel and turn it. If it steers the wrong way, press Flip tilt (here, or during the race).' : 'Use the ◀ ▶ buttons on screen.'}</Dim>
           <Dim style={{ fontSize: 12 }}>The ◀ ▶ buttons always work too. ⚡ Nitro gives a short burst. ■ Brake slows you.</Dim>
         </Card>
 

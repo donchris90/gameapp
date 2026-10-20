@@ -72,59 +72,134 @@ const GLASS_M = std(0x1b2a44, { metalness: 0.5, roughness: 0.12 });
 
 export interface CarParts { group: THREE.Group; body: THREE.Mesh; tail: THREE.MeshStandardMaterial; head: THREE.MeshStandardMaterial; flame: THREE.Mesh; wheels: THREE.Mesh[]; paint: THREE.MeshStandardMaterial }
 
-/** The hero car: a low, wide luxury saloon. `tier` adds more: 0 starter, 1 sport (spoiler), 2 luxury (long, chrome), 3 flagship. */
-export function buildLuxuryCar(color: number, tier = 2): CarParts {
-  const group = new THREE.Group();
-  const paint = std(color, { metalness: 0.35, roughness: 0.28, emissive: 0x000000 });
-  const W = 1.95;
-  const bodyPts: Array<[number, number]> = [[-2.4, 0.32], [2.4, 0.32], [2.5, 0.58], [2.15, 0.86], [0.95, 0.94], [-1.55, 0.97], [-2.38, 0.9], [-2.5, 0.62]];
-  const body = new THREE.Mesh(bodyFromOutline(bodyPts, W), paint);
-  group.add(body);
-  const cabin = new THREE.Mesh(bodyFromOutline([[-1.5, 0.95], [-0.95, 1.36], [0.35, 1.4], [1.05, 0.97]], W - 0.34, 0.07), GLASS_M);
-  group.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(W - 0.5, 0.05, 1.25), paint);
-  roof.position.set(0, 1.44, 0.28); group.add(roof);
-  // sill and chrome trim
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(W + 0.02, 0.05, 4.9), std(0xdfe3ea, { metalness: 0.95, roughness: 0.2 }));
-  trim.position.set(0, 0.5, 0); group.add(trim);
-  // wheels
-  const wheels: THREE.Mesh[] = [];
-  for (const [wx, wz] of [[-0.95, -1.5], [0.95, -1.5], [-0.95, 1.55], [0.95, 1.55]] as const) {
-    const w = new THREE.Mesh(WHEEL_G, TYRE_M); w.position.set(wx, 0.36, wz);
-    const rim = new THREE.Mesh(RIM_G, RIM_M); w.add(rim);
+// ---- a smooth car body made by lofting rounded cross-sections along the car's length ----
+interface Station { z: number; hw: number; y0: number; y1: number }
+const SEG = 22;
+/** Builds a closed rounded tube. Each station is a slice (half-width, bottom, top) along z; the slice is a squircle so the sides curve instead of being flat. */
+function loft(stations: Station[], n = 3.2) {
+  const pos: number[] = [], idx: number[] = [];
+  const p = 2 / n;
+  stations.forEach((s) => {
+    const cy = (s.y0 + s.y1) / 2, hh = (s.y1 - s.y0) / 2;
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+      pos.push(Math.sign(c) * Math.pow(Math.abs(c), p) * s.hw, cy + Math.sign(sn) * Math.pow(Math.abs(sn), p) * hh, s.z);
+    }
+  });
+  for (let i = 0; i < stations.length - 1; i++) for (let k = 0; k < SEG; k++) {
+    const a = i * SEG + k, b = i * SEG + ((k + 1) % SEG), c = (i + 1) * SEG + k, d = (i + 1) * SEG + ((k + 1) % SEG);
+    idx.push(a, b, c, b, d, c);
+  }
+  // close both ends with a fan
+  for (const [i0, flip] of [[0, false], [stations.length - 1, true]] as const) {
+    const s = stations[i0], ci = pos.length / 3;
+    pos.push(0, (s.y0 + s.y1) / 2, s.z);
+    for (let k = 0; k < SEG; k++) { const a = i0 * SEG + k, b = i0 * SEG + ((k + 1) % SEG); if (flip) idx.push(ci, b, a); else idx.push(ci, a, b); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+/** Interpolates a list of [z, value] points. */
+const prof = (pts: Array<[number, number]>) => (z: number) => {
+  if (z <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) if (z <= pts[i][0]) { const [z0, v0] = pts[i - 1], [z1, v1] = pts[i]; const t = (z - z0) / (z1 - z0); return v0 + (v1 - v0) * (t * t * (3 - 2 * t)); }
+  return pts[pts.length - 1][1];
+};
+const zs = (a: number, b: number, n: number) => Array.from({ length: n + 1 }, (_, i) => a + ((b - a) * i) / n);
+
+interface Shape { len: number; hw: number; top: number; deckRear: number; cabinFront: number; cabinRear: number; roof: number; roofW: number; wheelR: number; axleF: number; axleR: number }
+const SHAPES: Record<string, Shape> = {
+  // front is -z. len = half length of the car
+  super: { len: 2.45, hw: 0.99, top: 0.9, deckRear: 1.0, cabinFront: -0.95, cabinRear: 1.35, roof: 1.38, roofW: 0.78, wheelR: 0.35, axleF: -1.55, axleR: 1.45 },
+  saloon: { len: 2.45, hw: 0.99, top: 0.98, deckRear: 1.04, cabinFront: -0.85, cabinRear: 1.5, roof: 1.55, roofW: 0.82, wheelR: 0.36, axleF: -1.5, axleR: 1.5 },
+  hatch: { len: 2.1, hw: 0.9, top: 0.98, deckRear: 1.08, cabinFront: -0.9, cabinRear: 1.95, roof: 1.6, roofW: 0.78, wheelR: 0.34, axleF: -1.3, axleR: 1.3 },
+};
+
+function carBody(shape: Shape, paint: THREE.Material, glass: THREE.Material, wheelR: number) {
+  const g = new THREE.Group(), L = shape.len;
+  const hw = prof([[-L, 0.55], [-L + 0.35, 0.86], [-L + 0.9, shape.hw], [L - 0.9, shape.hw], [L - 0.25, shape.hw * 0.9], [L, 0.72]]);
+  const y1 = prof([[-L, 0.6], [-L + 0.5, shape.top - 0.14], [-L + 1.2, shape.top], [shape.cabinFront, shape.top + 0.04], [shape.cabinRear - 0.3, shape.deckRear], [L - 0.2, shape.deckRear - 0.02], [L, shape.deckRear - 0.14]]);
+  const y0 = prof([[-L, 0.42], [-L + 0.3, 0.3], [L - 0.3, 0.3], [L, 0.42]]);
+  const body = new THREE.Mesh(loft(zs(-L, L, 26).map((z) => ({ z, hw: hw(z), y0: y0(z), y1: y1(z) }))), paint);
+  g.add(body);
+  // greenhouse: sloping windscreen, curved roof, short tail window
+  const c0 = shape.cabinFront, c1 = shape.cabinRear;
+  const chw = prof([[c0, shape.roofW + 0.12], [c0 + 0.5, shape.roofW + 0.1], [c1 - 0.6, shape.roofW + 0.06], [c1, shape.roofW - 0.12]]);
+  const cy1 = prof([[c0, shape.top], [c0 + 0.25, shape.top + 0.2], [c0 + 0.9, shape.roof], [c1 - 0.8, shape.roof], [c1 - 0.25, shape.roof - 0.2], [c1, shape.deckRear]]);
+  const cabin = new THREE.Mesh(loft(zs(c0, c1, 18).map((z) => ({ z, hw: chw(z), y0: shape.top - 0.06, y1: cy1(z) })), 2.6), glass);
+  g.add(cabin);
+  const r0 = c0 + 0.85, r1 = c1 - 0.85;
+  const roof = new THREE.Mesh(loft(zs(r0, r1, 8).map((z) => ({ z, hw: chw(z) - 0.02, y0: cy1(z) - 0.1, y1: cy1(z) + 0.012 })), 3), paint);
+  g.add(roof);
+  return { group: g, body };
+}
+
+function addWheels(group: THREE.Group, shape: Shape, tyre: THREE.Material, rimM: THREE.Material) {
+  const R = shape.wheelR, wheels: THREE.Mesh[] = [];
+  const tyreG = new THREE.CylinderGeometry(R, R, 0.3, 16).rotateZ(Math.PI / 2);
+  const rimG = new THREE.CylinderGeometry(R * 0.66, R * 0.66, 0.32, 10).rotateZ(Math.PI / 2);
+  const hubG = new THREE.CylinderGeometry(R * 0.2, R * 0.2, 0.34, 6).rotateZ(Math.PI / 2);
+  const spokeG = new THREE.BoxGeometry(0.34, R * 1.2, 0.07);
+  const archG = new THREE.CylinderGeometry(R + 0.1, R + 0.1, 0.06, 16).rotateZ(Math.PI / 2);
+  const archM = new THREE.MeshBasicMaterial({ color: 0x050507 });
+  const x = shape.hw - 0.12;
+  for (const az of [shape.axleF, shape.axleR]) for (const sx of [-1, 1]) {
+    const w = new THREE.Mesh(tyreG, tyre); w.position.set(sx * x, R, az);
+    w.add(new THREE.Mesh(rimG, rimM), new THREE.Mesh(hubG, tyre));
+    for (let i = 0; i < 5; i++) { const sp = new THREE.Mesh(spokeG, rimM); sp.rotation.x = (i / 5) * Math.PI; w.add(sp); }
     group.add(w); wheels.push(w);
+    const arch = new THREE.Mesh(archG, archM); arch.position.set(sx * (shape.hw - 0.02), R + 0.04, az); group.add(arch);
   }
+  return wheels;
+}
+
+/** The hero car: a low, wide luxury car. `tier` adds more: 0 starter saloon, 1 sport (spoiler), 2 luxury (chrome, long), 3 flagship (stripe + wing). */
+export function buildLuxuryCar(color: number, tier = 2): CarParts {
+  const shape = tier >= 1 ? SHAPES.super : SHAPES.saloon;
+  const paint = std(color, { metalness: 0.45, roughness: 0.22 });
+  const glass = std(0x0d1626, { metalness: 0.7, roughness: 0.08 });
+  const { group, body } = carBody(shape, paint, glass, shape.wheelR);
+  const chrome = std(0xe4e8ef, { metalness: 0.95, roughness: 0.15 });
+  const dark = std(0x0e1015, { metalness: 0.6, roughness: 0.4 });
+  const wheels = addWheels(group, shape, TYRE_M, chrome);
+  const L = shape.len;
   // lights: front is -z
-  const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 0.9, metalness: 0.1, roughness: 0.2 });
-  const tail = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.7, metalness: 0.1, roughness: 0.3 });
-  for (const sx of [-0.62, 0.62]) {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.06), head); h.position.set(sx, 0.7, -2.52); group.add(h);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.06), tail); t.position.set(sx, 0.78, 2.5); group.add(t);
+  const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 1, metalness: 0.1, roughness: 0.2 });
+  const tail = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.8, metalness: 0.1, roughness: 0.3 });
+  for (const sx of [-1, 1]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.24), head); h.position.set(sx * 0.68, shape.top - 0.2, -L + 0.28); h.rotation.y = sx * 0.35; group.add(h);
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.1), paint); mirror.position.set(sx * 1.08, shape.top + 0.22, shape.cabinFront + 0.55); group.add(mirror);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 8).rotateX(Math.PI / 2), chrome); pipe.position.set(sx * 0.5, 0.3, L - 0.02); group.add(pipe);
   }
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.05), std(0x15171c, { metalness: 0.8 })); grille.position.set(0, 0.55, -2.52); group.add(grille);
-  if (tier >= 1) { const sp = new THREE.Mesh(new THREE.BoxGeometry(W - 0.2, 0.06, 0.34), std(0x14161b, { metalness: 0.6 })); sp.position.set(0, 1.12, 2.15); group.add(sp); }
-  if (tier >= 3) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 4.2), std(0xf3f4f7, { metalness: 0.6 })); stripe.position.set(0, 0.99, 0.1); group.add(stripe); }
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.09, 0.1), tail); bar.position.set(0, shape.deckRear - 0.2, L - 0.12); group.add(bar);
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.16, 0.12), tier >= 2 ? chrome : dark); grille.position.set(0, 0.45, -L + 0.08); group.add(grille);
+  const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, 0.3), dark); splitter.position.set(0, 0.2, -L + 0.1); group.add(splitter);
+  // door line and sill
+  for (const sx of [-1, 1]) { const sill = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 2.5), tier >= 2 ? chrome : dark); sill.position.set(sx * (shape.hw - 0.01), 0.36, 0); group.add(sill); }
+  if (tier >= 1) {
+    for (const sx of [-1, 1]) { const up = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.1), dark); up.position.set(sx * 0.6, shape.deckRear + 0.1, L - 0.4); group.add(up); }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.05, 0.42), tier >= 3 ? paint : dark); wing.position.set(0, shape.deckRear + 0.25, L - 0.4); group.add(wing);
+  }
+  if (tier >= 3) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.015, 3.6), std(0xf3f4f7, { metalness: 0.5, roughness: 0.3 })); stripe.position.set(0, shape.top + 0.05, -0.3); group.add(stripe); }
   // nitro flame
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.85 }));
-  flame.position.set(0, 0.5, 3.6); flame.visible = false; group.add(flame);
+  flame.position.set(0, 0.4, L + 1.2); flame.visible = false; group.add(flame);
   return { group, body, tail, head, flame, wheels, paint };
 }
 
-/** A plainer car for the traffic: shorter and boxier than the hero car. */
+/** A plainer car for the traffic: shorter and taller than the hero car. */
 function buildTrafficCar(color: number, kind: number) {
-  const group = new THREE.Group();
-  const paint = std(color, { metalness: 0.25, roughness: 0.45 });
-  const hatch = kind === 1;
-  const body = new THREE.Mesh(bodyFromOutline(hatch
-    ? [[-2.1, 0.3], [2.1, 0.3], [2.2, 0.6], [1.9, 0.82], [0.9, 0.9], [-2.1, 0.95], [-2.2, 0.6]]
-    : [[-2.2, 0.3], [2.2, 0.3], [2.3, 0.6], [2.0, 0.84], [0.9, 0.92], [-2.0, 0.94], [-2.3, 0.62]], 1.8, 0.1), paint);
-  group.add(body);
-  const cabin = new THREE.Mesh(bodyFromOutline(hatch ? [[-2.0, 0.92], [-1.8, 1.45], [0.5, 1.5], [1.0, 0.94]] : [[-1.4, 0.92], [-0.95, 1.42], [0.3, 1.44], [0.95, 0.94]], 1.55, 0.06), GLASS_M);
-  group.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.05, hatch ? 2.0 : 1.1), paint); roof.position.set(0, 1.48, hatch ? 0.75 : 0.25); group.add(roof);
-  for (const [wx, wz] of [[-0.88, -1.35], [0.88, -1.35], [-0.88, 1.4], [0.88, 1.4]] as const) { const w = new THREE.Mesh(WHEEL_G, TYRE_M); w.position.set(wx, 0.34, wz); group.add(w); }
-  const tail = std(0x330000, { emissive: 0xff2a2a, emissiveIntensity: 0.6 });
-  for (const sx of [-0.6, 0.6]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.1, 0.05), tail); t.position.set(sx, 0.75, 2.27); group.add(t); }
+  const shape = kind === 1 ? SHAPES.hatch : SHAPES.saloon;
+  const paint = std(color, { metalness: 0.3, roughness: 0.4 });
+  const glass = std(0x172338, { metalness: 0.5, roughness: 0.15 });
+  const { group } = carBody(shape, paint, glass, shape.wheelR);
+  addWheels(group, shape, TYRE_M, RIM_M);
+  const tail = std(0x330000, { emissive: 0xff2a2a, emissiveIntensity: 0.7 });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 0.08), tail); bar.position.set(0, shape.deckRear - 0.18, shape.len - 0.1); group.add(bar);
+  const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 0.6 });
+  for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.1), head); h.position.set(sx * 0.62, shape.top - 0.2, -shape.len + 0.3); group.add(h); }
   return group;
 }
 
@@ -224,7 +299,7 @@ export class ApexScene {
       for (let i = 0; i < 16; i++) {
         const g = new THREE.Group();
         const tex = windowTexture().clone(); tex.needsUpdate = true;
-        const building = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), std(0xffffff, { roughness: 0.9, metalness: 0, map: tex, emissiveMap: tex, emissive: 0x000000 })); g.add(building);
+        const building = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), std(0xffffff, { roughness: 0.9, metalness: 0, map: tex, emissive: 0x3a3f58, emissiveIntensity: 0.55 })); g.add(building);
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 6, 6), std(0x7a5a3a, { roughness: 1 })); g.add(trunk);
         const crown = new THREE.Mesh(new THREE.ConeGeometry(2.2, 2.4, 7), std(0x2e8b3d, { roughness: 1, metalness: 0 })); g.add(crown);
         const lamp = new THREE.Group();
@@ -385,7 +460,7 @@ export class ApexScene {
           const bm = s.building.material as THREE.MeshStandardMaterial;
           bm.color.setRGB(tone, tone * 0.95, tone * 0.85);
           if (bm.map) { bm.map.repeat.set(Math.max(1, Math.round(d / 3.2)), Math.max(1, Math.round(ht / 3.2))); bm.map.needsUpdate = false; }
-          bm.emissive.setHex(this.theme.night ? 0x8a6a30 : 0x000000);
+          bm.emissive.setHex(this.theme.night ? 0x8a6a30 : 0x4a5070);
         } else {
           const x = sx * (ROAD_HALF + 4 + hash(slot * 5 + 6) * 6);
           s.trunk.position.set(x, 3, 0); s.crown.position.set(x, 7, 0); s.crown.scale.setScalar(0.8 + hash(slot * 5 + 7) * 0.6);

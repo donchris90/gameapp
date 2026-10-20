@@ -1,7 +1,8 @@
 import { Accelerometer } from 'expo-sensors';
 import { ExpoWebGLRenderingContext, GLView } from 'expo-gl';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import { engineSpeed, engineStart, engineStop, sfx } from '../sfx';
@@ -24,10 +25,22 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boolean; invert: boolean; onDone: (r: RaceResult) => void }) {
+export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
+  const { width: sw, height: sh } = useWindowDimensions();
+  const wide = sw > sh;
+  const landRight = useRef(false);
+  useEffect(() => {
+    const read = () => ScreenOrientation.getOrientationAsync().then((o) => { landRight.current = o === ScreenOrientation.Orientation.LANDSCAPE_RIGHT; }).catch(() => undefined);
+    void read();
+    const s = ScreenOrientation.addOrientationChangeListener(() => { void read(); });
+    return () => ScreenOrientation.removeOrientationChangeListener(s);
+  }, []);
   const keys = useRef({ left: false, right: false, brake: false, nitro: false });
   const tiltRef = useRef({ raw: 0, base: 0, value: 0, calibrated: false });
+  const wideRef = useRef(wide); wideRef.current = wide;
+  const glRef = useRef<any>(null);
+  const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const alive = useRef(true);
   const finished = useRef(false);
   const [hud, setHud] = useState({ count: 3, speed: 0, rank: 1, ahead: '', gap: 0, progress: 0, nitro: 1, time: 0, hits: 0, rivals: [] as number[], over: false });
@@ -38,9 +51,11 @@ export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boo
     let sub: { remove: () => void } | null = null;
     if (tilt) {
       Accelerometer.setUpdateInterval(16);
-      sub = Accelerometer.addListener(({ x }) => {
+      sub = Accelerometer.addListener(({ x, y }) => {
         const t = tiltRef.current;
-        t.raw = t.raw * 0.7 + x * 0.3;
+        // landscape: the phone is a steering wheel, so the sideways lean shows up on the device's y axis
+        const lean = (wideRef.current ? y * (landRight.current ? -1 : 1) : x);
+        t.raw = t.raw * 0.7 + lean * 0.3;
         if (!t.calibrated) { t.base = t.raw; }
         const sign = (Platform.OS === 'ios' ? 1 : -1) * (invert ? -1 : 1);
         const v = (t.raw - t.base) * sign * 3.2;
@@ -51,6 +66,7 @@ export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boo
   }, [tilt, invert]);
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
+    glRef.current = gl;
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
@@ -61,6 +77,7 @@ export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boo
     const world = makeWorld(seed, level);
     const view = new ApexScene(world);
     view.resize(w, h);
+    resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };
 
     const me = newRacer(world, CAR);
     let mePrev = snap(me);
@@ -180,7 +197,7 @@ export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boo
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <GLView style={{ flex: 1 }} onContextCreate={onContextCreate} />
+      <GLView style={{ flex: 1 }} onContextCreate={onContextCreate} onLayout={() => { const g: any = glRef.current; if (g && resizeRef.current) setTimeout(() => resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0), 50); }} />
 
       {/* top bar */}
       <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 6, left: 12, right: 12 }}>
@@ -201,24 +218,42 @@ export function Race({ level, tilt, invert, onDone }: { level: number; tilt: boo
         {hud.ahead && !hud.over ? <Text style={{ color: '#fff', marginTop: 8, fontWeight: '800', textShadowColor: '#000', textShadowRadius: 4 }}>▲ {hud.ahead}  +{hud.gap} m</Text> : null}
       </View>
 
-      {hud.count > 0 ? <View pointerEvents="none" style={{ position: 'absolute', top: '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: 120, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 10 }}>{hud.count}</Text></View> : null}
+      {hud.count > 0 ? <View pointerEvents="none" style={{ position: 'absolute', top: wide ? '10%' : '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: wide ? 90 : 120, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 10 }}>{hud.count}</Text></View> : null}
       {hud.over ? <View pointerEvents="none" style={{ position: 'absolute', top: '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: colors.gold, fontSize: 56, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 10 }}>FINISH!</Text></View> : null}
 
       {/* speed and nitro */}
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 148, alignItems: 'center' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + (wide ? 14 : 148), alignItems: 'center' }}>
         <Text style={{ color: '#fff', fontSize: 40, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 6 }}>{hud.speed}<Text style={{ fontSize: 14 }}> km/h</Text></Text>
         <View style={{ width: 140, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.25)', marginTop: 4 }}><View style={{ width: `${Math.round(hud.nitro * 100)}%`, height: 7, borderRadius: 4, backgroundColor: '#5ec2ff' }} /></View>
       </View>
 
       {/* controls */}
-      <View style={{ position: 'absolute', left: 10, right: 10, bottom: insets.bottom + 10, height: 128, flexDirection: 'row', gap: 10 }}>
-        {btn('left', '◀', { flex: 1.3 })}
-        <View style={{ flex: 1, gap: 10 }}>
-          {btn('nitro', '⚡ NITRO', { flex: 1 })}
-          {btn('brake', '■ BRAKE', { flex: 1 })}
+      {wide ? (
+        <>
+          <View style={{ position: 'absolute', left: Math.max(insets.left, 14), bottom: insets.bottom + 12, height: 92, width: 250, flexDirection: 'row', gap: 10 }}>
+            {btn('left', '◀', { flex: 1 })}
+            {btn('right', '▶', { flex: 1 })}
+          </View>
+          <View style={{ position: 'absolute', right: Math.max(insets.right, 14), bottom: insets.bottom + 12, height: 92, width: 250, flexDirection: 'row', gap: 10 }}>
+            {btn('brake', '■ BRAKE', { flex: 1 })}
+            {btn('nitro', '⚡ NITRO', { flex: 1 })}
+          </View>
+        </>
+      ) : (
+        <View style={{ position: 'absolute', left: 10, right: 10, bottom: insets.bottom + 10, height: 128, flexDirection: 'row', gap: 10 }}>
+          {btn('left', '◀', { flex: 1.3 })}
+          <View style={{ flex: 1, gap: 10 }}>
+            {btn('nitro', '⚡ NITRO', { flex: 1 })}
+            {btn('brake', '■ BRAKE', { flex: 1 })}
+          </View>
+          {btn('right', '▶', { flex: 1.3 })}
         </View>
-        {btn('right', '▶', { flex: 1.3 })}
-      </View>
+      )}
+      {tilt && onFlip ? (
+        <Pressable onPress={onFlip} style={{ position: 'absolute', top: insets.top + 56, right: Math.max(insets.right, 12), backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>⇄ Flip tilt</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-"""Builds the Apex Run engine sounds (V8 loops at four rev levels, wind, tyre squeal, nitro whoosh, blow-off, exhaust pop).
+"""Builds the Apex Run engine sounds (V10 loops at five rev levels, wind, tyre squeal, nitro whoosh, blow-off, exhaust pop).
 Run: python3 tools/make_engine_sounds.py   -> writes mobile/assets/sfx/*.wav. The loops are seamless."""
 import numpy as np, wave, os
 from scipy import signal
@@ -11,29 +11,36 @@ def save(name, x, peak=0.9):
     with wave.open(os.path.join(OUT, name), 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((x * 32767).astype('<i2').tobytes())
 
-def engine(rpm, seconds=2.0):
-    """A V8 made of real firing pulses, not a steady tone: every firing is a short thump (a body resonance plus a burst of noise) that is a little different
-    from the last; the eight firings of a full turn have uneven strength (the V8 burble). The pulses are added in a circle, so the loop is seamless."""
-    f_fire = rpm / 60 * 4
-    cycles = max(1, round(seconds * f_fire / 8)); f_fire = cycles * 8 / seconds
-    n = int(SR * seconds); out = np.zeros(n); r = np.random.default_rng(int(rpm))
-    amp = [1, .72, .92, .62, 1, .78, .88, .66]
-    tau = 0.03 * (1500 / rpm) ** 0.6
-    m = int(SR * 0.16); tt = np.arange(m) / SR
-    lp = signal.butter(2, 1100 / (SR / 2))
-    for k in range(cycles * 8):
-        a = amp[k % 8] * (0.85 + 0.3 * r.random())
-        body = (np.sin(2 * np.pi * (80 + 20 * r.random()) * tt) + 0.6 * np.sin(2 * np.pi * (165 + 30 * r.random()) * tt + 1)) * np.exp(-tt / tau)
-        puff = signal.lfilter(*lp, r.standard_normal(m)) * np.exp(-tt / (tau * 0.5)) * 2.2
-        pulse = (body + puff) * a
-        i0 = int(((k + r.normal(0, 0.03)) / f_fire) * SR) % n
-        idx = (i0 + np.arange(m)) % n
-        out[idx] += pulse
-    bed = signal.lfilter(*signal.butter(2, 700 / (SR / 2)), r.standard_normal(n)) * 0.12
-    out += bed * (0.6 + 0.4 * np.abs(np.sin(np.pi * np.arange(n) / SR * f_fire)))
-    out = np.tanh(1.6 * out / np.max(np.abs(out)))
-    out = signal.lfilter(*signal.butter(2, 4200 / (SR / 2)), out)
-    return signal.lfilter(*signal.butter(1, 45 / (SR / 2), 'high'), out)  # no DC offset
+def engine(rpm, seconds=2.0, cyl=10):
+    """An exotic V10: a clean harmonic wail, not noise. Every firing is a sharp pulse; the pulses sit in a circle (so the loop is seamless)
+    with a tiny timing and strength wobble so it is alive rather than a synth tone. The whole train is then shaped in the frequency domain by
+    fixed exhaust/body resonances (they do not move with the revs, which is what makes it sound like a real car), plus a little intake rasp that
+    grows with the revs and a soft saturation for bite."""
+    f_fire = rpm / 60 * cyl / 2
+    cycles = max(1, round(seconds * f_fire / cyl)); f_fire = cycles * cyl / seconds
+    n = int(SR * seconds); r = np.random.default_rng(int(rpm))
+    amp = np.array([1, .9, .96, .88, 1, .92, .97, .86, .99, .9])[:cyl]
+    train = np.zeros(n)
+    for k in range(cycles * cyl):
+        pos = (k + r.normal(0, 0.03)) / f_fire * SR
+        i0 = int(pos) % n; frac = pos - int(pos)
+        a = amp[k % cyl] * (0.94 + 0.12 * r.random())
+        train[i0] += a * (1 - frac); train[(i0 + 1) % n] += a * frac
+    X = np.fft.rfft(train); f = np.fft.rfftfreq(n, 1 / SR)
+    # fixed resonances of the exhaust and body (centre Hz, width Hz, gain)
+    H = 0.05 + 0 * f
+    for c, w, g in [(240, 120, 1.6), (520, 200, 1.2), (900, 300, 1.0), (1500, 450, 0.9), (2400, 700, 0.55), (3600, 900, 0.3)]:
+        H = H + g * np.exp(-0.5 * ((f - c) / w) ** 2)
+    H = H * (1 / (1 + (f / 5200) ** 4)) * (1 - np.exp(-(f / 70) ** 2))  # rolloff above ~5 kHz, nothing below ~70 Hz
+    out = np.fft.irfft(X * H, n)
+    out /= np.max(np.abs(out))
+    # intake rasp: band noise that is loudest on each firing and grows with revs
+    N = np.fft.rfft(r.standard_normal(n)) * np.exp(-0.5 * ((f - 1700) / 900) ** 2)
+    rasp = np.fft.irfft(N, n); rasp /= np.max(np.abs(rasp))
+    env = 0.55 + 0.45 * np.cos(2 * np.pi * f_fire * np.arange(n) / SR)
+    out = out + rasp * env * (0.10 + 0.16 * min(1, rpm / 8000))
+    out = np.tanh(1.9 * out / np.max(np.abs(out)))
+    return signal.lfilter(*signal.butter(1, 45 / (SR / 2), 'high'), out)
 
 def loopnoise(seconds, filt):
     n = int(SR * seconds); fade = int(SR * 0.25)
@@ -42,7 +49,7 @@ def loopnoise(seconds, filt):
     out = x[:n].copy(); out[:fade] = x[:fade] * w + x[n:n + fade] * (1 - w)
     return out
 
-for i, rpm in enumerate([1500, 3000, 4800, 7000], 1): save(f'engine_{i}.wav', engine(rpm))
+for i, rpm in enumerate([1800, 3200, 5000, 6800, 8600], 1): save(f'engine_{i}.wav', engine(rpm))
 b, a = signal.butter(2, [250 / (SR / 2), 4200 / (SR / 2)], 'band')
 save('wind.wav', loopnoise(2.0, lambda x: signal.lfilter(b, a, x)))
 b, a = signal.iirpeak(2100 / (SR / 2), 9)

@@ -67,11 +67,11 @@ export function sfx(name: Sound) {
  * Safe to call in any state: if audio is unavailable nothing happens.
  */
 const LOOP_FILES = {
-  e1: require('../assets/sfx/engine_1.wav'), e2: require('../assets/sfx/engine_2.wav'), e3: require('../assets/sfx/engine_3.wav'), e4: require('../assets/sfx/engine_4.wav'),
+  e1: require('../assets/sfx/engine_1.wav'), e2: require('../assets/sfx/engine_2.wav'), e3: require('../assets/sfx/engine_3.wav'), e4: require('../assets/sfx/engine_4.wav'), e5: require('../assets/sfx/engine_5.wav'),
   rival: require('../assets/sfx/engine_3.wav'),
   wind: require('../assets/sfx/wind.wav'), squeal: require('../assets/sfx/squeal.wav'), whoosh: require('../assets/sfx/whoosh.wav'),
 };
-const ENGINE_AT = [1500, 3000, 4800, 7000]; // the revs each engine loop was recorded at
+const ENGINE_AT = [1800, 3200, 5000, 6800, 8600]; // the revs each engine loop was recorded at
 type Loop = keyof typeof LOOP_FILES;
 const loops: Partial<Record<Loop, AudioPlayer>> = {};
 const TOPS = [0, 14, 25, 36, 47, 58, 95]; // top speed of each gear, in m/s
@@ -139,15 +139,18 @@ export function engineUpdate(i: EngineIn) {
   const rpm = rpmOf(i.speed, thr, dt), cut = box.shift > 0 ? 0.32 : 1;
   if (box.gear > previousGear) sfx('shift');
   const base = (0.38 + 0.34 * thr) * cut * box.profile.volume;
-  // Continuous two-sample crossfade: neighboring RPM loops sum to one, preventing loudness jumps at blend points.
+  // One loop at a time, with a short crossfade only in the middle of the gap between two loops. Two loops sounding together at slightly
+  // different pitches beat against each other and turn into noise, so they overlap as little as possible (equal-power so there is no dip).
   let lower = 0, upper = 0, mix = 0;
   if (rpm <= ENGINE_AT[0]) { lower = upper = 0; }
   else if (rpm >= ENGINE_AT[ENGINE_AT.length - 1]) { lower = upper = ENGINE_AT.length - 1; }
   else {
-    for (let j = 0; j < ENGINE_AT.length - 1; j++) if (rpm >= ENGINE_AT[j] && rpm <= ENGINE_AT[j + 1]) { lower = j; upper = j + 1; mix = (rpm - ENGINE_AT[j]) / (ENGINE_AT[j + 1] - ENGINE_AT[j]); break; }
+    for (let j = 0; j < ENGINE_AT.length - 1; j++) if (rpm >= ENGINE_AT[j] && rpm <= ENGINE_AT[j + 1]) {
+      lower = j; upper = j + 1; mix = Math.max(0, Math.min(1, ((rpm - ENGINE_AT[j]) / (ENGINE_AT[j + 1] - ENGINE_AT[j]) - 0.35) / 0.3)); break;
+    }
   }
   ENGINE_AT.forEach((at, j) => {
-    const w = lower === upper ? (j === lower ? 1 : 0) : (j === lower ? 1 - mix : j === upper ? mix : 0);
+    const w = lower === upper ? (j === lower ? 1 : 0) : (j === lower ? Math.cos(mix * Math.PI / 2) : j === upper ? Math.sin(mix * Math.PI / 2) : 0);
     setLoop(`e${j + 1}` as Loop, base * w, (rpm / at) * box.profile.pitch);
   });
   const k = Math.min(1, i.speed / 90);

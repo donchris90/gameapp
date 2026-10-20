@@ -74,6 +74,7 @@ const LOOP_FILES = {
 const ENGINE_AT = [1800, 3200, 5000, 6800, 8600]; // the revs each engine loop was recorded at
 type Loop = keyof typeof LOOP_FILES;
 const loops: Partial<Record<Loop, AudioPlayer>> = {};
+const lastRate: Partial<Record<Loop, number>> = {};
 const TOPS = [0, 14, 25, 36, 47, 58, 95]; // top speed of each gear, in m/s
 type EngineProfile = { idle: number; redline: number; launch: number; pitch: number; volume: number };
 const ENGINE_PROFILES: Record<string, EngineProfile> = {
@@ -100,7 +101,16 @@ function setLoop(name: Loop, volume: number, rate?: number) {
   const p = loops[name]; if (!p) return;
   try {
     p.volume = Math.max(0, Math.min(1, volume));
-    if (rate !== undefined) (p as any).playbackRate = Math.max(0.5, Math.min(2, rate));
+    if (rate !== undefined) {
+      // On Android `playbackRate` is read-only, so assigning it changes nothing and the engine pitch never follows the car.
+      // setPlaybackRate() is the call that works on both platforms. Skip tiny changes: each call is a message to the audio thread.
+      const r = Math.max(0.5, Math.min(2, rate));
+      if (Math.abs(r - (lastRate[name] ?? 0)) > 0.008) {
+        lastRate[name] = r;
+        if (typeof (p as any).setPlaybackRate === 'function') (p as any).setPlaybackRate(r);
+        else (p as any).playbackRate = r;
+      }
+    }
   } catch { /* not supported */ }
 }
 function rpmOf(speed: number, thr: number, dt: number, rival = false): number {
@@ -164,4 +174,4 @@ export function engineUpdate(i: EngineIn) {
     setLoop('rival', Math.pow(1 - i.rival.dist / 90, 1.6) * 0.45, (rpmOf(i.rival.speed, 0.8, dt, true) / 4800) * dop);
   } else setLoop('rival', 0);
 }
-export function engineStop() { box.live = false; (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }
+export function engineStop() { box.live = false; (Object.keys(lastRate) as Loop[]).forEach((n) => { delete lastRate[n]; }); (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }

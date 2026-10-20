@@ -98,16 +98,21 @@ function xhrBuffer(uri: string): Promise<ArrayBuffer> {
 }
 async function fetchBuffer(mod: number): Promise<ArrayBuffer> {
   const asset = Asset.fromModule(mod);
-  await asset.downloadAsync();
-  const uri = asset.localUri ?? asset.uri;
-  try {
-    const res = await fetch(uri);
-    if (!res.ok && res.status !== 0) throw new Error(`HTTP ${res.status}`);
-    return await res.arrayBuffer();
-  } catch (first) {
-    // some phones cannot read a big local file through fetch: try a plain request instead
-    try { return await xhrBuffer(uri); } catch (second) { throw new Error(`could not read ${uri}: ${String(first)} / ${String(second)}`); }
+  const tried: string[] = [];
+  const short = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 60);
+  const attempts: Array<[string, () => Promise<ArrayBuffer>]> = [];
+  // 1. the address the bundler serves the file from (a dev session), 2. the downloaded copy on the phone, 3. Expo's own file reader.
+  if (/^https?:/.test(asset.uri)) attempts.push(['server', async () => { const r = await fetch(asset.uri); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); }]);
+  attempts.push(['download', async () => { await asset.downloadAsync(); const u = asset.localUri ?? asset.uri; try { const r = await fetch(u); if (!r.ok && r.status !== 0) throw new Error(`HTTP ${r.status}`); return await r.arrayBuffer(); } catch { return xhrBuffer(u); } }]);
+  attempts.push(['files', async () => {
+    const FS = require('expo-file-system');
+    await asset.downloadAsync();
+    return new FS.File(asset.localUri ?? asset.uri).arrayBuffer();
+  }]);
+  for (const [name, run] of attempts) {
+    try { const buf = await run(); if (buf && buf.byteLength > 1000) return buf; tried.push(`${name}: empty`); } catch (e) { tried.push(`${name}: ${short(e)}`); }
   }
+  throw new Error(tried.join(' | '));
 }
 
 /** Why a car file failed to load (shown in the garage so a failure is never silent). */
@@ -120,7 +125,7 @@ export function registerCarFile(id: string, getModule: () => number) { FILES[id]
 export function loadCarModel(id: string): Promise<CarModel | null> {
   if (MODELS.byId[id]) return Promise.resolve(MODELS.byId[id]);
   pending[id] ??= (async () => {
-    try { const m = parseCarGlb(await fetchBuffer(FILES[id]())); MODELS.byId[id] = m; delete MODEL_ERRORS[id]; if (id === 'hero') MODELS.hero = m; if (id === 'rival') MODELS.rival = m; return m; } catch (e) { MODEL_ERRORS[id] = String((e as Error)?.message ?? e).slice(0, 220); console.warn(`[apex] 3D car '${id}' failed to load: ${MODEL_ERRORS[id]}`); delete pending[id]; return null; }
+    try { const m = parseCarGlb(await fetchBuffer(FILES[id]())); MODELS.byId[id] = m; delete MODEL_ERRORS[id]; if (id === 'hero') MODELS.hero = m; if (id === 'rival') MODELS.rival = m; return m; } catch (e) { MODEL_ERRORS[id] = String((e as Error)?.message ?? e).slice(0, 300); console.warn(`[apex] 3D car '${id}' failed to load: ${MODEL_ERRORS[id]}`); delete pending[id]; return null; }
   })();
   return pending[id];
 }

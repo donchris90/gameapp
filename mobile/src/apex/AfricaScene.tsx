@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeRenderer } from './glfix';
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -175,7 +176,7 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
     setHud({ speed: 0, checkpoint: 0, collision: false, nearWorkshop: false, elapsed: 0, rivalGap: 0 });
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
-    const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
+    const renderer = makeRenderer(gl, canvas, { antialias: false });
     renderer.setPixelRatio(1); renderer.setSize(w, h, false); renderer.setClearColor(region.sky, 1); renderer.shadowMap.enabled = false; rendererRef.current = renderer;
     const scene = new THREE.Scene(); sceneRef.current = scene; scene.background = new THREE.Color(region.sky); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(region.sky, 125 * qf, 340 * qf);
     const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 650 * qf);

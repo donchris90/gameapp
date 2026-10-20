@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeRenderer } from './glfix';
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -35,7 +36,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
     alive.current = true;
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
-    const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
+    const renderer = makeRenderer(gl, canvas, { antialias: false });
     renderer.setPixelRatio(1); renderer.setSize(w, h, false); renderer.setClearColor(0x121b32, 1);
     renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;

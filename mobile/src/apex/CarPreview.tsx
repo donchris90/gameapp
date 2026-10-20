@@ -2,6 +2,7 @@ import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, PanResponder, Text, View } from 'react-native';
 import * as THREE from 'three';
+import { makeRenderer } from './glfix';
 import { loadCarModel, MODEL_ERRORS } from './model';
 import { lookFor } from './cars';
 import { makeHeroCar } from './scene';
@@ -61,7 +62,7 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     const width = gl.drawingBufferWidth || sizeRef.current.width;
     const heightPx = gl.drawingBufferHeight || sizeRef.current.height;
     const canvas: any = { width, height: heightPx, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: width, clientHeight: heightPx, getContext: () => gl };
-    const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false, alpha: true });
+    const renderer = makeRenderer(gl, canvas, { antialias: false, alpha: true });
     renderer.setPixelRatio(1);
     renderer.setSize(width, heightPx, false);
     const scene = new THREE.Scene();

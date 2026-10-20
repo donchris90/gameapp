@@ -5,6 +5,7 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
+import { makeRenderer } from './glfix';
 import { engineStart, engineStop, engineUpdate, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
@@ -103,7 +104,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     await Promise.all([loadCarModel(carId), ...RIVAL_MODELS.map((m) => loadCarModel(m))]); // the real 3D cars (the built-in ones are used if a file cannot be read)
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
-    const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
+    const renderer = makeRenderer(gl, canvas, { antialias: false });
     rendererRef.current = renderer;
     renderer.setPixelRatio(1);
     renderer.setSize(w, h, false);

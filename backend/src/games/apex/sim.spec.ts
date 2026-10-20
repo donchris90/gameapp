@@ -116,8 +116,8 @@ describe('Apex Run rules', () => {
   });
 
   it('packs and unpacks inputs without loss', () => {
-    for (const steer of [-1, -0.37, 0, 0.5, 1]) for (const brake of [false, true]) for (const nitro of [false, true]) {
-      expect(unpackInput(packInput({ steer, brake, nitro }))).toEqual({ steer, brake, nitro });
+    for (const steer of [-1, -0.37, 0, 0.5, 1]) for (const brake of [false, true]) for (const nitro of [false, true]) for (const gas of [true, false]) {
+      expect(unpackInput(packInput({ steer, brake, nitro, gas }))).toEqual({ steer, brake, nitro, gas });
     }
   });
 
@@ -252,5 +252,20 @@ describe('Apex Run rules in the app', () => {
     expect(r.finishedAt).toBeGreaterThan(0);
     const again = replay(makeWorld(31, 4, 'coast', 3), CARS.starter, inputs);
     expect(again.ticks).toBe(r.finishedAt);
+  });
+
+  it('rolls on and slows gently with the foot off the throttle, and keeps old recordings exact', () => {
+    const w = makeWorld(21, 1, 'circuit', 2), car = CARS.starter;
+    const a = newRacer(w, car), b = newRacer(w, car);
+    a.v = b.v = 40;
+    for (let i = 0; i < 60; i++) { step(w, car, a, { steer: 0, brake: false, nitro: false }); step(w, car, b, { steer: 0, brake: false, nitro: false, gas: false }); }
+    expect(b.v).toBeLessThan(a.v - 3);      // coasting loses speed
+    expect(b.v).toBeGreaterThan(20);        // but gently: it is not the brake
+    const c = newRacer(w, car); c.v = 40; c.nitro = 3;
+    step(w, car, c, { steer: 0, brake: false, nitro: true, gas: false });
+    expect(c.nitroOn).toBe(false);          // nitro needs the throttle
+    expect(unpackInput(packInput({ steer: 0.3, brake: false, nitro: true, gas: false })).gas).toBe(false);
+    expect(unpackInput(packInput({ steer: 0.3, brake: true, nitro: false })).gas).toBe(true);
+    expect(unpackInput(300 | 0).gas).toBe(true); // an old packed input has no gas bit: throttle on
   });
 });

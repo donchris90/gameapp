@@ -239,3 +239,9 @@ The Customize panel is a studio: a 3D car you can drag to turn, zoom, and view f
 - **Glass and lights:** window tint, headlight colour, underglow colour.
 
 All of this is visual only: `src/apex/style.ts` is never read by the race rules (`sim.ts`), so replays, rewards and the server can't be affected. Planned next: aero add-ons and decals, cockpit and interior, the performance workshop (brakes, suspension, transmission), and paying for premium parts with coins.
+
+## Apex Run controls and graphics
+
+- **Throttle:** "Auto gas" (default) holds the throttle for you. Choose "Gas pedal" on the Apex home screen to get a GAS button: off the throttle the car coasts and slows gently, and nitro only works with the throttle on. The throttle is part of the shared rules (`gas` in `Input`, bit 1024 in the packed input); a recording without the bit means "throttle on", so every older replay is unchanged.
+- **Graphics:** Low / Medium / High on the home screen. Low draws every other roadside piece, no distant skyline or stars, a shorter view, no filmic tone mapping, and the lighter version of the car model. Saved per phone.
+- The on-screen buttons are smaller and see-through so they don't cover the road.

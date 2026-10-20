@@ -25,7 +25,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, styles: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {} });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -111,7 +111,7 @@ export default function Apex() {
     <Dim style={{ fontSize: 11 }}>{onCircuit ? 'LAPS' : 'ROUNDS'}</Dim>
     {roundChoices.map((n) => <Pressable key={n} onPress={() => update(onCircuit ? { laps: n } : { roadLaps: n })} style={{ paddingVertical: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: roundsNow === n ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: roundsNow === n ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{n}</Text></Pressable>)}
   </View>;
-  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -283,6 +283,16 @@ export default function Apex() {
                 <Text style={{ color: colors.x, fontWeight: '900', fontSize: 12 }}>CHANGE ›</Text>
               </Pressable>
               <View style={{ paddingHorizontal: 4 }}>{renderRounds()}</View>
+              <View style={{ paddingHorizontal: 4, gap: 6 }}>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Dim style={{ fontSize: 11 }}>THROTTLE</Dim>
+                  {[{ v: true, l: 'AUTO GAS' }, { v: false, l: 'GAS PEDAL' }].map((o) => <Pressable key={o.l} onPress={() => update({ autoGas: o.v })} style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 10, backgroundColor: settings.autoGas === o.v ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: settings.autoGas === o.v ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{o.l}</Text></Pressable>)}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Dim style={{ fontSize: 11 }}>GRAPHICS</Dim>
+                  {['LOW', 'MEDIUM', 'HIGH'].map((l, q) => <Pressable key={l} onPress={() => update({ quality: q })} style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 10, backgroundColor: settings.quality === q ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: settings.quality === q ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{l}</Text></Pressable>)}
+                </View>
+              </View>
               <Button title="START CAREER RACE  →" onPress={() => startRace(level)} style={{ marginTop: 4, backgroundColor: '#245fff', borderColor: '#5eaaff' }} />
             </View>
           </Card>

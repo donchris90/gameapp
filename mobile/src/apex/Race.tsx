@@ -9,7 +9,7 @@ import { engineStart, engineStop, engineUpdate, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
-import { loadCarModel } from './model';
+import { loadCarModel, MODELS } from './model';
 import { CarStyle } from './style';
 import { RIVAL_MODELS, lookFor } from './cars';
 import { ApexScene, CameraMode, Frame } from './scene';
@@ -32,7 +32,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, autoGas = true, quality = 2, onDone, onFlip }: { autoGas?: boolean; quality?: number; level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -43,7 +43,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     const s = ScreenOrientation.addOrientationChangeListener(() => { void read(); });
     return () => ScreenOrientation.removeOrientationChangeListener(s);
   }, []);
-  const keys = useRef({ left: false, right: false, brake: false, nitro: false });
+  const keys = useRef({ left: false, right: false, brake: false, nitro: false, gas: false });
   const tiltRef = useRef({ raw: 0, base: 0, value: 0, calibrated: false });
   const wideRef = useRef(wide); wideRef.current = wide;
   // wait until the phone has actually turned sideways before creating the 3D view, or it is made at the old size
@@ -107,13 +107,18 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     rendererRef.current = renderer;
     renderer.setPixelRatio(1);
     renderer.setSize(w, h, false);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; // a richer, more filmic picture
+    if (quality > 0) { renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; } // a richer, more filmic picture (skipped on Low)
 
     const seed = Math.floor(Math.random() * 2_000_000_000);
     const world = makeWorld(seed, level, track, laps);
     pathRef.current = trackPath(world);
     setHud((s) => ({ ...s, laps: world.laps, lapLen: world.lapLength }));
-    const view = new ApexScene(world, carId, bodyTier, style?.paint ?? paint, { ...lookFor(upgrades), style });
+    // Low quality drives the lighter version of the car's model (far fewer triangles) when it has one
+    const lowId = `${carId}_lo`;
+    if (quality === 0) await loadCarModel(lowId);
+    const heroId = quality === 0 && MODELS.byId[lowId] ? lowId : carId;
+    const view = new ApexScene(world, heroId, bodyTier, style?.paint ?? paint, { ...lookFor(upgrades), style });
+    view.setQuality(quality);
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
     resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };
@@ -166,7 +171,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       if (keys.current.left) steer -= 1;
       if (keys.current.right) steer += 1;
       steerNow = clampSteer(steer);
-      const input = { steer: steerNow, brake: keys.current.brake, nitro: keys.current.nitro };
+      const input = { steer: steerNow, brake: keys.current.brake, nitro: keys.current.nitro, gas: autoGas || keys.current.gas };
       inputs.push(packInput(input));
       mePrev = snap(me);
       step(world, car, me, input);
@@ -219,7 +224,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       if (phase === 'go' && frames % 3 === 0) {
         let near: { dist: number; speed: number; closing: number } | undefined;
         for (const x of rivals) { const dz = x.r.z - me.z, dist = Math.hypot(dz, x.r.x - me.x); if (!near || dist < near.dist) near = { dist, speed: x.r.v, closing: dz > 0 ? me.v - x.r.v : x.r.v - me.v }; }
-        engineUpdate({ speed: me.v, braking: keys.current.brake, boost: me.nitroOn || me.boost > 0, slip: Math.abs(steerNow) * me.v * 0.1 + Math.abs(driftAt(world, me.z, me.v)) + (keys.current.brake && me.v > 22 ? 6 : 0), rival: near });
+        engineUpdate({ speed: me.v, braking: keys.current.brake || !(autoGas || keys.current.gas), boost: me.nitroOn || me.boost > 0, slip: Math.abs(steerNow) * me.v * 0.1 + Math.abs(driftAt(world, me.z, me.v)) + (keys.current.brake && me.v > 22 ? 6 : 0), rival: near });
       }
       hudClock += dt;
       if (hudClock > 0.12) {
@@ -244,10 +249,10 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
 
   useEffect(() => { viewRef.current?.setCameraMode(cameraMode); }, [cameraMode]);
 
-  const press = (k: 'left' | 'right' | 'brake' | 'nitro', down: boolean) => { keys.current[k] = down; };
-  const btn = (k: 'left' | 'right' | 'brake' | 'nitro', label: string, style: object) => (
-    <Pressable onPressIn={() => press(k, true)} onPressOut={() => press(k, false)} style={({ pressed }) => [{ alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: pressed ? 'rgba(124,92,255,.85)' : 'rgba(10,14,30,.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,.25)' }, style]}>
-      <Text style={{ color: '#fff', fontWeight: '900', fontSize: k === 'left' || k === 'right' ? 34 : 15 }}>{label}</Text>
+  const press = (k: 'left' | 'right' | 'brake' | 'nitro' | 'gas', down: boolean) => { keys.current[k] = down; };
+  const btn = (k: 'left' | 'right' | 'brake' | 'nitro' | 'gas', label: string, style: object) => (
+    <Pressable onPressIn={() => press(k, true)} onPressOut={() => press(k, false)} style={({ pressed }) => [{ alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: pressed ? 'rgba(124,92,255,.8)' : 'rgba(10,14,30,.38)', borderWidth: 1, borderColor: 'rgba(255,255,255,.22)' }, style]}>
+      <Text style={{ color: '#fff', fontWeight: '900', fontSize: k === 'left' || k === 'right' ? 24 : 12 }}>{label}</Text>
     </Pressable>
   );
   const m = Math.floor(hud.time / 60), s = (hud.time % 60).toFixed(2).padStart(5, '0');
@@ -291,26 +296,30 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
         </View>
       </View>
 
-      {/* controls */}
+      {/* controls: smaller, see-through buttons so they do not cover the road */}
       {wide ? (
         <>
-          <View style={{ position: 'absolute', left: Math.max(insets.left, 14), bottom: insets.bottom + 12, height: 92, width: 250, flexDirection: 'row', gap: 10 }}>
+          <View style={{ position: 'absolute', left: Math.max(insets.left, 14), bottom: insets.bottom + 10, height: 60, width: 150, flexDirection: 'row', gap: 8 }}>
             {btn('left', '◀', { flex: 1 })}
             {btn('right', '▶', { flex: 1 })}
           </View>
-          <View style={{ position: 'absolute', right: Math.max(insets.right, 14), bottom: insets.bottom + 12, height: 92, width: 250, flexDirection: 'row', gap: 10 }}>
+          <View style={{ position: 'absolute', right: Math.max(insets.right, 14), bottom: insets.bottom + 10, height: 60, width: autoGas ? 170 : 250, flexDirection: 'row', gap: 8 }}>
             {btn('brake', '■ BRAKE', { flex: 1 })}
             {btn('nitro', '⚡ NITRO', { flex: 1 })}
+            {autoGas ? null : btn('gas', '▲ GAS', { flex: 1.1, borderColor: 'rgba(61,224,255,.6)' })}
           </View>
         </>
       ) : (
-        <View style={{ position: 'absolute', left: 10, right: 10, bottom: insets.bottom + 10, height: 128, flexDirection: 'row', gap: 10 }}>
-          {btn('left', '◀', { flex: 1.3 })}
-          <View style={{ flex: 1, gap: 10 }}>
-            {btn('nitro', '⚡ NITRO', { flex: 1 })}
-            {btn('brake', '■ BRAKE', { flex: 1 })}
+        <View style={{ position: 'absolute', left: 10, right: 10, bottom: insets.bottom + 10, height: 86, flexDirection: 'row', gap: 8 }}>
+          {btn('left', '◀', { flex: 1 })}
+          <View style={{ flex: 1.5, gap: 8 }}>
+            {autoGas ? null : btn('gas', '▲ GAS', { flex: 1, borderColor: 'rgba(61,224,255,.6)' })}
+            <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+              {btn('nitro', '⚡ NITRO', { flex: 1 })}
+              {btn('brake', '■ BRAKE', { flex: 1 })}
+            </View>
           </View>
-          {btn('right', '▶', { flex: 1.3 })}
+          {btn('right', '▶', { flex: 1 })}
         </View>
       )}
       <Pressable onPress={() => setCameraMode((m) => m === 'chase' ? 'cockpit' : 'chase')} style={{ position: 'absolute', top: insets.top + (wide ? 92 : 92) + (hudAheadShown ? 22 : 0), left: Math.max(insets.left, 14), backgroundColor: 'rgba(10,14,30,.72)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(94,194,255,.6)' }}>

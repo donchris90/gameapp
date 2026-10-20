@@ -20,6 +20,8 @@ export interface ApexSettings {
   laps: number; // laps on the circuit
   roadLaps: number; // laps (rounds) on every other track: the level's road is split into this many equal laps
   upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
+  autoGas: boolean; // the throttle is held for you (on by default); off shows a GAS pedal
+  quality: number; // 0 Low, 1 Medium, 2 High
   styles: Record<string, CarStyle>; // per car: how it looks (finish, colours, rims, tint, lights, ride height); saved under its own key
 }
 const KEY = 'apex.settings';
@@ -29,7 +31,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, styles: {},
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {},
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -46,6 +48,8 @@ export async function loadApex(): Promise<ApexSettings> {
       track: TRACK_IDS.includes(saved.track) ? saved.track : DEFAULTS.track,
       laps: [2, 3, 5].includes(saved.laps) ? saved.laps : DEFAULTS.laps,
       roadLaps: [1, 2, 3].includes(saved.roadLaps) ? saved.roadLaps : DEFAULTS.roadLaps,
+      autoGas: typeof saved.autoGas === 'boolean' ? saved.autoGas : DEFAULTS.autoGas,
+      quality: [0, 1, 2].includes(saved.quality) ? saved.quality : DEFAULTS.quality,
       upgrades: saved.upgrades && typeof saved.upgrades === 'object' ? saved.upgrades : {},
       coins: Number.isFinite(saved.coins) ? Math.max(0, saved.coins) : DEFAULTS.coins,
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,

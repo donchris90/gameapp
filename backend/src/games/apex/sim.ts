@@ -216,7 +216,7 @@ export function poseOf(e: Entity, t: number, arrivedAt: number): Pose {
 }
 
 // ---- one car in the race ----
-export interface Input { steer: number; brake: boolean; nitro: boolean } // steer: -1 (left) .. 1 (right), in steps of 0.01
+export interface Input { steer: number; brake: boolean; nitro: boolean; gas?: boolean } // gas: foot on the throttle (left out means yes, so every older recording replays exactly as before) // steer: -1 (left) .. 1 (right), in steps of 0.01
 export interface Racer {
   z: number; x: number; v: number; tick: number;
   nitro: number; invul: number; finishedAt: number; // finishedAt: tick the line was crossed, 0 while racing
@@ -242,7 +242,8 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
   const steer = clampSteer(input.steer);
 
   // speed
-  const wantsNitro = input.nitro && r.nitro > 0 && !input.brake;
+  const gas = input.gas !== false;
+  const wantsNitro = input.nitro && r.nitro > 0 && !input.brake && gas;
   r.nitroOn = wantsNitro;
   if (wantsNitro) r.nitro = Math.max(0, r.nitro - DT);
   else if (r.nitro < car.nitroSeconds) r.nitro = Math.min(car.nitroSeconds, r.nitro + 0.12 * DT);
@@ -251,6 +252,10 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
     // Brakes can bring the car to a complete stop; holding the brake must not secretly
     // apply throttle just to maintain an arcade minimum speed.
     r.v = Math.max(0, r.v - (31 + r.v * 0.12) * DT);
+  } else if (!gas) {
+    // Off the throttle: no engine power, only drag and a little engine braking, so the car rolls on and slows gently.
+    const drag = 0.12 + r.v * r.v * 0.00032;
+    r.v = Math.max(0, r.v - (drag + 2.4) * DT);
   } else {
     // A simple deterministic torque curve with aerodynamic drag. Clamp at the speed
     // cap to avoid the old accelerate/decelerate oscillation at maximum speed.
@@ -327,8 +332,8 @@ function lowerBound(es: Entity[], z: number): number {
 
 // ---- replaying a recorded run (this is what the server does to check a time) ----
 /** One input per tick, packed in a number: steer (0..200) | brake << 8 | nitro << 9. */
-export const packInput = (i: Input) => (Math.round(clampSteer(i.steer) * 100) + 100) | (i.brake ? 256 : 0) | (i.nitro ? 512 : 0);
-export const unpackInput = (n: number): Input => ({ steer: ((n & 255) - 100) / 100, brake: (n & 256) !== 0, nitro: (n & 512) !== 0 });
+export const packInput = (i: Input) => (Math.round(clampSteer(i.steer) * 100) + 100) | (i.brake ? 256 : 0) | (i.nitro ? 512 : 0) | (i.gas === false ? 1024 : 0);
+export const unpackInput = (n: number): Input => ({ steer: ((n & 255) - 100) / 100, brake: (n & 256) !== 0, nitro: (n & 512) !== 0, gas: (n & 1024) === 0 });
 
 /**
  * Cars are solid: two racers never share the same space. Run this after every racer has taken its step.

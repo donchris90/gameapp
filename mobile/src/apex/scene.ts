@@ -756,6 +756,8 @@ export class ApexScene {
   private z0 = -80;
   private px!: Float32Array; private pz!: Float32Array; private th!: Float32Array; private tx!: Float32Array; private tz!: Float32Array;
   private loop = false;
+  private quality = 2;
+  private fogFar = 320;
   private ribbons: THREE.Mesh[] = [];
   private buildPath() {
     this.loop = this.world.loop;
@@ -837,7 +839,7 @@ export class ApexScene {
   private applyTheme() {
     const t = this.theme;
     this.scene.background = new THREE.Color(t.sky);
-    this.scene.fog = new THREE.Fog(t.fog, 90, 320);
+    this.scene.fog = new THREE.Fog(t.fog, 90, this.fogFar);
     this.hemi.color.setHex(t.ambient); this.hemi.groundColor.setHex(t.night ? 0x10131f : 0x556070); this.hemi.intensity = t.night ? 1.9 : 1.1;
     this.sun.color.setHex(t.sun); this.sun.intensity = t.sunPower;
     (this.ground.material as THREE.MeshStandardMaterial).color.setHex(t.ground);
@@ -869,6 +871,16 @@ export class ApexScene {
   }
 
   resize(w: number, h: number) { this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  /** 0 Low, 1 Medium, 2 High: how much of the world is drawn. Low is for phones that struggle. */
+  setQuality(q: number) {
+    this.quality = Math.max(0, Math.min(2, Math.round(q)));
+    this.fogFar = [210, 270, 320][this.quality];
+    if (this.scene.fog) (this.scene.fog as THREE.Fog).far = this.fogFar;
+    this.camera.far = [420, 560, 720][this.quality]; this.camera.updateProjectionMatrix();
+    if (this.towers) this.towers.visible = this.quality > 0;
+    if (this.stars) this.stars.visible = this.quality > 0 && this.theme.night;
+    for (const s of this.sides) s.slot = -9999; // redraw the roadside with the new setting
+  }
   setCameraMode(mode: CameraMode) { this.cameraMode = mode; }
 
   update(f: Frame) {
@@ -965,7 +977,8 @@ export class ApexScene {
         const clear = this.loop ? this.clearance(sx * (ROAD_HALF + 14), hs * slotLen) : 999; // how far the nearest other piece of road is
         const h = hash(hs * 2 + (sx > 0 ? 1 : 0) + this.world.seed * 3);
         const isBuilding = h < 0.5;
-        s.building.visible = isBuilding && clear > 48; s.trunk.visible = !isBuilding && clear > 30; s.crown.visible = s.trunk.visible;
+        const keep = this.quality > 0 || slot % 2 === 0; // on Low only every other roadside slot is drawn
+        s.building.visible = isBuilding && clear > 48 && keep; s.trunk.visible = !isBuilding && clear > 30 && keep; s.crown.visible = s.trunk.visible;
         if (isBuilding) {
           const w = 7 + hash(hs * 5 + 1) * 8, ht = 5 + hash(hs * 5 + 2) * 22, d = 10 + hash(hs * 5 + 3) * 8;
           s.building.scale.set(w, ht, d); s.building.position.set(sx * (ROAD_HALF + 5 + w / 2), ht / 2, 0);

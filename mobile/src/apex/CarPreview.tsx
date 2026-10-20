@@ -1,13 +1,14 @@
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
-import { useCallback, useEffect, useRef } from 'react';
-import { LayoutChangeEvent, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { LayoutChangeEvent, Text, View } from 'react-native';
 import * as THREE from 'three';
-import { loadCarModel } from './model';
+import { loadCarModel, MODEL_ERRORS } from './model';
 import { lookFor } from './cars';
 import { makeHeroCar } from './scene';
 
 /** Lightweight, rotating Three.js vehicle preview for the garage and workshop. */
 export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, height = 190 }: { color: number; carId?: string; upgrades?: number[]; tier?: number; height?: number }) {
+  const [err, setErr] = useState('');
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -18,6 +19,7 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
 
   const onContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
     await loadCarModel(carId);
+    setErr(MODEL_ERRORS[carId] ?? '');
     glRef.current = gl;
     const width = gl.drawingBufferWidth || sizeRef.current.width;
     const heightPx = gl.drawingBufferHeight || sizeRef.current.height;
@@ -80,5 +82,5 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     }
   };
 
-  return <View onLayout={onLayout} style={{ height, overflow: 'hidden', borderRadius: 14 }}><GLView style={{ flex: 1 }} onContextCreate={onContextCreate} /></View>;
+  return <View onLayout={onLayout} style={{ height, overflow: 'hidden', borderRadius: 14 }}><GLView style={{ flex: 1 }} onContextCreate={onContextCreate} />{err ? <Text style={{ position: 'absolute', left: 8, right: 8, bottom: 6, color: '#ff8a80', fontSize: 10, backgroundColor: '#000a', padding: 4, borderRadius: 6 }}>3D model failed: {err}</Text> : null}</View>;
 }

@@ -87,12 +87,31 @@ const FILES: Record<string, () => number> = {}; // filled by cars.ts (registerCa
 export const MODELS: { hero: CarModel | null; rival: CarModel | null; byId: Record<string, CarModel | null> } = { hero: null, rival: null, byId: {} };
 const pending: Record<string, Promise<CarModel | null>> = {};
 
+function xhrBuffer(uri: string): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.responseType = 'arraybuffer';
+    x.onload = () => (x.response ? resolve(x.response as ArrayBuffer) : reject(new Error(`empty response (${x.status})`)));
+    x.onerror = () => reject(new Error(`request failed for ${uri}`));
+    x.open('GET', uri); x.send();
+  });
+}
 async function fetchBuffer(mod: number): Promise<ArrayBuffer> {
   const asset = Asset.fromModule(mod);
   await asset.downloadAsync();
-  const res = await fetch(asset.localUri ?? asset.uri);
-  return res.arrayBuffer();
+  const uri = asset.localUri ?? asset.uri;
+  try {
+    const res = await fetch(uri);
+    if (!res.ok && res.status !== 0) throw new Error(`HTTP ${res.status}`);
+    return await res.arrayBuffer();
+  } catch (first) {
+    // some phones cannot read a big local file through fetch: try a plain request instead
+    try { return await xhrBuffer(uri); } catch (second) { throw new Error(`could not read ${uri}: ${String(first)} / ${String(second)}`); }
+  }
 }
+
+/** Why a car file failed to load (shown in the garage so a failure is never silent). */
+export const MODEL_ERRORS: Record<string, string> = {};
 
 /** Registers an extra car file (the garage catalogue calls this once per car). */
 export function registerCarFile(id: string, getModule: () => number) { FILES[id] = getModule; }
@@ -101,7 +120,7 @@ export function registerCarFile(id: string, getModule: () => number) { FILES[id]
 export function loadCarModel(id: string): Promise<CarModel | null> {
   if (MODELS.byId[id]) return Promise.resolve(MODELS.byId[id]);
   pending[id] ??= (async () => {
-    try { const m = parseCarGlb(await fetchBuffer(FILES[id]())); MODELS.byId[id] = m; if (id === 'hero') MODELS.hero = m; if (id === 'rival') MODELS.rival = m; return m; } catch { return null; }
+    try { const m = parseCarGlb(await fetchBuffer(FILES[id]())); MODELS.byId[id] = m; delete MODEL_ERRORS[id]; if (id === 'hero') MODELS.hero = m; if (id === 'rival') MODELS.rival = m; return m; } catch (e) { MODEL_ERRORS[id] = String((e as Error)?.message ?? e).slice(0, 220); console.warn(`[apex] 3D car '${id}' failed to load: ${MODEL_ERRORS[id]}`); delete pending[id]; return null; }
   })();
   return pending[id];
 }

@@ -10,6 +10,7 @@ import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
 import { loadCarModel } from './model';
+import { CarStyle } from './style';
 import { RIVAL_MODELS, lookFor } from './cars';
 import { ApexScene, CameraMode, Frame } from './scene';
 import { MiniMap } from './MiniMap';
@@ -31,7 +32,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -112,7 +113,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     const world = makeWorld(seed, level, track, laps);
     pathRef.current = trackPath(world);
     setHud((s) => ({ ...s, laps: world.laps, lapLen: world.lapLength }));
-    const view = new ApexScene(world, carId, bodyTier, paint, lookFor(upgrades));
+    const view = new ApexScene(world, carId, bodyTier, style?.paint ?? paint, { ...lookFor(upgrades), style });
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
     resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };

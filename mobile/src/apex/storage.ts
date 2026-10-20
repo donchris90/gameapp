@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { CarStyle, cleanStyle } from './style';
 
 export interface ApexSettings {
   tilt: boolean;
@@ -19,19 +20,23 @@ export interface ApexSettings {
   laps: number; // laps on the circuit
   roadLaps: number; // laps (rounds) on every other track: the level's road is split into this many equal laps
   upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
+  styles: Record<string, CarStyle>; // per car: how it looks (finish, colours, rims, tint, lights, ride height); saved under its own key
 }
 const KEY = 'apex.settings';
+const STYLE_KEY = 'apex.styles'; // kept apart so a growing wardrobe never pushes the main settings over the secure store's size limit
 const TRACK_IDS = ['circuit', 'coast', 'dunes', 'city', 'pass'];
 const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1,
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, styles: {},
 };
 
 export async function loadApex(): Promise<ApexSettings> {
   try {
     const saved = JSON.parse((await SecureStore.getItemAsync(KEY)) ?? '{}');
+    let savedStyles: Record<string, unknown> = {};
+    try { savedStyles = JSON.parse((await SecureStore.getItemAsync(STYLE_KEY)) ?? '{}') ?? {}; } catch { savedStyles = {}; }
     return {
       ...DEFAULTS,
       ...saved,
@@ -51,13 +56,15 @@ export async function loadApex(): Promise<ApexSettings> {
       cleanRaces: Number.isFinite(saved.cleanRaces) ? Math.max(0, Math.floor(saved.cleanRaces)) : DEFAULTS.cleanRaces,
       bestLaps: saved.bestLaps && typeof saved.bestLaps === 'object' && !Array.isArray(saved.bestLaps) ? saved.bestLaps : DEFAULTS.bestLaps,
       processedRaceKeys: Array.isArray(saved.processedRaceKeys) ? saved.processedRaceKeys.filter((x: unknown) => typeof x === 'string').slice(-250) : [],
+      styles: Object.fromEntries(KNOWN.filter((id) => savedStyles[id]).map((id) => [id, cleanStyle(savedStyles[id], Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint)])),
     };
   } catch { return DEFAULTS; }
 }
 // Serialize writes: fast consecutive purchases/rewards must not finish out of order and overwrite newer progress.
 let saveQueue: Promise<void> = Promise.resolve();
 export function saveApex(s: ApexSettings) {
-  const snapshot = JSON.stringify(s);
-  saveQueue = saveQueue.then(() => SecureStore.setItemAsync(KEY, snapshot)).then(() => undefined).catch(() => undefined);
+  const { styles, ...rest } = s;
+  const snapshot = JSON.stringify(rest), styleSnapshot = JSON.stringify(styles ?? {});
+  saveQueue = saveQueue.then(() => SecureStore.setItemAsync(KEY, snapshot)).then(() => SecureStore.setItemAsync(STYLE_KEY, styleSnapshot)).then(() => undefined).catch(() => undefined);
   return saveQueue;
 }

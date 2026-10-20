@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODELS, CarModel, MatDesc } from './model';
 import { CIRCUIT } from './circuit';
+import { CarStyle, DEFAULT_STYLE, FINISHES, LAMPS, TINTS } from './style';
 import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, curvatureAt, poseOf, trackInfo } from './sim';
 
 /**
@@ -253,12 +254,66 @@ export function buildLuxuryCar(color: number, tier = 2): CarParts {
   return { group, body, tail, head, flame, wheels, paint };
 }
 
+
+// ---- car styling: paint finishes and rim designs ----
+function paintMaterial(color: number, finish: number): THREE.MeshPhysicalMaterial {
+  const env = envMap();
+  switch (FINISHES[finish]?.id) {
+    case 'satin': return new THREE.MeshPhysicalMaterial({ color, metalness: 0.35, roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.35, envMap: env, envMapIntensity: 1.1 });
+    case 'matte': return new THREE.MeshPhysicalMaterial({ color, metalness: 0.06, roughness: 0.92, clearcoat: 0, envMap: env, envMapIntensity: 0.35 });
+    case 'metallic': return new THREE.MeshPhysicalMaterial({ color, metalness: 0.96, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, envMap: env, envMapIntensity: 1.9 });
+    case 'pearl': return new THREE.MeshPhysicalMaterial({ color, metalness: 0.55, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 0.85, iridescenceIOR: 1.5, iridescenceThicknessRange: [200, 650], envMap: env, envMapIntensity: 1.7 });
+    case 'shift': return new THREE.MeshPhysicalMaterial({ color, metalness: 0.85, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 1, iridescenceIOR: 2.1, iridescenceThicknessRange: [350, 950], envMap: env, envMapIntensity: 1.9 });
+    default: return new THREE.MeshPhysicalMaterial({ color, metalness: 0.68, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.06, envMap: env, envMapIntensity: 1.65 });
+  }
+}
+const rimTextures: Record<number, THREE.DataTexture> = {};
+/** A rim face drawn in code: white where there is metal, see-through where there is not. Tinted by the rim colour. */
+function rimTexture(design: number): THREE.DataTexture {
+  if (rimTextures[design]) return rimTextures[design];
+  const N = 128, data = new Uint8Array(N * N * 4), TAU = Math.PI * 2;
+  const off = (th: number, n: number) => { const p = TAU / n; return ((((th + p / 2) % p) + p) % p) - p / 2; }; // signed angle from the nearest of n evenly spaced spokes
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = ((i + 0.5) / N) * 2 - 1, y = ((j + 0.5) / N) * 2 - 1, r = Math.hypot(x, y), th = Math.atan2(y, x);
+    let on = 0;
+    if (r <= 1) {
+      if (r > 0.9 || r < 0.2) on = 1; // the outer lip and the hub
+      else if (design === 1) on = Math.abs(off(th, 5)) * r < 0.1 + 0.11 * r ? 1 : 0;
+      else if (design === 2) on = Math.abs(off(th, 10)) * r < 0.04 + 0.025 * r ? 1 : 0;
+      else if (design === 3) { const u = Math.abs(Math.sin((x + y) * 7 * Math.PI)), v = Math.abs(Math.sin((x - y) * 7 * Math.PI)); on = u < 0.2 || v < 0.2 ? 1 : 0; }
+      else if (design === 4) on = Math.min(Math.abs(off(th - 0.17, 5)), Math.abs(off(th + 0.17, 5))) * r < 0.045 + 0.02 * r ? 1 : 0;
+      else on = Math.abs(off(th - 1.25 * r, 9)) * r < 0.085 + 0.05 * r ? 1 : 0; // turbofan: blades swept round
+    }
+    const k = (j * N + i) * 4; data[k] = data[k + 1] = data[k + 2] = 255; data[k + 3] = on ? 255 : 0;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat); t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+  rimTextures[design] = t; return t;
+}
+/** Fits a rim disc (and a dark brake backing) to the face of a wheel. The disc is a child of the wheel mesh, so it spins and steers with it. */
+function addRimDisc(wheel: THREE.Mesh, design: number, colour: number, caliperMat: THREE.Material, group: THREE.Group) {
+  const g = wheel.geometry; if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox!; const side = wheel.position.x >= 0 ? 1 : -1;
+  const R = (bb.max.y - bb.min.y) / 2, cy = (bb.max.y + bb.min.y) / 2, cz = (bb.max.z + bb.min.z) / 2;
+  const outer = side > 0 ? bb.max.x : bb.min.x, width = bb.max.x - bb.min.x;
+  const rr = R * 0.66, at = outer - side * width * 0.1;
+  const face = new THREE.Mesh(new THREE.CircleGeometry(rr, 40).rotateY(side > 0 ? Math.PI / 2 : -Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: colour, map: rimTexture(design), alphaTest: 0.5, metalness: 0.88, roughness: 0.24, envMap: envMap(), envMapIntensity: 1.3 }));
+  face.position.set(at, cy, cz); face.name = 'apex_rim_face'; wheel.add(face);
+  const back = new THREE.Mesh(new THREE.CircleGeometry(rr * 0.96, 32).rotateY(side > 0 ? Math.PI / 2 : -Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x15181d, metalness: 0.6, roughness: 0.5 }));
+  back.position.set(at - side * 0.012, cy, cz); back.name = 'apex_rim_back'; wheel.add(back);
+  // the brake caliper sits between the spokes and the dark backing, so its colour shows through the rim
+  const cal = new THREE.Mesh(new THREE.BoxGeometry(0.03, rr * 0.5, rr * 0.34), caliperMat);
+  cal.position.set(wheel.position.x + (at - side * 0.006), wheel.position.y + cy + rr * 0.42, wheel.position.z + cz + rr * 0.2); cal.name = 'apex_brake_caliper_vis'; group.add(cal);
+}
+
 /** A car built from a real 3D file. The part called `paint` takes the chosen colour; the wheels spin. `glow` adds an underglow colour (0 = none). */
-function buildModelCar(model: CarModel, color: number, look: { glow?: number; flame?: number } = {}, tier = 0, carId = 'hero'): CarParts {
+function buildModelCar(model: CarModel, color: number, look: CarLook = {}, tier = 0, carId = 'hero'): CarParts {
   const group = new THREE.Group();
-  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: 0.68, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.06, envMap: envMap(), envMapIntensity: 1.65 });
+  const style = look.style ?? DEFAULT_STYLE;
+  const paint = paintMaterial(color, style.finish);
+  const glassMats: Array<{ mat: THREE.MeshStandardMaterial; color: THREE.Color; opacity: number }> = [];
   const tailDefault = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.8, metalness: 0.1, roughness: 0.3 });
-  const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 1, metalness: 0.1, roughness: 0.2 });
+  const head = std(0xffffff, { emissive: LAMPS[style.lamp]?.hex ?? 0xfff3c4, emissiveIntensity: 1, metalness: 0.1, roughness: 0.2 });
   let tail: THREE.MeshStandardMaterial = tailDefault;
   let body: THREE.Mesh | null = null;
   const wheels: THREE.Mesh[] = [];
@@ -275,6 +330,7 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
         emissive: new THREE.Color(m.emissive[0], m.emissive[1], m.emissive[2]), transparent: glassy && m.color[3] < 0.99, opacity: glassy ? Math.min(0.85, m.color[3]) : 1,
       });
       if (lamp) { mat.emissive = new THREE.Color(0xff1a1a); mat.emissiveIntensity = 0.8; tail = mat; }
+      if (glassy && /^(glass|window|windscreen|car_glass)/i.test(m.name)) glassMats.push({ mat, color: mat.color.clone(), opacity: mat.opacity });
       x = mat; cache.set(m, mat);
     }
     return x;
@@ -284,6 +340,7 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
     paint, carbon: std(0x14161b, { metalness: 0.7, roughness: 0.35, envMap: envMap(), envMapIntensity: 0.9 }),
     glass: std(0x0b1220, { metalness: 0.95, roughness: 0.05, envMap: envMap(), envMapIntensity: 1.5 }), lights: tailDefault,
   };
+  glassMats.push({ mat: legacy.glass as THREE.MeshStandardMaterial, color: (legacy.glass as THREE.MeshStandardMaterial).color.clone(), opacity: 1 });
   const tyre = std(0x0d0e12, { metalness: 0.5, roughness: 0.5, envMap: envMap(), envMapIntensity: 0.6 });
   for (const [name, part] of Object.entries(model.parts)) {
     const isWheel = name.startsWith('wheel_');
@@ -336,7 +393,7 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
   // Add rotor/caliper details only when a model exposes named wheel meshes. The parts sit slightly inboard
   // of the wheel face so the rim remains visible and the extra geometry stays inexpensive on mobile.
   const rotorMaterial = new THREE.MeshStandardMaterial({ color: 0x737b85, metalness: 0.92, roughness: 0.31 });
-  const caliperMaterial = new THREE.MeshStandardMaterial({ color: carId === 'cts' || carId === 'gt3' ? 0xff3b30 : 0xe2b34b, metalness: 0.48, roughness: 0.3 });
+  const caliperMaterial = new THREE.MeshStandardMaterial({ color: style.caliper, metalness: 0.48, roughness: 0.3, emissive: style.caliper, emissiveIntensity: 0.12 });
   const wheelParts = Object.entries(model.parts).filter(([name]) => name.startsWith('wheel_'));
   for (const [wheelName, wheelPart] of wheelParts) {
     const [wx, wy, wz] = wheelPart.at;
@@ -348,6 +405,11 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
     group.add(rotor);
     const caliper = addBox(`apex_brake_caliper_${wheelName}`, new THREE.BoxGeometry(0.055, radius * 0.58, radius * 0.34), wx - side * 0.075, wy + radius * 0.13, wz + radius * 0.48, caliperMaterial);
     caliper.rotation.x = -0.08;
+  }
+  if (style.rimDesign > 0) for (const w of wheels) addRimDisc(w, style.rimDesign, style.rim, caliperMaterial, group);
+  { // window tint: darker and more solid glass
+    const dark = TINTS[style.tint]?.dark ?? 0.35;
+    for (const g of glassMats) { g.mat.color.copy(g.color).multiplyScalar(1 - dark * 0.85); g.mat.transparent = true; g.mat.opacity = Math.min(1, g.opacity * (1 - dark * 0.35) + dark * 0.5); }
   }
   // A thin rear LED bar provides consistent brake-light feedback even on models with dark baked lamp textures.
   const rearBar = addBox('apex_rear_light_bar', new THREE.BoxGeometry(width * 0.48, Math.max(0.035, height * 0.035), 0.035), 0, min.y + height * 0.34, max.z - 0.025, brakeMaterial);
@@ -387,10 +449,13 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
   }
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: look.flame ?? 0x66ccff, transparent: true, opacity: 0.85 }));
   flame.position.set(0, min.y + height * 0.19, max.z + 0.42); flame.visible = false; group.add(flame);
-  if (look.glow) { // underglow: a soft coloured pool of light under the car
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 6.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: look.glow, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const glowColour = style.glow || look.glow || 0;
+  if (glowColour) { // underglow: a soft coloured pool of light under the car
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 6.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: glowColour, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
     g.position.y = 0.04; group.add(g);
   }
+  // ride height: the body, aero and lights sit higher or lower than the wheels
+  if (style.ride) for (const ch of group.children) if (!/^wheel_|^apex_brake|^apex_rim/.test(ch.name)) ch.position.y += style.ride * 0.035;
   group.add(blobShadow());
   return { group, body: body ?? (group.children[0] as THREE.Mesh), tail, head, flame, wheels, paint };
 }
@@ -399,7 +464,7 @@ function blobShadow(): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 6.4).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, opacity: 0.6, depthWrite: false }));
   m.position.y = 0.045; m.renderOrder = 1; return m;
 }
-export interface CarLook { glow?: number; flame?: number }
+export interface CarLook { glow?: number; flame?: number; style?: CarStyle }
 /** The player's car: the chosen real 3D model when its file is loaded, otherwise the built-in luxury car. */
 export function makeHeroCar(color: number, tier = 2, carId = 'hero', look: CarLook = {}): CarParts {
   const m = MODELS.byId[carId] ?? MODELS.hero;

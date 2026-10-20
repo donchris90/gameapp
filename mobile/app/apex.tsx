@@ -5,6 +5,8 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { adDue, preloadInterstitial, showInterstitial } from '../src/ads';
 import { Race, RaceResult } from '../src/apex/Race';
 import { CarPreview } from '../src/apex/CarPreview';
+import { Studio } from '../src/apex/Studio';
+import { CarStyle, cleanStyle } from '../src/apex/style';
 import { CATALOG, STAT_MAX, UPGRADE_INFO, catalogCar, lookFor, upgradeCost } from '../src/apex/cars';
 import { loadCarModel } from '../src/apex/model';
 import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_SECOND, TRACKS, CIRCUIT_TRACK, LAP_CHOICES, ROAD_LAP_CHOICES, trackInfo } from '../src/apex/sim';
@@ -14,12 +16,6 @@ import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
-const PAINTS = [
-  { name: 'Electric Blue', hex: 0x2788ff }, { name: 'Neon Violet', hex: 0x7548ff },
-  { name: 'Crimson', hex: 0xe52b43 }, { name: 'Pearl White', hex: 0xe7edf7 },
-  { name: 'Midnight', hex: 0x171b2b }, { name: 'Volt Yellow', hex: 0xf4c542 },
-  { name: 'Emerald', hex: 0x12a87b },
-];
 type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends';
 const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : String(n));
 const fmt = (ticks: number) => (ticks ? `${Math.floor(ticks / TICKS_PER_SECOND / 60)}:${((ticks / TICKS_PER_SECOND) % 60).toFixed(1).padStart(4, '0')}` : 'DNF');
@@ -29,7 +25,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1 });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, styles: {} });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -51,6 +47,9 @@ export default function Apex() {
   };
   const selectedCar = useMemo(() => catalogCar(settings.activeCar), [settings.activeCar]);
   const levelsOf = (id: string) => settings.upgrades[id] ?? [0, 0, 0, 0];
+  /** How a car looks. Cars that were never styled use the old single paint colour. */
+  const styleOf = (id: string): CarStyle => cleanStyle(settings.styles?.[id], settings.paint);
+  const setStyle = (patch: Partial<CarStyle>) => update({ styles: { ...(settings.styles ?? {}), [settings.activeCar]: { ...styleOf(settings.activeCar), ...patch } } });
   const spec = levelSpec(level);
   const traffic = ['cars', spec.bikes ? 'motorbikes' : '', spec.peds ? 'people crossing' : '', spec.trucks ? 'trucks' : '', spec.buses ? 'buses' : ''].filter(Boolean).join(', ');
   const time = ['Day', 'Day', 'Sunset', 'Night'][(level - 1) % 4 === 0 ? 0 : (level - 1) % 4];
@@ -112,7 +111,7 @@ export default function Apex() {
     <Dim style={{ fontSize: 11 }}>{onCircuit ? 'LAPS' : 'ROUNDS'}</Dim>
     {roundChoices.map((n) => <Pressable key={n} onPress={() => update(onCircuit ? { laps: n } : { roadLaps: n })} style={{ paddingVertical: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: roundsNow === n ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: roundsNow === n ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{n}</Text></Pressable>)}
   </View>;
-  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={settings.paint} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -173,7 +172,7 @@ export default function Apex() {
 
       <View style={{ borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#28578b' }}>
         {car.ready
-          ? <CarPreview key={`g-${car.id}-${settings.paint}-${settings.bodyTier}-${lv.join('')}`} color={settings.paint} carId={car.id} upgrades={lv} tier={settings.bodyTier} height={230} />
+          ? <CarPreview color={styleOf(car.id).paint} style={styleOf(car.id)} carId={car.id} upgrades={lv} tier={settings.bodyTier} height={230} />
           : <View style={{ height: 230, alignItems: 'center', justifyContent: 'center', backgroundColor: '#101a31' }}><Text style={{ fontSize: 46 }}>🛠️</Text><Dim>3D model arriving soon</Dim></View>}
         <Pressable onPress={() => step(-1)} style={{ position: 'absolute', left: 6, top: 90, padding: 10, borderRadius: 20, backgroundColor: 'rgba(10,14,30,.6)' }}><Text style={{ color: '#fff', fontSize: 22 }}>‹</Text></Pressable>
         <Pressable onPress={() => step(1)} style={{ position: 'absolute', right: 6, top: 90, padding: 10, borderRadius: 20, backgroundColor: 'rgba(10,14,30,.6)' }}><Text style={{ color: '#fff', fontSize: 22 }}>›</Text></Pressable>
@@ -299,18 +298,7 @@ export default function Apex() {
 
         {panel === 'garage' ? renderGarage() : null}
 
-        {panel === 'customize' ? <>
-          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>WORKSHOP</Text><H1>Customize</H1><Dim>Choose a paint colour. It is saved and used in the race.</Dim>
-          <View style={{ marginTop: 14, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#28578b' }}><CarPreview key={`custom-${settings.activeCar}-${settings.paint}-${settings.bodyTier}`} color={settings.paint} carId={settings.activeCar} upgrades={levelsOf(settings.activeCar)} tier={settings.bodyTier} height={220} /></View>
-          <Card style={{ marginTop: 10, alignItems: 'center', gap: 8, paddingVertical: 14, borderColor: '#28578b', backgroundColor: '#101b34' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}>{selectedCar.name}</Text><View style={{ width: 88, height: 8, borderRadius: 4, backgroundColor: `#${settings.paint.toString(16).padStart(6, '0')}`, borderWidth: 1, borderColor: '#fff' }} /><Text style={{ color: colors.dim, fontSize: 11 }}>ACTIVE PAINT PREVIEW</Text></Card>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: 18, marginBottom: 8 }}>PAINT FINISH</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{PAINTS.map((p) => <Pressable key={p.name} onPress={() => update({ paint: p.hex })} style={{ width: '30%', flexGrow: 1, padding: 10, alignItems: 'center', borderRadius: 14, backgroundColor: settings.paint === p.hex ? '#1b3766' : colors.card, borderWidth: 1, borderColor: settings.paint === p.hex ? '#5eaaff' : colors.line }}><View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `#${p.hex.toString(16).padStart(6, '0')}`, borderWidth: 1, borderColor: '#aab5cf' }} /><Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', marginTop: 7 }}>{p.name}</Text>{settings.paint === p.hex ? <Text style={{ color: colors.x, fontSize: 9, marginTop: 3 }}>SELECTED</Text> : null}</Pressable>)}</View>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: 20, marginBottom: 8 }}>BODY KIT</Text>
-          <Dim>Choose a body kit. Each tier adds visible aerodynamic parts to the 3D preview and your race car.</Dim>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-            {[{ tier: 0, title: 'STREET', sub: 'Stock body' }, { tier: 1, title: 'SPORT', sub: 'Splitter + skirts' }, { tier: 2, title: 'GT', sub: 'Diffuser + canards' }, { tier: 3, title: 'FLAGSHIP', sub: 'Accent + aero wing' }].map((kit) => <Pressable key={kit.tier} onPress={() => update({ bodyTier: kit.tier })} style={{ flex: 1, padding: 9, borderRadius: 12, backgroundColor: settings.bodyTier === kit.tier ? '#1b3766' : colors.card, borderWidth: 1, borderColor: settings.bodyTier === kit.tier ? '#5eaaff' : colors.line, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 10 }}>{kit.title}</Text><Text style={{ color: colors.dim, fontSize: 9, textAlign: 'center', marginTop: 4 }}>{kit.sub}</Text>{settings.bodyTier === kit.tier ? <Text style={{ color: colors.x, fontSize: 9, marginTop: 4 }}>ACTIVE</Text> : null}</Pressable>)}
-          </View>
-          <Button title="BACK TO GARAGE" kind="ghost" onPress={() => setPanel('garage')} style={{ marginTop: 18 }} />
-        </> : null}
+        {panel === 'customize' ? <Studio carName={selectedCar.name} carId={settings.activeCar} style={styleOf(settings.activeCar)} setStyle={setStyle} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} setBodyTier={(n) => update({ bodyTier: n })} onBack={() => setPanel('garage')} /> : null}
 
         {panel === 'career' ? <>
           <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CAREER MODE</Text><H1>Race progression</H1><Dim>Complete a level in the top three to unlock the next event. Clean driving and new lap records now earn extra coins and career XP.</Dim>

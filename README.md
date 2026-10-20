@@ -228,3 +228,14 @@ Six-car catalogue in `mobile/src/apex/cars.ts` (price, career level, upgrade cos
 - **Look:** filmic tone mapping, a sky with stars, a far-off city, speckled asphalt and grass, striped barriers, blob shadows under cars, glowing pads. HUD: position, lap, time, best lap, minimap, speed and nitro.
 - **Sound:** `tools/make_engine_sounds.py` builds the engine loops (V8 firing pulses at four rev levels, wind, tyre squeal, nitro whoosh, blow-off, pop). `engineUpdate` in `src/sfx.ts` runs a six-gear gearbox on top of them and adds the nearest rival's engine with a doppler shift. If pitch does not follow the revs on a device, check `shouldCorrectPitch` in `loopOf`.
 - **Nitro pads** now appear on every track (one every 220–360 m, any lane) as well as the circuit; driving over one refills 40% of the tank and gives a short boost. The nitro meter in the HUD shows the level and turns red when low.
+
+## Apex Run paint studio (customization, slice 1)
+
+The Customize panel is a studio: a 3D car you can drag to turn, zoom, and view from the front, side, rear or top. Per car, saved on the phone (under its own `apex.styles` key):
+
+- **Paint:** six finishes (gloss, satin, matte, metallic, pearlescent, colour-shift) and twelve body colours.
+- **Wheels:** five rim designs drawn in code and fitted to each model's real wheel size (so they work on every car), a rim colour, and brake-caliper colour.
+- **Stance:** five ride heights, and the body-kit tiers.
+- **Glass and lights:** window tint, headlight colour, underglow colour.
+
+All of this is visual only: `src/apex/style.ts` is never read by the race rules (`sim.ts`), so replays, rewards and the server can't be affected. Planned next: aero add-ons and decals, cockpit and interior, the performance workshop (brakes, suspension, transmission), and paying for premium parts with coins.

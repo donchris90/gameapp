@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MODELS, CarModel, MatDesc } from './model';
+import { CIRCUIT } from './circuit';
 import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, curvatureAt, poseOf, trackInfo } from './sim';
 
 /**
@@ -41,6 +42,39 @@ function windowTexture(): THREE.DataTexture {
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.needsUpdate = true;
   return tex;
 }
+/** Grey speckle for asphalt and grass, tinted by the material colour. */
+function speckleTexture(base: number, spread: number, size = 32): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4); let s = 12345;
+  const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = 0; i < size * size; i++) { const v = Math.max(0, Math.min(255, base + (rnd() - 0.5) * spread)); data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.needsUpdate = true; return tex;
+}
+/** Dark skyscrapers with lit windows, for the far-off city. */
+function towerTexture(): THREE.DataTexture {
+  const w = 16, h = 32, data = new Uint8Array(w * h * 4); let s = 777;
+  const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, cell = x % 2 === 0 && y % 2 === 0, lit = cell && rnd() < 0.5, warm = rnd() < 0.7;
+    data[i] = lit ? (warm ? 255 : 127) : 16; data[i + 1] = lit ? (warm ? 217 : 230) : 20; data[i + 2] = lit ? (warm ? 160 : 255) : 42; data[i + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.needsUpdate = true; return tex;
+}
+function shadowTexture(): THREE.DataTexture {
+  const n = 32, data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (x - n / 2 + 0.5) / (n / 2), dy = (y - n / 2 + 0.5) / (n / 2), d = Math.min(1, Math.sqrt(dx * dx + dy * dy));
+    const i = (y * n + x) * 4; data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = Math.round(Math.pow(1 - d, 1.4) * 255);
+  }
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tex.needsUpdate = true; return tex;
+}
+const chevronTexture = (): THREE.DataTexture => {
+  const w = 32, h = 64, data = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, k = (y % 21) / 21, edge = Math.abs(x - w / 2) / (w / 2), on = Math.abs(k - (0.75 - edge * 0.5)) < 0.09;
+    data[i] = 61; data[i + 1] = 224; data[i + 2] = 255; data[i + 3] = on ? 255 : 0;
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat); tex.needsUpdate = true; return tex;
+};
 function glowTexture(): THREE.DataTexture {
   const n = 32, data = new Uint8Array(n * n * 4);
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
@@ -215,6 +249,7 @@ export function buildLuxuryCar(color: number, tier = 2): CarParts {
   // nitro flame
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.85 }));
   flame.position.set(0, 0.4, L + 1.2); flame.visible = false; group.add(flame);
+  group.add(blobShadow());
   return { group, body, tail, head, flame, wheels, paint };
 }
 
@@ -265,9 +300,14 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
     const g = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 6.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: look.glow, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
     g.position.y = 0.04; group.add(g);
   }
+  group.add(blobShadow());
   return { group, body: body ?? (group.children[0] as THREE.Mesh), tail, head, flame, wheels, paint };
 }
 
+function blobShadow(): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 6.4).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, opacity: 0.6, depthWrite: false }));
+  m.position.y = 0.045; m.renderOrder = 1; return m;
+}
 export interface CarLook { glow?: number; flame?: number }
 /** The player's car: the chosen real 3D model when its file is loaded, otherwise the built-in luxury car. */
 export function makeHeroCar(color: number, tier = 2, carId = 'hero', look: CarLook = {}): CarParts {
@@ -340,7 +380,7 @@ function buildPed(shirt: number) {
 // ---- the scene ----
 export class ApexScene {
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(62, 1, 0.3, 320);
+  readonly camera = new THREE.PerspectiveCamera(62, 1, 0.6, 720);
   private hero!: CarParts;
   private others = new Map<number, CarParts>();
   private live = new Map<number, { obj: THREE.Object3D; ent: Entity }>();
@@ -350,6 +390,9 @@ export class ApexScene {
   private sun!: THREE.DirectionalLight;
   private hemi!: THREE.HemisphereLight;
   private sky!: THREE.Mesh;
+  private stars!: THREE.Points;
+  private towers!: THREE.InstancedMesh;
+  private pads: Array<{ mat: THREE.MeshBasicMaterial; z: number }> = [];
   private theme: Theme;
   private trafficCache = new Map<string, THREE.Object3D>();
   private wheelSpin = 0;
@@ -378,16 +421,28 @@ export class ApexScene {
     skyG.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     this.sky = new THREE.Mesh(skyG, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
     s.add(this.sky);
+    { // stars for the evening and night
+      const n = 260, p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { const a = hash(i * 3 + 1) * Math.PI * 2, e = Math.acos(0.15 + hash(i * 3 + 2) * 0.85); p[i * 3] = 280 * Math.sin(e) * Math.cos(a); p[i * 3 + 1] = 280 * Math.cos(e); p[i * 3 + 2] = 280 * Math.sin(e) * Math.sin(a); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+      this.stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 })); s.add(this.stars);
+    }
+    { // the far-off city: dark towers with lit windows, kept around the car
+      const n = 54, m = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ map: towerTexture(), fog: false }), n), mat4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + hash(i) * 0.1, r = 330 + hash(i + 50) * 190, w = 26 + hash(i + 90) * 44, h = 60 + hash(i + 130) * 200; mat4.compose(new THREE.Vector3(Math.cos(a) * r, h / 2 - 1, Math.sin(a) * r), q, new THREE.Vector3(w, h, w)); m.setMatrixAt(i, mat4); }
+      m.frustumCulled = false; this.towers = m; s.add(m);
+    }
 
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), std(0x6f8f4e, { roughness: 1, metalness: 0 })); this.ground.position.y = -0.02; s.add(this.ground);
-    this.road = this.ribbon(-ROAD_HALF - 0.3, ROAD_HALF + 0.3, 0, std(0x2a2d34, { roughness: 0.95, metalness: 0 }));
+    const grass = speckleTexture(225, 60); grass.repeat.set(140, 140);
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), std(0x6f8f4e, { roughness: 1, metalness: 0, map: grass })); this.ground.position.y = -0.2; s.add(this.ground); // well below the road, so the two never fight over the same pixels
+    this.road = this.ribbon(-ROAD_HALF - 0.3, ROAD_HALF + 0.3, 0, std(0x2a2d34, { roughness: 0.95, metalness: 0, map: speckleTexture(235, 40) }));
     const lineM = std(0xf2f2f2, { roughness: 0.6 });
     const kerbM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
-    const rail = std(0xaab0ba, { metalness: 0.5, roughness: 0.5 }); rail.side = THREE.DoubleSide;
+    const rail = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide });
     for (const sx of [-1, 1]) {
       this.ribbon(Math.min(sx * (ROAD_HALF - 0.3), sx * ROAD_HALF), Math.max(sx * (ROAD_HALF - 0.3), sx * ROAD_HALF), 0.02, lineM);
       this.ribbon(Math.min(sx * (ROAD_HALF + 0.3), sx * (ROAD_HALF + 1.1)), Math.max(sx * (ROAD_HALF + 0.3), sx * (ROAD_HALF + 1.1)), 0.03, kerbM, [0xd23a3a, 0xf2f2f2]);
-      this.wall(sx * (ROAD_HALF + 1.4), 0.95, rail);
+      this.wall(sx * (ROAD_HALF + 1.4), 1.1, rail, [0xd23a3a, 0xf2f2f2]);
     }
     // dashes between lanes (recycled as the car moves)
     const dashM = std(0xeeeeee, { roughness: 0.6 });
@@ -430,7 +485,16 @@ export class ApexScene {
       }
       this.put(gate, 0, z); gate.name = name; this.scene.add(gate);
     };
-    mk(0, 'start'); mk(this.world.length, 'finish');
+    mk(0, 'start'); if (!this.loop) mk(this.world.length, 'finish');
+
+    // nitro pads (circuit): cyan chevrons that glow
+    const padTex = chevronTexture(), glow = glowTexture();
+    for (const p of this.world.pads) {
+      const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ map: padTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 10).rotateX(-Math.PI / 2), mat); g.add(m);
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(9, 14).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glow, color: 0x3de0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.45, fog: false })); gl.position.y = -0.01; g.add(gl);
+      this.put(g, p.x, p.z, 0, 0.06); this.scene.add(g); this.pads.push({ mat, z: p.z });
+    }
 
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 34).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.beam.position.y = 0.05; this.scene.add(this.beam);
@@ -438,11 +502,24 @@ export class ApexScene {
     this.scene.add(this.hero.group);
   }
   // ---- the road path: the bends are drawn by walking down the road in 2 m steps ----
-  private readonly S = 2;
-  private readonly z0 = -80;
-  private px!: Float32Array; private pz!: Float32Array; private th!: Float32Array;
+  private S = 2;
+  private z0 = -80;
+  private px!: Float32Array; private pz!: Float32Array; private th!: Float32Array; private tx!: Float32Array; private tz!: Float32Array;
+  private loop = false;
   private ribbons: THREE.Mesh[] = [];
   private buildPath() {
+    this.loop = this.world.lapLength > 0;
+    if (this.loop) { // a closed circuit: read the lap from its table; every lap is the same road
+      const n = CIRCUIT.x.length;
+      this.S = CIRCUIT.step; this.z0 = 0;
+      this.px = Float32Array.from(CIRCUIT.x); this.pz = Float32Array.from(CIRCUIT.z); this.th = new Float32Array(n + 1);
+      this.tx = new Float32Array(n); this.tz = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const a = (i + n - 1) % n, b = (i + 1) % n, dx = CIRCUIT.x[b] - CIRCUIT.x[a], dz = CIRCUIT.z[b] - CIRCUIT.z[a], l = Math.hypot(dx, dz) || 1;
+        this.tx[i] = dx / l; this.tz[i] = dz / l;
+      }
+      return;
+    }
     const n = Math.ceil((this.world.length + 240 - this.z0) / this.S) + 2;
     this.px = new Float32Array(n); this.pz = new Float32Array(n); this.th = new Float32Array(n);
     let x = 0, zz = -this.z0, th = 0;
@@ -454,6 +531,13 @@ export class ApexScene {
   }
   /** Road space (x across, z along) to a scene position; returns the road's heading there. */
   private at(x: number, z: number, out: THREE.Vector3, y = 0): number {
+    if (this.loop) {
+      const n = this.px.length, L = this.world.lapLength, zl = z - Math.floor(z / L) * L, f = zl / this.S, i = Math.floor(f) % n, u = f - Math.floor(f), j = (i + 1) % n;
+      let dx = this.tx[i] + (this.tx[j] - this.tx[i]) * u, dz = this.tz[i] + (this.tz[j] - this.tz[i]) * u; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      const th = Math.atan2(dx, -dz);
+      out.set(this.px[i] + (this.px[j] - this.px[i]) * u + x * Math.cos(th), y, this.pz[i] + (this.pz[j] - this.pz[i]) * u + x * Math.sin(th));
+      return th;
+    }
     const f = Math.max(0, Math.min(this.th.length - 1.001, (z - this.z0) / this.S)), i = Math.floor(f), u = f - i;
     const th = this.th[i] + (this.th[i + 1] - this.th[i]) * u;
     out.set(this.px[i] + (this.px[i + 1] - this.px[i]) * u + x * Math.cos(th), y, this.pz[i] + (this.pz[i + 1] - this.pz[i]) * u + x * Math.sin(th));
@@ -462,16 +546,18 @@ export class ApexScene {
   private put(o: THREE.Object3D, x: number, z: number, yaw = 0, y = 0): number { const th = this.at(x, z, o.position, y); o.rotation.y = -th + yaw; return th; }
   /** A strip of road surface between two distances from the middle, as one mesh (a quad every 2 m, so it can bend and be striped). */
   private strip(a: (i: number, out: THREE.Vector3) => void, b: (i: number, out: THREE.Vector3) => void, mat: THREE.Material, colors?: number[]): THREE.Mesh {
-    const n = this.th.length - 1, pos = new Float32Array(n * 12), idx = new Uint16Array(n * 6), col = colors ? new Float32Array(n * 12) : null, v = new THREE.Vector3(), c = new THREE.Color();
+    const n = this.th.length - 1, uv = new Float32Array(n * 8), stripe = Math.max(1, Math.round(4 / this.S)), pos = new Float32Array(n * 12), idx = new Uint16Array(n * 6), col = colors ? new Float32Array(n * 12) : null, v = new THREE.Vector3(), c = new THREE.Color();
     const write = (o: number, p: THREE.Vector3) => { pos[o] = p.x; pos[o + 1] = p.y; pos[o + 2] = p.z; };
     for (let i = 0; i < n; i++) {
       const o = i * 12;
       a(i, v); write(o, v); b(i, v); write(o + 3, v); a(i + 1, v); write(o + 6, v); b(i + 1, v); write(o + 9, v);
+      const vv = (i * this.S) / 12, q0 = i * 8; uv[q0] = 0; uv[q0 + 1] = vv; uv[q0 + 2] = 1; uv[q0 + 3] = vv; uv[q0 + 4] = 0; uv[q0 + 5] = vv + this.S / 12; uv[q0 + 6] = 1; uv[q0 + 7] = vv + this.S / 12;
       const q = i * 4; idx.set([q, q + 1, q + 2, q + 1, q + 3, q + 2], i * 6);
-      if (col && colors) { c.setHex(colors[Math.floor(i / 2) % colors.length]); for (let k = 0; k < 4; k++) { col[o + k * 3] = c.r; col[o + k * 3 + 1] = c.g; col[o + k * 3 + 2] = c.b; } }
+      if (col && colors) { c.setHex(colors[Math.floor(i / stripe) % colors.length]); for (let k = 0; k < 4; k++) { col[o + k * 3] = c.r; col[o + k * 3 + 1] = c.g; col[o + k * 3 + 2] = c.b; } }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     if (col) g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeVertexNormals();
@@ -482,8 +568,16 @@ export class ApexScene {
     const at = (x: number) => (i: number, out: THREE.Vector3) => { this.at(x, this.z0 + i * this.S, out, y); };
     return this.strip(at(x0), at(x1), mat, colors);
   }
-  private wall(x: number, h: number, mat: THREE.Material): THREE.Mesh {
-    return this.strip((i, out) => { this.at(x, this.z0 + i * this.S, out, 0); }, (i, out) => { this.at(x, this.z0 + i * this.S, out, h); }, mat);
+  private wall(x: number, h: number, mat: THREE.Material, colors?: number[]): THREE.Mesh {
+    return this.strip((i, out) => { this.at(x, this.z0 + i * this.S, out, 0); }, (i, out) => { this.at(x, this.z0 + i * this.S, out, h); }, mat, colors);
+  }
+  /** Distance from a spot beside the road to the nearest part of the circuit that is not next to it along the lap. */
+  private clearance(x: number, z: number): number {
+    const p = new THREE.Vector3(); this.at(x, z, p);
+    const n = CIRCUIT.x.length, here = Math.round((((z % CIRCUIT.length) + CIRCUIT.length) % CIRCUIT.length) / CIRCUIT.step);
+    let best = 1e9;
+    for (let i = 0; i < n; i++) { const d = Math.min(Math.abs(i - here), n - Math.abs(i - here)); if (d < 14) continue; best = Math.min(best, Math.hypot(CIRCUIT.x[i] - p.x, CIRCUIT.z[i] - p.z)); }
+    return best;
   }
   private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
 
@@ -493,7 +587,7 @@ export class ApexScene {
   private applyTheme() {
     const t = this.theme;
     this.scene.background = new THREE.Color(t.sky);
-    this.scene.fog = new THREE.Fog(t.fog, 70, 250);
+    this.scene.fog = new THREE.Fog(t.fog, 90, 320);
     this.hemi.color.setHex(t.ambient); this.hemi.groundColor.setHex(t.night ? 0x10131f : 0x556070); this.hemi.intensity = t.night ? 1.9 : 1.1;
     this.sun.color.setHex(t.sun); this.sun.intensity = t.sunPower;
     (this.ground.material as THREE.MeshStandardMaterial).color.setHex(t.ground);
@@ -507,6 +601,8 @@ export class ApexScene {
     this.hero.head.emissiveIntensity = t.night ? 2.2 : 0.9;
     (this.beam.material as THREE.MeshBasicMaterial).opacity = t.night ? 0.75 : t.lamps ? 0.25 : 0;
     for (const s of this.sides) s.lamp.visible = t.lamps;
+    this.stars.visible = t.lamps;
+    (this.towers.material as THREE.MeshBasicMaterial).color.setHex(t.night ? 0xffffff : t.lamps ? 0xd6b8e0 : 0x8da6c8);
   }
 
   private vehicle(e: Entity): THREE.Object3D {
@@ -536,7 +632,7 @@ export class ApexScene {
     hero.group.rotation.x = f.braking ? -0.035 : f.nitroOn ? 0.03 : 0; // nose dips under braking, lifts on nitro
     hero.group.position.y = f.flash > 0 ? 0.06 * Math.sin(f.t * 60) : 0;
     this.wheelSpin += f.speed * 0.033 / 0.36;
-    hero.wheels.forEach((w) => { w.rotation.x = this.wheelSpin; });
+    hero.wheels.forEach((w) => { w.rotation.x = -this.wheelSpin; });
     hero.tail.emissiveIntensity = f.braking ? 3 : 0.7;
     hero.flame.visible = f.nitroOn; if (f.nitroOn) hero.flame.scale.set(1, 1, 0.8 + 0.4 * Math.abs(Math.sin(f.t * 40)));
     hero.paint.emissive.setHex(f.flash > 0 ? 0x661111 : 0x000000);
@@ -592,7 +688,7 @@ export class ApexScene {
       const d = this.dashes[k++];
       this.put(d, -ROAD_HALF + lane * LANE_W, base + i * (spacing * 2), 0, 0.02);
     }
-    const slotLen = 36;
+    const nSlots = this.loop ? Math.max(1, Math.round(this.world.lapLength / 36)) : 0, slotLen = this.loop ? this.world.lapLength / nSlots : 36;
     const first = Math.floor((player.z - 60) / slotLen);
     for (const s of this.sides) {
       const sx = (s.g as any).userData.sx as number;
@@ -600,20 +696,22 @@ export class ApexScene {
       const slot = first + idxInSide;
       if (s.slot !== slot) {
         s.slot = slot;
-        const h = hash(slot * 2 + (sx > 0 ? 1 : 0) + this.world.seed * 3);
+        const hs = this.loop ? ((slot % nSlots) + nSlots) % nSlots : slot; // on a circuit every lap has the same scenery
+        const clear = this.loop ? this.clearance(sx * (ROAD_HALF + 14), hs * slotLen) : 999; // how far the nearest other piece of road is
+        const h = hash(hs * 2 + (sx > 0 ? 1 : 0) + this.world.seed * 3);
         const isBuilding = h < 0.5;
-        s.building.visible = isBuilding; s.trunk.visible = !isBuilding; s.crown.visible = !isBuilding;
+        s.building.visible = isBuilding && clear > 48; s.trunk.visible = !isBuilding && clear > 30; s.crown.visible = s.trunk.visible;
         if (isBuilding) {
-          const w = 7 + hash(slot * 5 + 1) * 8, ht = 5 + hash(slot * 5 + 2) * 22, d = 10 + hash(slot * 5 + 3) * 8;
+          const w = 7 + hash(hs * 5 + 1) * 8, ht = 5 + hash(hs * 5 + 2) * 22, d = 10 + hash(hs * 5 + 3) * 8;
           s.building.scale.set(w, ht, d); s.building.position.set(sx * (ROAD_HALF + 5 + w / 2), ht / 2, 0);
-          const tone = 0.6 + hash(slot * 5 + 4) * 0.4;
+          const tone = 0.6 + hash(hs * 5 + 4) * 0.4;
           const bm = s.building.material as THREE.MeshStandardMaterial;
           bm.color.setRGB(tone, tone * 0.95, tone * 0.85);
           if (bm.map) { bm.map.repeat.set(Math.max(1, Math.round(d / 3.2)), Math.max(1, Math.round(ht / 3.2))); bm.map.needsUpdate = false; }
           bm.emissive.setHex(this.theme.night ? 0x8a6a30 : 0x4a5070);
         } else {
-          const x = sx * (ROAD_HALF + 4 + hash(slot * 5 + 6) * 6);
-          s.trunk.position.set(x, 3, 0); s.crown.position.set(x, 7, 0); s.crown.scale.setScalar(0.8 + hash(slot * 5 + 7) * 0.6);
+          const x = sx * (ROAD_HALF + 4 + hash(hs * 5 + 6) * 6);
+          s.trunk.position.set(x, 3, 0); s.crown.position.set(x, 7, 0); s.crown.scale.setScalar(0.8 + hash(hs * 5 + 7) * 0.6);
         }
         s.lamp.position.set(sx * (ROAD_HALF + 1.4), 0, slotLen * 0.5);
       }
@@ -621,9 +719,11 @@ export class ApexScene {
     }
 
     // the sky and ground follow the car so they never run out; only the stretch of road near the car is drawn
-    this.at(0, player.z, this.tmpA); this.sky.position.set(this.tmpA.x, 0, this.tmpA.z); this.ground.position.set(this.tmpA.x, -0.02, this.tmpA.z);
+    this.at(0, player.z, this.tmpA); this.sky.position.set(this.tmpA.x, 0, this.tmpA.z); this.ground.position.set(this.tmpA.x, -0.2, this.tmpA.z);
     const i0 = Math.max(0, Math.floor((player.z - 60 - this.z0) / this.S)), i1 = Math.min(this.th.length - 1, Math.ceil((player.z + VIEW_AHEAD + 60 - this.z0) / this.S));
-    for (const m of this.ribbons) m.geometry.setDrawRange(i0 * 6, Math.max(0, i1 - i0) * 6);
+    if (!this.loop) for (const m of this.ribbons) m.geometry.setDrawRange(i0 * 6, Math.max(0, i1 - i0) * 6);
+    this.stars.position.set(this.tmpA.x, 0, this.tmpA.z); this.towers.position.set(this.tmpA.x, 0, this.tmpA.z);
+    for (const p of this.pads) p.mat.opacity = 0.65 + 0.3 * Math.sin(f.t * 5 + p.z);
 
     // camera: behind and above, following the bend; wider and shakier when fast
     const cam = this.camera, sh = f.shake, look = this.tmpB;

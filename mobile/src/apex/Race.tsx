@@ -5,18 +5,22 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
-import { engineSpeed, engineStart, engineStop, sfx } from '../sfx';
+import { engineStart, engineStop, engineUpdate, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
 import { loadCarModel } from './model';
 import { RIVAL_MODELS, lookFor } from './cars';
 import { ApexScene, CameraMode, Frame } from './scene';
-import { carStats, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
+import { MiniMap } from './MiniMap';
+import { trackPath, TrackPath } from './trackpath';
+import { carStats, DT, driftAt, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
-export interface RaceResult { level: number; track: string; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
+export interface RaceResult { level: number; track: string; laps: number; bestLap: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
 
+const hudLabel = { color: '#9aa3b8', fontSize: 10, fontWeight: '700' as const, letterSpacing: 1.6 };
+const hudNum = { color: '#fff', fontSize: 20, fontWeight: '900' as const, fontStyle: 'italic' as const };
 const FIELD = 6; // you and five computer drivers
 const snap = (r: Racer) => ({ x: r.x, z: r.z, v: r.v });
 
@@ -27,7 +31,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; track?: string; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -54,8 +58,9 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const alive = useRef(true);
   const finished = useRef(false);
-  const [hud, setHud] = useState({ count: 3, speed: 0, rank: 1, ahead: '', gap: 0, progress: 0, nitro: 1, time: 0, hits: 0, rivals: [] as number[], over: false });
+  const [hud, setHud] = useState({ dots: [] as Array<{ z: number; color: string; r: number }>, banner: '', lap: 1, laps: 1, lapLen: 0, best: 0, count: 3, speed: 0, rank: 1, ahead: '', gap: 0, progress: 0, nitro: 1, time: 0, hits: 0, rivals: [] as number[], over: false });
   const onDoneRef = useRef(onDone); onDoneRef.current = onDone;
+  const pathRef = useRef<TrackPath | null>(null);
 
   useEffect(() => {
     alive.current = true;
@@ -84,9 +89,12 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
     renderer.setPixelRatio(1);
     renderer.setSize(w, h, false);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; // a richer, more filmic picture
 
     const seed = Math.floor(Math.random() * 2_000_000_000);
-    const world = makeWorld(seed, level, track);
+    const world = makeWorld(seed, level, track, laps);
+    pathRef.current = trackPath(world);
+    setHud((s) => ({ ...s, laps: world.laps, lapLen: world.lapLength }));
     const view = new ApexScene(world, carId, 2, paint, lookFor(upgrades));
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
@@ -109,6 +117,8 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
     let lastBeep = 4;
     let acc = 0, last = Date.now(), hudClock = 0;
     let shake = 0, flash = 0, steerNow = 0, frames = 0;
+    let lapNow = 0, lapStartTick = 0, bestLap = Infinity, bannerTimer: ReturnType<typeof setTimeout> | null = null;
+    const banner = (text: string) => { setHud((s) => ({ ...s, banner: text })); if (bannerTimer) clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { if (alive.current) setHud((s) => ({ ...s, banner: '' })); }, 1500); };
 
     const standingsNow = () => {
       const all = [{ id: 0, z: me.z, fin: me.finishedAt }, ...rivals.map((x) => ({ id: x.id, z: x.r.z, fin: x.r.finishedAt }))];
@@ -129,7 +139,7 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
       const table: Standing[] = [{ name: 'You', ticks: me.finishedAt, you: true }, ...rivals.map((x) => ({ name: x.name, ticks: x.r.finishedAt, you: false }))];
       table.sort((a, b) => (a.ticks && b.ticks ? a.ticks - b.ticks : a.ticks ? -1 : b.ticks ? 1 : 0));
       const rank = table.findIndex((s) => s.you) + 1;
-      setTimeout(() => { if (alive.current) onDoneRef.current({ level, track, seed, standings: table, rank, ticks: me.finishedAt, hits: me.hits, pedHits: me.pedHits, inputs }); }, 1600);
+      setTimeout(() => { if (alive.current) onDoneRef.current({ level, track, laps: world.laps, bestLap: Number.isFinite(bestLap) ? bestLap : 0, seed, standings: table, rank, ticks: me.finishedAt, hits: me.hits, pedHits: me.pedHits, inputs }); }, 1600);
     };
 
     const advance = () => {
@@ -144,6 +154,10 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
       step(world, car, me, input);
       for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d)); }
       collideRacers([me, ...rivals.map((x) => x.r)]);
+      if (world.lapLength && me.finishedAt === 0) { // lap by lap
+        const lap = Math.floor(me.z / world.lapLength);
+        if (lap > lapNow) { bestLap = Math.min(bestLap, (me.tick - lapStartTick) * DT); lapStartTick = me.tick; lapNow = lap; if (lap < world.laps) { banner(lap + 1 === world.laps ? 'FINAL LAP' : `LAP ${lap + 1}`); sfx('beep'); } setHud((s) => ({ ...s, best: bestLap })); }
+      }
       if (me.hit) { sfx('crash'); shake = me.hit === 'ped' ? 1.6 : 1; flash = 12; }
       if (me.finishedAt > 0) finishRace();
       else if (me.tick >= MAX_RACE_TICKS) { me.finishedAt = 0; finishRace(); }
@@ -183,6 +197,11 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
       renderer.render(view.scene, view.camera);
       gl.endFrameEXP();
 
+      if (phase === 'go' && frames % 3 === 0) {
+        let near: { dist: number; speed: number; closing: number } | undefined;
+        for (const x of rivals) { const dz = x.r.z - me.z, dist = Math.hypot(dz, x.r.x - me.x); if (!near || dist < near.dist) near = { dist, speed: x.r.v, closing: dz > 0 ? me.v - x.r.v : x.r.v - me.v }; }
+        engineUpdate({ speed: me.v, braking: keys.current.brake, boost: me.nitroOn || me.boost > 0, slip: Math.abs(steerNow) * me.v * 0.1 + Math.abs(driftAt(world, me.z, me.v)) + (keys.current.brake && me.v > 22 ? 6 : 0), rival: near });
+      }
       hudClock += dt;
       if (hudClock > 0.12) {
         hudClock = 0;
@@ -194,8 +213,10 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
           ...s, speed: Math.round(me.v * 3.6), rank: pos + 1, ahead: aheadRival ? aheadRival.name : '', gap: aheadRival ? Math.max(0, Math.round(aheadRival.r.z - me.z)) : 0,
           progress: Math.min(1, me.z / world.length), nitro: me.nitro / car.nitroSeconds, time: me.tick * DT, hits: me.hits,
           rivals: rivals.map((x) => Math.min(1, x.r.z / world.length)), over: me.finishedAt > 0,
+          lap: Math.min(world.laps, Math.floor(Math.max(0, me.z) / (world.lapLength || world.length)) + 1),
+          dots: [...rivals.map((x) => ({ z: x.r.z, color: '#9aa3c7', r: 3.5 })), { z: me.z, color: '#ff5a1f', r: 6 }],
         }));
-        if (frames % 3 === 0) engineSpeed(me.v * 3.6);
+
       }
       requestAnimationFrame(loop);
     };
@@ -210,38 +231,40 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
       <Text style={{ color: '#fff', fontWeight: '900', fontSize: k === 'left' || k === 'right' ? 34 : 15 }}>{label}</Text>
     </Pressable>
   );
-  const m = Math.floor(hud.time / 60), s = (hud.time % 60).toFixed(1).padStart(4, '0');
+  const m = Math.floor(hud.time / 60), s = (hud.time % 60).toFixed(2).padStart(5, '0');
+  const hudAheadShown = !!hud.ahead && !hud.over;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       {ready ? <GLView style={{ flex: 1 }} onContextCreate={onContextCreate} onLayout={() => { const g: any = glRef.current; if (g && resizeRef.current) setTimeout(() => resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0), 50); }} /> : null}
 
-      {/* top bar */}
-      <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 6, left: 12, right: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
-            <Text style={{ color: '#fff', fontSize: 26, fontWeight: '900' }}>{hud.rank}<Text style={{ fontSize: 14, color: colors.dim }}>/{FIELD}</Text></Text>
-          </View>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 18, textShadowColor: '#000', textShadowRadius: 4 }}>{m}:{s}</Text>
-          <View style={{ backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
-            <Text style={{ color: colors.gold, fontWeight: '900' }}>LVL {level}</Text>
-          </View>
+      {/* top left: position, lap and time (like the circuit page) */}
+      <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 8, left: Math.max(insets.left, 14) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16, backgroundColor: 'rgba(10,13,22,.76)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.14)', paddingHorizontal: 14, paddingVertical: 8 }}>
+          <Text style={{ color: '#ff5a1f', fontSize: wide ? 40 : 34, fontWeight: '900', fontStyle: 'italic', lineHeight: wide ? 42 : 36 }}>{hud.rank}<Text style={{ fontSize: 16, color: '#9aa3b8', fontStyle: 'normal' }}>/{FIELD}</Text></Text>
+          <View><Text style={hudLabel}>{hud.lapLen ? 'LAP' : 'ROAD'}</Text><Text style={hudNum}>{hud.lapLen ? `${hud.lap}/${hud.laps}` : `${Math.round(hud.progress * 100)}%`}</Text></View>
+          <View><Text style={hudLabel}>TIME</Text><Text style={hudNum}>{m}:{s}</Text>{hud.lapLen ? <Text style={[hudLabel, { marginTop: 1 }]}>BEST {hud.best > 0 ? `${Math.floor(hud.best / 60)}:${(hud.best % 60).toFixed(2).padStart(5, '0')}` : '—'}</Text> : null}</View>
         </View>
-        {/* progress along the road, with the rivals as dots */}
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.2)', marginTop: 10 }}>
-          {hud.rivals.map((p, i) => <View key={i} style={{ position: 'absolute', left: `${p * 96}%`, top: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: '#9aa3c7' }} />)}
-          <View style={{ position: 'absolute', left: `${hud.progress * 96}%`, top: -3, width: 14, height: 14, borderRadius: 7, backgroundColor: colors.accent, borderWidth: 2, borderColor: '#fff' }} />
-        </View>
-        {hud.ahead && !hud.over ? <Text style={{ color: '#fff', marginTop: 8, fontWeight: '800', textShadowColor: '#000', textShadowRadius: 4 }}>▲ {hud.ahead}  +{hud.gap} m</Text> : null}
+        {hud.ahead && !hud.over ? <Text style={{ color: '#fff', marginTop: 6, fontWeight: '800', textShadowColor: '#000', textShadowRadius: 4 }}>▲ {hud.ahead}  +{hud.gap} m</Text> : null}
       </View>
 
-      {hud.count > 0 ? <View pointerEvents="none" style={{ position: 'absolute', top: wide ? '10%' : '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: wide ? 90 : 120, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 10 }}>{hud.count}</Text></View> : null}
-      {hud.over ? <View pointerEvents="none" style={{ position: 'absolute', top: '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: colors.gold, fontSize: 56, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 10 }}>FINISH!</Text></View> : null}
+      {/* top right: the minimap */}
+      {pathRef.current ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 8, right: Math.max(insets.right, 14), backgroundColor: 'rgba(10,13,22,.76)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.14)', padding: 4 }}>
+          <MiniMap path={pathRef.current} dots={hud.dots} size={wide ? 112 : 92} />
+        </View>
+      ) : null}
+
+      {hud.count > 0 ? <View pointerEvents="none" style={{ position: 'absolute', top: wide ? '10%' : '30%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: wide ? 96 : 120, fontWeight: '900', fontStyle: 'italic', textShadowColor: '#000', textShadowRadius: 12 }}>{hud.count}</Text></View> : null}
+      {hud.banner && !hud.over && hud.count === 0 ? <View pointerEvents="none" style={{ position: 'absolute', top: wide ? '16%' : '28%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: wide ? 56 : 48, fontWeight: '900', fontStyle: 'italic', textShadowColor: '#000', textShadowRadius: 14 }}>{hud.banner}</Text></View> : null}
+      {hud.over ? <View pointerEvents="none" style={{ position: 'absolute', top: '26%', left: 0, right: 0, alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: 60, fontWeight: '900', fontStyle: 'italic', textShadowColor: '#000', textShadowRadius: 14 }}>FINISH</Text></View> : null}
 
       {/* speed and nitro */}
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + (wide ? 14 : 148), alignItems: 'center' }}>
-        <Text style={{ color: '#fff', fontSize: 40, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 6 }}>{hud.speed}<Text style={{ fontSize: 14 }}> km/h</Text></Text>
-        <View style={{ width: 140, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.25)', marginTop: 4 }}><View style={{ width: `${Math.round(hud.nitro * 100)}%`, height: 7, borderRadius: 4, backgroundColor: '#5ec2ff' }} /></View>
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + (wide ? 12 : 148), alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontSize: wide ? 58 : 50, fontWeight: '900', fontStyle: 'italic', lineHeight: wide ? 60 : 52, textShadowColor: '#000', textShadowRadius: 10 }}>{hud.speed}</Text>
+        <Text style={[hudLabel, { letterSpacing: 3, marginBottom: 6 }]}>KM/H</Text>
+        <Text style={{ color: '#3de0ff', fontSize: 10, fontWeight: '800', letterSpacing: 3 }}>NITRO</Text>
+        <View style={{ width: wide ? 200 : 170, height: 10, borderRadius: 3, backgroundColor: 'rgba(255,255,255,.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,.14)', marginTop: 3, overflow: 'hidden' }}><View style={{ width: `${Math.round(hud.nitro * 100)}%`, height: 10, backgroundColor: '#3de0ff' }} /></View>
       </View>
 
       {/* controls */}
@@ -266,11 +289,11 @@ export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', p
           {btn('right', '▶', { flex: 1.3 })}
         </View>
       )}
-      <Pressable onPress={() => setCameraMode((m) => m === 'chase' ? 'cockpit' : 'chase')} style={{ position: 'absolute', top: insets.top + 56, left: Math.max(insets.left, 12), backgroundColor: 'rgba(10,14,30,.72)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(94,194,255,.6)' }}>
+      <Pressable onPress={() => setCameraMode((m) => m === 'chase' ? 'cockpit' : 'chase')} style={{ position: 'absolute', top: insets.top + (wide ? 92 : 92) + (hudAheadShown ? 22 : 0), left: Math.max(insets.left, 14), backgroundColor: 'rgba(10,14,30,.72)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(94,194,255,.6)' }}>
         <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{cameraMode === 'chase' ? '▣ Chase view' : '◉ Cockpit view'}</Text>
       </Pressable>
       {tilt && onFlip ? (
-        <Pressable onPress={onFlip} style={{ position: 'absolute', top: insets.top + 56, right: Math.max(insets.right, 12), backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <Pressable onPress={onFlip} style={{ position: 'absolute', top: insets.top + (wide ? 130 : 110), right: Math.max(insets.right, 14), backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>⇄ Flip tilt</Text>
         </Pressable>
       ) : null}

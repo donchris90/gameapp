@@ -11,15 +11,16 @@ export interface ApexSettings {
   bodyTier: number;
   completedRaces: number;
   track: string; // the track the next race runs on
+  laps: number; // laps on the circuit
   upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
 }
 const KEY = 'apex.settings';
-const TRACK_IDS = ['coast', 'dunes', 'city', 'pass'];
+const TRACK_IDS = ['circuit', 'coast', 'dunes', 'city', 'pass'];
 const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, upgrades: {}, track: 'coast',
+  bodyTier: 0, completedRaces: 0, upgrades: {}, track: 'circuit', laps: 3,
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -32,6 +33,7 @@ export async function loadApex(): Promise<ApexSettings> {
       unlockedCars: Array.from(new Set(['cts', ...(Array.isArray(saved.unlockedCars) ? saved.unlockedCars : []).filter((id: string) => KNOWN.includes(id))])),
       activeCar: typeof saved.activeCar === 'string' && KNOWN.includes(saved.activeCar) ? saved.activeCar : DEFAULTS.activeCar,
       track: TRACK_IDS.includes(saved.track) ? saved.track : DEFAULTS.track,
+      laps: [2, 3, 5].includes(saved.laps) ? saved.laps : DEFAULTS.laps,
       upgrades: saved.upgrades && typeof saved.upgrades === 'object' ? saved.upgrades : {},
       coins: Number.isFinite(saved.coins) ? Math.max(0, saved.coins) : DEFAULTS.coins,
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,

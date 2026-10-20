@@ -113,7 +113,7 @@ import { join } from 'path';
 describe('Apex Run rules in the app', () => {
   it('the app has exactly the same rules as the server (run: node scripts/sync-apex.mjs)', () => {
     const root = join(__dirname, '..', '..', '..', '..');
-    for (const f of ['sim.ts', 'bot.ts']) {
+    for (const f of ['sim.ts', 'bot.ts', 'circuit.ts']) {
       expect(readFileSync(join(root, 'mobile', 'src', 'apex', f), 'utf8')).toBe(readFileSync(join(__dirname, f), 'utf8'));
     }
   });
@@ -144,5 +144,22 @@ describe('Apex Run rules in the app', () => {
       expect(rep.finished).toBe(true);
       expect(rep.ticks).toBe(r.finishedAt);
     }
+  });
+
+  it('has a closed circuit: laps, no traffic, nitro pads that boost once a lap, and a driver can finish it', () => {
+    const w = makeWorld(3, 5, 'circuit', 2);
+    expect(w.entities.length).toBe(0);
+    expect(w.length).toBeCloseTo(w.lapLength * 2, 3);
+    expect(w.pads.length).toBe(5);
+    expect(Math.abs(curvatureAt(w, 40))).toBeLessThan(0.003); // straight start
+    expect(curvatureAt(w, 500)).toBeCloseTo(curvatureAt(w, 500 + w.lapLength), 6); // same bend next lap
+    const car = CARS.cts, r = newRacer(w, car); r.z = w.pads[0].z - 6; r.x = w.pads[0].x; r.v = 30; r.nitro = 0;
+    step(w, car, r, { steer: 0, brake: false, nitro: false });
+    for (let i = 0; i < 12; i++) step(w, car, r, { steer: 0, brake: false, nitro: false });
+    expect(r.nitro).toBeGreaterThan(0.5);
+    const { r: done, inputs } = race(makeWorld(3, 5, 'circuit', 2), 0.8, 3, 'cts');
+    expect(done.finishedAt).toBeGreaterThan(0);
+    expect(done.finishedAt / 30).toBeLessThan(200);
+    expect(replay(makeWorld(3, 5, 'circuit', 2), CARS.cts, inputs).ticks).toBe(done.finishedAt);
   });
 });

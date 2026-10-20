@@ -1,13 +1,15 @@
 import React, { useMemo } from 'react';
 import Svg, { Circle, Polyline } from 'react-native-svg';
+import { CIRCUIT } from './circuit';
 import { curvatureAt, curvesFor, levelSpec } from './sim';
 
 /** A small top-down drawing of a track, built by walking down the same bends the race uses. */
 export function TrackMap({ track, height = 120, color = '#5eaaff', locked = false }: { track: string; height?: number; color?: string; locked?: boolean }) {
   const { points, start, end } = useMemo(() => {
     const length = levelSpec(30).length, curves = curvesFor(track, length), w = { curves };
-    const pts: Array<[number, number]> = []; let x = 0, y = 0, th = 0; const step = 12;
-    for (let z = 0; z <= length; z += step) {
+    let pts: Array<[number, number]> = []; let x = 0, y = 0, th = 0; const step = 12;
+    if (track === 'circuit') pts = CIRCUIT.x.map((px, i) => [px, CIRCUIT.z[i]] as [number, number]).concat([[CIRCUIT.x[0], CIRCUIT.z[0]]]);
+    else for (let z = 0; z <= length; z += step) {
       pts.push([x, y]);
       const next = th + curvatureAt(w, z + step / 2) * step, mid = (th + next) / 2;
       x += step * Math.sin(mid); y -= step * Math.cos(mid); th = next;

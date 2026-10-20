@@ -6,6 +6,8 @@
  * comparisons, Math.min/max/abs/floor/sqrt and integer maths: no sin/cos/random, which can differ between engines.
  */
 
+import { CIRCUIT } from './circuit';
+
 export const TICKS_PER_SECOND = 30;
 export const DT = 1 / TICKS_PER_SECOND;
 export const LANES = 4;
@@ -73,7 +75,7 @@ export interface Entity {
   amp: number; freq: number; phase: number; // bikes drift sideways: x = lane + amp * tri(t * freq + phase)
   dir: number; trigger: number; // pedestrians: crossing direction (+1 left to right) and how close the player must be before they step out
 }
-export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[]; track: string; curves: Curve[] }
+export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[]; track: string; curves: Curve[]; lapLength: number; laps: number; driftK: number; pads: Pad[] }
 
 const SIZE: Record<Kind, [number, number]> = { car: [1.9, 4.5], bike: [0.8, 2.0], truck: [2.5, 9.0], bus: [2.6, 11.0], ped: [0.7, 0.7] };
 export const sizeOf = (k: Kind) => SIZE[k];
@@ -96,15 +98,18 @@ export function levelSpec(level: number) {
 
 // ---- tracks: the road bends. Everything in the rules stays in "road space" (x across, z along the road); a bend only pushes
 // cars towards the outside edge, and the phone draws the road curved. Radius R in metres: + turns right, - turns left, 0 is straight.
+export interface Pad { z: number; x: number } // a nitro pad: z along one lap, x across the road
 export interface Curve { from: number; to: number; k: number } // k = 1 / radius at the middle of the bend (+ right)
-export interface TrackInfo { id: string; name: string; blurb: string; level: number; theme: number; ground: number; pattern: Array<[number, number]>; feel: string }
+export interface TrackInfo { loop?: boolean; id: string; name: string; blurb: string; level: number; theme: number; ground: number; pattern: Array<[number, number]>; feel: string }
 export const TRACKS: TrackInfo[] = [
   { id: 'coast', name: 'Coastal Sweep', blurb: 'Long, flowing bends along the sea. A good place to learn.', level: 1, theme: 0, ground: 0x7a9a58, feel: 'Easy', pattern: [[260, 0], [240, 420], [200, 0], [260, -380], [180, 0], [220, 450], [240, -400]] },
   { id: 'dunes', name: 'Desert Esses', blurb: 'Back-to-back S-bends through the dunes. Stay smooth.', level: 3, theme: 1, ground: 0xb59a62, feel: 'Medium', pattern: [[160, 0], [140, 300], [140, -300], [140, 300], [140, -300], [200, 0], [180, -250], [180, 250]] },
   { id: 'city', name: 'Downtown Night', blurb: 'Tight city corners under the lights. Brake early.', level: 6, theme: 2, ground: 0x1b2438, feel: 'Hard', pattern: [[200, 0], [180, 260], [140, -260], [160, 0], [200, -240], [120, 300], [180, 0]] },
   { id: 'pass', name: 'Mountain Pass', blurb: 'Hairpins and switchbacks at sunset. Only for brave drivers.', level: 10, theme: 1, ground: 0x6b5a3c, feel: 'Expert', pattern: [[220, 0], [150, 170], [100, 0], [170, -160], [90, 0], [120, 150], [160, -190], [140, 0]] },
 ];
-export const trackInfo = (id: string): TrackInfo | undefined => TRACKS.find((x) => x.id === id);
+export const CIRCUIT_TRACK: TrackInfo = { id: 'circuit', loop: true, name: 'Apex Circuit', blurb: 'A floodlit closed circuit with nitro pads. Race 2, 3 or 5 laps against five drivers.', level: 1, theme: 1, ground: 0x2e5a45, feel: 'Circuit', pattern: [] };
+export const LAP_CHOICES = [2, 3, 5];
+export const trackInfo = (id: string): TrackInfo | undefined => (id === 'circuit' ? CIRCUIT_TRACK : TRACKS.find((x) => x.id === id));
 
 export function curvesFor(track: string, length: number): Curve[] {
   const info = trackInfo(track);
@@ -123,7 +128,11 @@ export function curvesFor(track: string, length: number): Curve[] {
 }
 
 /** How sharply the road bends at distance z (1/radius, + is right). Eased in and out so there are no jolts. */
-export function curvatureAt(world: { curves: Curve[] }, z: number): number {
+export function curvatureAt(world: { curves: Curve[]; lapLength?: number }, z: number): number {
+  if (world.lapLength) { // a closed circuit: the same lap again and again, read from the table
+    const L = world.lapLength, zl = z - Math.floor(z / L) * L, f = zl / CIRCUIT.step, i = Math.floor(f), u = f - i, n = CIRCUIT.k.length;
+    return CIRCUIT.k[i % n] * (1 - u) + CIRCUIT.k[(i + 1) % n] * u;
+  }
   const cs = world.curves;
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i];
@@ -137,10 +146,15 @@ export function curvatureAt(world: { curves: Curve[] }, z: number): number {
 
 export const DRIFT_K = 0.4;
 /** Sideways speed (m/s) a bend pushes a car at speed v towards the outside (+ is right). */
-export const driftAt = (world: { curves: Curve[] }, z: number, v: number) => -DRIFT_K * curvatureAt(world, z) * v * v;
+export const driftAt = (world: { curves: Curve[]; lapLength?: number; driftK?: number }, z: number, v: number) => -(world.driftK ?? DRIFT_K) * curvatureAt(world, z) * v * v;
 
-export function makeWorld(seed: number, level: number, track = 'straight'): World {
+export function makeWorld(seed: number, level: number, track = 'straight', laps = 3): World {
   const s = levelSpec(level);
+  if (track === 'circuit') { // no traffic: a grid of racers and nitro pads, lap after lap
+    const L = CIRCUIT.length, n = Math.max(1, Math.min(9, Math.floor(laps)));
+    const pads: Pad[] = [[0.11, -3.5], [0.3, 3], [0.5, 0], [0.7, -3], [0.88, 3.5]].map(([f, x]) => ({ z: f * L, x }));
+    return { seed, level: s.level, length: n * L, track, curves: [], entities: [], peds: [], lapLength: L, laps: n, driftK: 0.3, pads };
+  }
   const r = rng((seed ^ Math.imul(s.level, 0x9e3779b1)) >>> 0);
   const entities: Entity[] = [];
   let z = 95;
@@ -172,7 +186,7 @@ export function makeWorld(seed: number, level: number, track = 'straight'): Worl
   }
   entities.sort((a, b) => a.z - b.z);
   entities.forEach((e, i) => { e.id = i; });
-  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
+  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), lapLength: 0, laps: 1, driftK: DRIFT_K, pads: [], entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
 }
 
 /** A triangle wave between -1 and 1 (no sine, so every device agrees). */
@@ -201,10 +215,12 @@ export interface Racer {
   arrived: number[]; // per pedestrian id: seconds when this racer got close (-1 none)
   hit: Kind | null; // set on the tick something was hit, for sound and shaking
   nitroOn: boolean;
+  boost: number; // ticks of pad boost left
+  padLap: number[]; // per pad: the lap on which it was last used (-1 none)
 }
 
 export function newRacer(world: World, car: CarStats): Racer {
-  return { z: 0, x: laneX(1), v: 0, tick: 0, nitro: car.nitroSeconds, invul: 0, finishedAt: 0, hits: 0, pedHits: 0, lostMs: 0, arrived: world.peds.map(() => -1), hit: null, nitroOn: false };
+  return { z: 0, x: laneX(1), v: 0, tick: 0, nitro: car.nitroSeconds, invul: 0, finishedAt: 0, hits: 0, pedHits: 0, lostMs: 0, arrived: world.peds.map(() => -1), hit: null, nitroOn: false, boost: 0, padLap: world.pads.map(() => -1) };
 }
 
 export const clampSteer = (s: number) => Math.max(-1, Math.min(1, Math.round(s * 100) / 100));
@@ -221,7 +237,7 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
   r.nitroOn = wantsNitro;
   if (wantsNitro) r.nitro = Math.max(0, r.nitro - DT);
   else if (r.nitro < car.nitroSeconds) r.nitro = Math.min(car.nitroSeconds, r.nitro + 0.12 * DT);
-  const cap = car.vmax * (wantsNitro ? 1.3 : 1);
+  const cap = car.vmax * (wantsNitro ? 1.3 : 1) * (r.boost > 0 ? 1.12 : 1);
   if (input.brake) r.v = Math.max(MIN_SPEED, r.v - 28 * DT);
   else if (r.v < cap) r.v = Math.min(cap, r.v + car.accel * (wantsNitro ? 1.8 : 1) * (1 - (r.v / cap) * 0.55) * DT);
   else r.v = Math.max(cap, r.v - 14 * DT);
@@ -236,6 +252,11 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
   if (pinned && r.v > MIN_SPEED) r.v = Math.max(MIN_SPEED, r.v - 9 * DT); // scraping the barrier in a bend
   r.z += r.v * DT;
   r.tick++;
+  if (r.boost > 0) r.boost--;
+  for (let i = 0; i < world.pads.length; i++) { // nitro pads, once a lap
+    const p = world.pads[i], lap = Math.floor(r.z / world.lapLength), zl = r.z - lap * world.lapLength;
+    if (r.padLap[i] !== lap && Math.abs(zl - p.z) < 5 && Math.abs(r.x - p.x) < 3.4) { r.padLap[i] = lap; r.nitro = Math.min(car.nitroSeconds, r.nitro + car.nitroSeconds * 0.3); r.boost = 36; }
+  }
   if (r.invul > 0) r.invul--;
 
   // pedestrians step out when this racer gets close
@@ -310,7 +331,7 @@ export function collideRacers(racers: Racer[]): void {
   }
 }
 
-export const MAX_RACE_TICKS = 150 * TICKS_PER_SECOND;
+export const MAX_RACE_TICKS = 300 * TICKS_PER_SECOND;
 
 export function replay(world: World, car: CarStats, inputs: number[]): { finished: boolean; ticks: number; seconds: number; hits: number; pedHits: number } {
   const r = newRacer(world, car);

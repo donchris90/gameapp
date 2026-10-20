@@ -162,4 +162,13 @@ describe('Apex Run rules in the app', () => {
     expect(done.finishedAt / 30).toBeLessThan(200);
     expect(replay(makeWorld(3, 5, 'circuit', 2), CARS.cts, inputs).ticks).toBe(done.finishedAt);
   });
+
+  it('puts nitro pads along every road, and running over one refills nitro', () => {
+    const w = makeWorld(9, 6, 'dunes');
+    expect(w.pads.length).toBeGreaterThan(6);
+    expect(w.pads.every((p, k) => k === 0 || p.z - w.pads[k - 1].z >= 219)).toBe(true);
+    const car = CARS.cts, r = newRacer(w, car); r.z = w.pads[0].z - 6; r.x = w.pads[0].x; r.v = 30; r.nitro = 0;
+    for (let i = 0; i < 12; i++) step(w, car, r, { steer: 0, brake: false, nitro: false });
+    expect(r.nitro).toBeGreaterThan(0.5);
+  });
 });

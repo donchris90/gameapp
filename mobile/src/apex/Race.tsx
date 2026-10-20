@@ -158,6 +158,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
         const lap = Math.floor(me.z / world.lapLength);
         if (lap > lapNow) { bestLap = Math.min(bestLap, (me.tick - lapStartTick) * DT); lapStartTick = me.tick; lapNow = lap; if (lap < world.laps) { banner(lap + 1 === world.laps ? 'FINAL LAP' : `LAP ${lap + 1}`); sfx('beep'); } setHud((s) => ({ ...s, best: bestLap })); }
       }
+      if (me.boost === 36) { banner('NITRO +'); sfx('nitro'); } // ran over a nitro pad
       if (me.hit) { sfx('crash'); shake = me.hit === 'ped' ? 1.6 : 1; flash = 12; }
       if (me.finishedAt > 0) finishRace();
       else if (me.tick >= MAX_RACE_TICKS) { me.finishedAt = 0; finishRace(); }
@@ -263,8 +264,13 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + (wide ? 12 : 148), alignItems: 'center' }}>
         <Text style={{ color: '#fff', fontSize: wide ? 58 : 50, fontWeight: '900', fontStyle: 'italic', lineHeight: wide ? 60 : 52, textShadowColor: '#000', textShadowRadius: 10 }}>{hud.speed}</Text>
         <Text style={[hudLabel, { letterSpacing: 3, marginBottom: 6 }]}>KM/H</Text>
-        <Text style={{ color: '#3de0ff', fontSize: 10, fontWeight: '800', letterSpacing: 3 }}>NITRO</Text>
-        <View style={{ width: wide ? 200 : 170, height: 10, borderRadius: 3, backgroundColor: 'rgba(255,255,255,.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,.14)', marginTop: 3, overflow: 'hidden' }}><View style={{ width: `${Math.round(hud.nitro * 100)}%`, height: 10, backgroundColor: '#3de0ff' }} /></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: hud.nitro < 0.25 ? '#ff5a5a' : '#3de0ff', fontSize: 11, fontWeight: '900', letterSpacing: 3 }}>⚡ NITRO</Text>
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>{Math.round(hud.nitro * 100)}%</Text>
+        </View>
+        <View style={{ width: wide ? 240 : 190, height: 14, borderRadius: 4, backgroundColor: 'rgba(255,255,255,.14)', borderWidth: 1, borderColor: hud.nitro < 0.25 ? '#ff5a5a' : 'rgba(61,224,255,.6)', marginTop: 4, overflow: 'hidden' }}>
+          <View style={{ width: `${Math.round(hud.nitro * 100)}%`, height: 14, backgroundColor: hud.nitro < 0.25 ? '#ff5a5a' : '#3de0ff' }} />
+        </View>
       </View>
 
       {/* controls */}

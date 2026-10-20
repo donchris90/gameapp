@@ -186,7 +186,10 @@ export function makeWorld(seed: number, level: number, track = 'straight', laps 
   }
   entities.sort((a, b) => a.z - b.z);
   entities.forEach((e, i) => { e.id = i; });
-  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), lapLength: 0, laps: 1, driftK: DRIFT_K, pads: [], entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
+  // nitro pickups: one every 220 to 360 m, in any lane, so a driver who has run dry can find more
+  const pads: Pad[] = []; const pr = rng((seed ^ 0x6e17a9d1) >>> 0);
+  for (let pz = 220 + pr() * 80; pz < s.length - 140; pz += 220 + pr() * 140) pads.push({ z: pz, x: laneX(Math.floor(pr() * LANES)) });
+  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), lapLength: 0, laps: 1, driftK: DRIFT_K, pads, entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
 }
 
 /** A triangle wave between -1 and 1 (no sine, so every device agrees). */
@@ -254,8 +257,8 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
   r.tick++;
   if (r.boost > 0) r.boost--;
   for (let i = 0; i < world.pads.length; i++) { // nitro pads, once a lap
-    const p = world.pads[i], lap = Math.floor(r.z / world.lapLength), zl = r.z - lap * world.lapLength;
-    if (r.padLap[i] !== lap && Math.abs(zl - p.z) < 5 && Math.abs(r.x - p.x) < 3.4) { r.padLap[i] = lap; r.nitro = Math.min(car.nitroSeconds, r.nitro + car.nitroSeconds * 0.3); r.boost = 36; }
+    const p = world.pads[i], L = world.lapLength || world.length + 1, lap = Math.floor(r.z / L), zl = r.z - lap * L;
+    if (r.padLap[i] !== lap && Math.abs(zl - p.z) < 5 && Math.abs(r.x - p.x) < 3.4) { r.padLap[i] = lap; r.nitro = Math.min(car.nitroSeconds, r.nitro + car.nitroSeconds * 0.4); r.boost = 36; }
   }
   if (r.invul > 0) r.invul--;
 

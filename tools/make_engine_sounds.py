@@ -1,4 +1,4 @@
-"""Builds the Apex Run engine sounds (V8 loops at two pitches, wind, tyre squeal, nitro whoosh, turbo, blow-off, exhaust pop).
+"""Builds the Apex Run engine sounds (V8 loops at four rev levels, wind, tyre squeal, nitro whoosh, blow-off, exhaust pop).
 Run: python3 tools/make_engine_sounds.py   -> writes mobile/assets/sfx/*.wav. The loops are seamless."""
 import numpy as np, wave, os
 from scipy import signal
@@ -11,17 +11,29 @@ def save(name, x, peak=0.9):
     with wave.open(os.path.join(OUT, name), 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((x * 32767).astype('<i2').tobytes())
 
-def engine(f0, seconds=2.0):
-    """A V8: pulses at f0 (4 firings a turn) plus half and odd-half harmonics for the uneven burble. Every partial fits whole cycles in `seconds`, so it loops."""
-    n = int(SR * seconds); t = np.arange(n) / SR; x = np.zeros(n)
-    for k2 in range(1, 90):
-        f = f0 * k2 / 2
-        if f > 5200: break
-        a = (1 / (k2 / 2) ** 0.95) * (1.0 if k2 % 2 == 0 else 0.35 + 0.25 * rng.random())
-        a *= 1 / (1 + (f / 1800) ** 2)
-        x += a * np.sin(2 * np.pi * f * t + rng.random() * 6.28)
-    x = np.tanh(2.4 * x / np.max(np.abs(x)))
-    return x
+def engine(rpm, seconds=2.0):
+    """A V8 made of real firing pulses, not a steady tone: every firing is a short thump (a body resonance plus a burst of noise) that is a little different
+    from the last; the eight firings of a full turn have uneven strength (the V8 burble). The pulses are added in a circle, so the loop is seamless."""
+    f_fire = rpm / 60 * 4
+    cycles = max(1, round(seconds * f_fire / 8)); f_fire = cycles * 8 / seconds
+    n = int(SR * seconds); out = np.zeros(n); r = np.random.default_rng(int(rpm))
+    amp = [1, .72, .92, .62, 1, .78, .88, .66]
+    tau = 0.03 * (1500 / rpm) ** 0.6
+    m = int(SR * 0.16); tt = np.arange(m) / SR
+    lp = signal.butter(2, 1100 / (SR / 2))
+    for k in range(cycles * 8):
+        a = amp[k % 8] * (0.85 + 0.3 * r.random())
+        body = (np.sin(2 * np.pi * (80 + 20 * r.random()) * tt) + 0.6 * np.sin(2 * np.pi * (165 + 30 * r.random()) * tt + 1)) * np.exp(-tt / tau)
+        puff = signal.lfilter(*lp, r.standard_normal(m)) * np.exp(-tt / (tau * 0.5)) * 2.2
+        pulse = (body + puff) * a
+        i0 = int(((k + r.normal(0, 0.03)) / f_fire) * SR) % n
+        idx = (i0 + np.arange(m)) % n
+        out[idx] += pulse
+    bed = signal.lfilter(*signal.butter(2, 700 / (SR / 2)), r.standard_normal(n)) * 0.12
+    out += bed * (0.6 + 0.4 * np.abs(np.sin(np.pi * np.arange(n) / SR * f_fire)))
+    out = np.tanh(1.6 * out / np.max(np.abs(out)))
+    out = signal.lfilter(*signal.butter(2, 4200 / (SR / 2)), out)
+    return signal.lfilter(*signal.butter(1, 45 / (SR / 2), 'high'), out)  # no DC offset
 
 def loopnoise(seconds, filt):
     n = int(SR * seconds); fade = int(SR * 0.25)
@@ -30,16 +42,13 @@ def loopnoise(seconds, filt):
     out = x[:n].copy(); out[:fade] = x[:fade] * w + x[n:n + fade] * (1 - w)
     return out
 
-save('engine_lo.wav', engine(167.0))    # about 2500 rpm
-save('engine_hi.wav', engine(400.0))    # about 6000 rpm
+for i, rpm in enumerate([1500, 3000, 4800, 7000], 1): save(f'engine_{i}.wav', engine(rpm))
 b, a = signal.butter(2, [250 / (SR / 2), 4200 / (SR / 2)], 'band')
 save('wind.wav', loopnoise(2.0, lambda x: signal.lfilter(b, a, x)))
 b, a = signal.iirpeak(2100 / (SR / 2), 9)
 save('squeal.wav', loopnoise(2.0, lambda x: signal.lfilter(b, a, x)))
 b, a = signal.butter(3, 1600 / (SR / 2), 'high')
 save('whoosh.wav', loopnoise(1.5, lambda x: signal.lfilter(b, a, x)))
-t = np.arange(SR) / SR
-save('turbo.wav', np.sin(2 * np.pi * 2200 * t + 0.4 * np.sin(2 * np.pi * 5 * t)) * 0.7 + 0.3 * np.sin(2 * np.pi * 4400 * t))
 n = int(SR * 0.45); t = np.arange(n) / SR
 b, a = signal.butter(3, 2500 / (SR / 2), 'high')
 save('blowoff.wav', signal.lfilter(b, a, rng.standard_normal(n)) * np.exp(-t * 7))

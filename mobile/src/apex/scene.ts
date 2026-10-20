@@ -493,6 +493,10 @@ export class ApexScene {
       const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ map: padTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 10).rotateX(-Math.PI / 2), mat); g.add(m);
       const gl = new THREE.Mesh(new THREE.PlaneGeometry(9, 14).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glow, color: 0x3de0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.45, fog: false })); gl.position.y = -0.01; g.add(gl);
+      for (const yaw of [0, Math.PI / 2]) { // a faint column of light, so a pad can be seen from far down the road
+        const beam = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 12), new THREE.MeshBasicMaterial({ map: glow, color: 0x3de0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9, fog: false, side: THREE.DoubleSide }));
+        beam.position.y = 6; beam.rotation.y = yaw; g.add(beam);
+      }
       this.put(g, p.x, p.z, 0, 0.06); this.scene.add(g); this.pads.push({ mat, z: p.z });
     }
 

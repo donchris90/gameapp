@@ -62,13 +62,15 @@ export function sfx(name: Sound) {
 
 /**
  * The Apex Run engine: a V8 made of looping samples whose pitch follows a gearbox (six gears, revs that climb and drop at each shift),
- * with a turbo whistle, wind, tyre squeal, a nitro whoosh, and the nearest rival's engine with a doppler shift as it passes.
+ * with wind, tyre squeal, a nitro whoosh, and the nearest rival's engine with a doppler shift as it passes.
  * Safe to call in any state: if audio is unavailable nothing happens.
  */
 const LOOP_FILES = {
-  lo: require('../assets/sfx/engine_lo.wav'), hi: require('../assets/sfx/engine_hi.wav'), rival: require('../assets/sfx/engine_hi.wav'),
-  wind: require('../assets/sfx/wind.wav'), squeal: require('../assets/sfx/squeal.wav'), whoosh: require('../assets/sfx/whoosh.wav'), turbo: require('../assets/sfx/turbo.wav'),
+  e1: require('../assets/sfx/engine_1.wav'), e2: require('../assets/sfx/engine_2.wav'), e3: require('../assets/sfx/engine_3.wav'), e4: require('../assets/sfx/engine_4.wav'),
+  rival: require('../assets/sfx/engine_3.wav'),
+  wind: require('../assets/sfx/wind.wav'), squeal: require('../assets/sfx/squeal.wav'), whoosh: require('../assets/sfx/whoosh.wav'),
 };
+const ENGINE_AT = [1500, 3000, 4800, 7000]; // the revs each engine loop was recorded at
 type Loop = keyof typeof LOOP_FILES;
 const loops: Partial<Record<Loop, AudioPlayer>> = {};
 const TOPS = [0, 14, 25, 36, 47, 58, 95]; // top speed of each gear, in m/s
@@ -122,19 +124,21 @@ export function engineUpdate(i: EngineIn) {
   const now = Date.now(), dt = Math.min(0.25, Math.max(0.01, (now - box.last) / 1000)); box.last = now;
   const thr = i.braking ? 0 : 1;
   const rpm = rpmOf(i.speed, thr, dt), cut = box.shift > 0 ? 0.35 : 1;
-  const mix = Math.max(0, Math.min(1, (rpm - 3600) / 1400)), base = (0.3 + 0.32 * thr) * cut;
-  setLoop('lo', base * (1 - mix), rpm / 2500);
-  setLoop('hi', base * mix, rpm / 6000);
+  const base = (0.42 + 0.3 * thr) * cut;
+  ENGINE_AT.forEach((at, j) => { // two neighbouring loops blend as the revs climb, each stretched a little to match
+    const next = ENGINE_AT[j + 1], prev = ENGINE_AT[j - 1];
+    const w = rpm >= at ? (next ? Math.max(0, 1 - (rpm - at) / (next - at)) : 1) : (prev ? Math.max(0, 1 - (at - rpm) / (at - prev)) : 1);
+    setLoop(`e${j + 1}` as Loop, base * w, rpm / at);
+  });
   const k = Math.min(1, i.speed / 90);
   setLoop('wind', 0.03 + k * k * 0.55, 0.8 + k * 0.5);
   setLoop('squeal', i.speed > 14 ? Math.max(0, Math.min(1, (i.slip - 4.5) / 9)) * 0.32 : 0, 0.9 + Math.min(0.5, i.slip * 0.03));
   setLoop('whoosh', i.boost ? 0.4 : 0);
-  setLoop('turbo', thr > 0.5 && rpm > 3500 ? 0.06 * (rpm / 8000) : 0, 0.7 + (rpm / 8000) * 0.9);
   if (box.lastThr > 0.6 && thr < 0.4 && i.speed > 30) { sfx('blowoff'); setTimeout(() => sfx('pop'), 90); setTimeout(() => sfx('pop'), 210); }
   box.lastThr = thr;
   if (i.rival && i.rival.dist < 90) {
     const dop = 1 + Math.max(-0.18, Math.min(0.18, i.rival.closing / 343 * 3));
-    setLoop('rival', Math.pow(1 - i.rival.dist / 90, 1.6) * 0.32, (rpmOf(i.rival.speed, 0.8, dt, true) / 6000) * dop);
+    setLoop('rival', Math.pow(1 - i.rival.dist / 90, 1.6) * 0.45, (rpmOf(i.rival.speed, 0.8, dt, true) / 4800) * dop);
   } else setLoop('rival', 0);
 }
 export function engineStop() { box.live = false; (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }

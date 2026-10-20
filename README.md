@@ -213,3 +213,6 @@ A 3D racing game (three.js on expo-gl). You race 5 computer drivers (random name
 - Admin → Ads can set "ad after every Nth game" for Apex Run like the other games.
 - If tilt steers the wrong way on your phone, press **Flip tilt** on the Apex Run menu (it has a live test bar).
 - Coming next: online rooms and quick match (up to 6), stakes, garage/shop and boosts.
+
+### 3D car models
+`mobile/assets/cars/hero.glb` (your car, ~27k triangles) and `rival.glb` (the computer drivers, ~7k) are loaded by `mobile/src/apex/model.ts`. If a file is missing or fails to load, the built-in cars are used. To make these files from any car OBJ (one body object + four wheel objects): `python3 tools/obj_to_car_glb.py car.obj out.glb --tris 22000` (needs `pip install trimesh fast-simplification scipy numpy`). The current models are a test model of a real-world car brand: use original or properly licensed models before you release the game.

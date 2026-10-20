@@ -9,6 +9,7 @@ import { engineSpeed, engineStart, engineStop, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
+import { loadCarModels } from './model';
 import { ApexScene, CameraMode, Frame } from './scene';
 import { CARS, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
@@ -76,6 +77,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
     glRef.current = gl;
+    await loadCarModels(); // the real 3D cars (falls back to the built-in ones if a file cannot be read)
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });

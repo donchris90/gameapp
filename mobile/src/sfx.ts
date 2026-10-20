@@ -76,7 +76,7 @@ const ENGINE_SETS: Record<string, number[]> = {
 };
 const LOOP_FILES = {
   e1: ENGINE_SETS.cts[0], e2: ENGINE_SETS.cts[1], e3: ENGINE_SETS.cts[2], e4: ENGINE_SETS.cts[3], e5: ENGINE_SETS.cts[4],
-  rival: ENGINE_SETS.cts[2],
+  rival: ENGINE_SETS.gt3[2],  // a different engine from the player's default, so the two do not blur together
   wind: require('../assets/sfx/wind.wav'), squeal: require('../assets/sfx/squeal.wav'), whoosh: require('../assets/sfx/whoosh.wav'),
 };
 const ENGINE_AT = [1800, 3200, 5000, 6800, 8600]; // the revs each engine loop was recorded at
@@ -93,7 +93,7 @@ const ENGINE_PROFILES: Record<string, EngineProfile> = {
   mansory: { idle: 1050, redline: 7200, launch: 5800, pitch: 1.02, volume: 1 },
 };
 const DEFAULT_PROFILE: EngineProfile = { idle: 1200, redline: 7600, launch: 5600, pitch: 1, volume: 0.95 };
-const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false, profile: DEFAULT_PROFILE, car: '' };
+const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false, profile: DEFAULT_PROFILE, car: '', rivVol: 0, rivRate: 1 };
 
 function loopOf(name: Loop): AudioPlayer {
   let p = loops[name];
@@ -146,7 +146,7 @@ export function engineStart(carId = 'gt3') {
       void p.seekTo(0); p.play();
     });
     box.car = carId;
-    Object.assign(box, { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: Date.now(), rGear: 1, rShift: 0, rRpm: 1500, live: true });
+    Object.assign(box, { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: Date.now(), rGear: 1, rShift: 0, rRpm: 1500, rivVol: 0, rivRate: 1, live: true });
   } catch { /* no audio */ }
 }
 export interface EngineIn {
@@ -184,9 +184,15 @@ export function engineUpdate(i: EngineIn) {
   setLoop('whoosh', i.boost ? 0.4 : 0);
   if (box.lastThr > 0.6 && thr < 0.4 && i.speed > 30) { sfx('blowoff'); setTimeout(() => sfx('pop'), 100); }
   box.lastThr = thr;
-  if (i.rival && i.rival.dist < 90) {
-    const dop = 1 + Math.max(-0.18, Math.min(0.18, i.rival.closing / 343 * 3));
-    setLoop('rival', Math.pow(1 - i.rival.dist / 90, 1.6) * 0.45, (rpmOf(i.rival.speed, 0.8, dt, true) / 4800) * dop);
-  } else setLoop('rival', 0);
+  // Rivals: only a hint of the nearest one, and only when it is really close (as it passes). Several full-volume engines at once are just
+  // noise, and a second engine at nearly your own pitch beats against yours. So it is quiet, short-range, and smoothed so that a change of
+  // "nearest car" does not make the pitch or volume jump.
+  const RANGE = 38;
+  const wantVol = i.rival && i.rival.dist < RANGE ? Math.pow(1 - i.rival.dist / RANGE, 2) * 0.2 : 0;
+  const dop = i.rival ? 1 + Math.max(-0.12, Math.min(0.12, i.rival.closing / 343 * 2)) : 1;
+  const wantRate = i.rival ? Math.max(0.6, Math.min(1.6, (rpmOf(i.rival.speed, 0.8, dt, true) / 5000) * dop * 0.86)) : box.rivRate;
+  box.rivVol += (wantVol - box.rivVol) * 0.35;
+  box.rivRate += (wantRate - box.rivRate) * 0.2;
+  setLoop('rival', box.rivVol < 0.004 ? 0 : box.rivVol, box.rivRate);
 }
 export function engineStop() { box.live = false; (Object.keys(lastRate) as Loop[]).forEach((n) => { delete lastRate[n]; }); (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }

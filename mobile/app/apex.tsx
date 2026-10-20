@@ -1,7 +1,7 @@
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { adDue, preloadInterstitial, showInterstitial } from '../src/ads';
 import { Race, RaceResult } from '../src/apex/Race';
 import { CarPreview } from '../src/apex/CarPreview';
@@ -15,6 +15,7 @@ import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
 import { AFRICA_STORY, africaCampaignDone, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, STORY_SKINS, STORY_TALK, storyMissionComplete } from '../src/apex/story';
 import { EuropeInvitation, StoryScene } from '../src/apex/StoryScene';
+import { STORY_ART } from '../src/apex/storyArt';
 import { LagosDrive } from '../src/apex/LagosDrive';
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { sfx } from '../src/sfx';
@@ -139,7 +140,7 @@ export default function Apex() {
   if (phase === 'menu' && storyScene) {
     if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
     const m = STORY_MISSIONS.find((x) => x.id === storyScene.id); const talk = m ? STORY_TALK[m.id] : undefined;
-    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { setStoryScene(null); startStoryMission(m.id); }} onSkip={() => setStoryScene(null)} />;
+    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} art={STORY_ART[m.id]} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { setStoryScene(null); startStoryMission(m.id); }} onSkip={() => setStoryScene(null)} />;
   }
   if (phase === 'drive') return <LagosDrive quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); }} />;
   if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); }} />;
@@ -368,7 +369,10 @@ export default function Apex() {
             return <Card key={mission.id} style={{ gap: 8, borderColor: isCurrent ? '#5eaaff' : complete ? '#236b63' : colors.line, backgroundColor: isCurrent ? '#12254a' : colors.card, opacity: lockedByProgress || lockedByChapter ? 0.62 : 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
                 <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#145044' : '#1b2a4a' }}><Text style={{ color: '#fff', fontWeight: '900' }}>{complete ? '✓' : String(index + 1).padStart(2, '0')}</Text></View>
-                <View style={{ flex: 1, gap: 3 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text></View>
+                <View style={{ flex: 1, gap: 7 }}>
+                  <Image source={STORY_ART[mission.id]} resizeMode="cover" style={{ width: '100%', height: 118, borderRadius: 10, backgroundColor: '#152746' }} />
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text>
+                </View>
               </View>
               {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => (STORY_TALK[mission.id] && mission.level <= settings.unlocked ? setStoryScene({ kind: 'mission', id: mission.id }) : startStoryMission(mission.id))} /> : null}
             </Card>;
@@ -376,7 +380,7 @@ export default function Apex() {
           return <>
             <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>APEX RUN / CAREER STORY</Text>
             <H1>From Lagos to Africa</H1>
-            <Dim>Build your name from local street races to the continent’s biggest championship. Story races use the existing race engine, career rewards, car upgrades and saved mission progress. The Africa Tour contains ten regional driving environments with sequential destination unlocks, distinct waypoint routes, regional bonus objectives, a Cup standings table, one-time first-clear rewards, and saved best times and points. These are compact procedural environments, not full-scale city reconstructions; bespoke cinematic scenes remain a later production task.</Dim>
+            <Dim>Build your name from local street races to the continent’s biggest championship. Story races use the existing race engine, career rewards, car upgrades and saved mission progress. The Africa Tour contains ten regional driving environments with sequential destination unlocks, distinct waypoint routes, regional bonus objectives, a Cup standings table, one-time first-clear rewards, and saved best times and points. Story missions now include bundled cinematic artwork, mission thumbnails, and illustrated dialogue scenes. The driving environments remain compact procedural representations, not full-scale city reconstructions.</Dim>
             <Card style={{ marginTop: 14, gap: 9, borderColor: '#28578b', backgroundColor: '#101b34' }}>
               <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>NEW · LAGOS FREE DRIVE</Text>
               <Dim>Explore the playable Lagos district prototype with connected roads, landmarks, touch driving controls and waypoint objectives.</Dim>

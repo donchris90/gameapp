@@ -176,6 +176,20 @@ export const STORY_TALK: Record<string, { before: StoryLine[]; after: StoryLine 
   'africa-grand-championship': { before: [{ who: 'Darius Cole', line: 'Same grid at last. No tricks this time.' }, { who: 'Mara Okafor', line: 'From Lagos to here. Win it for all of us.' }], after: { who: 'Mara Okafor', line: 'King of the Continent. And Europe just called.' } },
 };
 
-/** The Africa campaign is done when the championship is won and all ten regional drives are cleared. */
-export const africaCampaignDone = (completed: string[], regions: string[]) =>
-  chapterProgress(completed, 'africa').complete && regions.length >= 10;
+/** Canonical region IDs used by the Africa Tour save data. */
+export const AFRICA_CAMPAIGN_REGION_IDS = [
+  'accra', 'abidjan', 'dakar', 'nairobi', 'cairo',
+  'atlas', 'namib', 'victoria', 'cape', 'johannesburg',
+] as const;
+
+/**
+ * Africa is complete only when every Africa story mission (including the Grand
+ * Championship finale) is complete and every canonical regional drive is saved.
+ * Checking the IDs, rather than just array length, prevents stale/unknown values
+ * in old saves from unlocking Europe early.
+ */
+export const africaCampaignDone = (completed: string[], regions: string[]) => {
+  const cleared = new Set(regions);
+  const allRegionsCleared = AFRICA_CAMPAIGN_REGION_IDS.every((id) => cleared.has(id));
+  return chapterProgress(completed, 'africa').complete && allRegionsCleared;
+};

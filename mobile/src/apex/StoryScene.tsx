@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ImageBackground, ScrollView, Text, View } from 'react-native';
 import { Button, Card, Dim, colors } from '../ui';
 import { StoryLine } from './story';
 
@@ -10,16 +10,20 @@ const TINT: Record<string, string> = {
 const tint = (who: string) => TINT[who] ?? colors.x;
 
 /** A short scene: one speaker at a time, tap to move on. The last tap calls onDone. */
-export function StoryScene({ kicker, title, place, lines, goLabel, onDone, onSkip }: { kicker: string; title: string; place: string; lines: StoryLine[]; goLabel: string; onDone: () => void; onSkip?: () => void }) {
+export function StoryScene({ kicker, title, place, lines, goLabel, onDone, onSkip, art }: { kicker: string; title: string; place: string; lines: StoryLine[]; goLabel: string; onDone: () => void; onSkip?: () => void; art?: number }) {
   const [i, setI] = useState(0);
   const last = i >= lines.length - 1;
   const line = lines[Math.min(i, lines.length - 1)];
   return (
     <View style={{ flex: 1, backgroundColor: '#070b1c', padding: 20, justifyContent: 'space-between' }}>
-      <View style={{ gap: 4, marginTop: 28 }}>
+      <View style={{ gap: 4, marginTop: 18 }}>
         <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>{kicker}</Text>
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900' }}>{title}</Text>
-        <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }}>{place}</Text>
+        <ImageBackground source={art} resizeMode="cover" imageStyle={{ borderRadius: 16 }} style={{ height: 205, justifyContent: 'flex-end', overflow: 'hidden', borderRadius: 16, marginTop: 6, marginBottom: 8, backgroundColor: '#152746' }}>
+          <View style={{ backgroundColor: 'rgba(4,8,20,0.72)', padding: 14, gap: 4 }}>
+            <Text style={{ color: '#fff', fontSize: 26, fontWeight: '900' }}>{title}</Text>
+            <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }}>{place}</Text>
+          </View>
+        </ImageBackground>
       </View>
       <Card style={{ gap: 10, borderColor: tint(line.who), backgroundColor: '#0f1830' }}>
         <Text style={{ color: tint(line.who), fontSize: 12, fontWeight: '900', letterSpacing: 1.5 }}>{line.who.toUpperCase()}</Text>
@@ -39,8 +43,12 @@ export function EuropeInvitation({ coins, onClose }: { coins: number; onClose: (
   return (
     <View style={{ flex: 1, backgroundColor: '#070b1c' }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 44, gap: 14 }}>
-        <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>AFRICA CAMPAIGN COMPLETE</Text>
-        <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900' }}>King of the Continent</Text>
+        <ImageBackground source={require('../../assets/story/africa-campaign.png')} resizeMode="cover" imageStyle={{ borderRadius: 16 }} style={{ height: 190, justifyContent: 'flex-end', overflow: 'hidden', borderRadius: 16, backgroundColor: '#152746' }}>
+          <View style={{ backgroundColor: 'rgba(4,8,20,0.72)', padding: 14, gap: 4 }}>
+            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>AFRICA CAMPAIGN COMPLETE</Text>
+            <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900' }}>King of the Continent</Text>
+          </View>
+        </ImageBackground>
         <Dim>From a cracked workshop in Lagos to the champion’s grid in Johannesburg. The notebook, the broker and the trail of stolen telemetry all lead to one name.</Dim>
         <Card style={{ gap: 8, borderColor: '#ff3d9a', backgroundColor: '#1a1030' }}>
           <Text style={{ color: '#ff3d9a', fontSize: 12, fontWeight: '900', letterSpacing: 1.5 }}>VICTOR SLOANE · VANGUARD</Text>

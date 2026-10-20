@@ -1,0 +1,27 @@
+{
+ "input": "/tmp/mock/cad.glb",
+ "output": "/tmp/mock/cad_game.glb",
+ "length": 4.9,
+ "frontIsPlusZ": true,
+ "triangles": 30000,
+ "texture": 1024,
+ "drop": [
+  "^cloth",
+  "headliner",
+  "digital_gauge",
+  "bump_stitching",
+  "mottled",
+  "^solid",
+  "Material_#4",
+  "undercarriage",
+  "^plastic",
+  "^metal",
+  "^misc"
+ ],
+ "wheels": [
+  "^rim",
+  "inner_rim",
+  "^Tyre"
+ ],
+ "paint": "^body"
+}

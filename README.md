@@ -216,3 +216,6 @@ A 3D racing game (three.js on expo-gl). You race 5 computer drivers (random name
 
 ### 3D car models
 `mobile/assets/cars/hero.glb` (your car, ~22k triangles) and `rival.glb` (the computer drivers, ~7k) are loaded by `mobile/src/apex/model.ts`. If a file is missing or fails to load, the built-in cars are used. To make these files from any car OBJ (one body object + four wheel objects): `python3 tools/obj_to_car_glb.py car.obj out.glb --tris 22000` (needs `pip install trimesh fast-simplification scipy numpy`). The current models are a test model of a real-world car brand: use original or properly licensed models before you release the game.
+
+### Apex garage
+Six-car catalogue in `mobile/src/apex/cars.ts` (price, career level, upgrade cost factor). Each car has 4 upgrades (engine, turbo, tyres, nitro) up to level 5; they change the stats (`carStats` in the shared sim) and the look (underglow, flame colour). New cars: run `tools/car-pipeline/optimize_car.mjs` on the source model, drop `<id>_hi.glb`/`<id>_lo.glb` into `mobile/assets/cars/`, and register it in `cars.ts`. After installing, run `npm install --legacy-peer-deps` (new deps: expo-screen-orientation, expo-asset, upng-js). Real-brand models need a licence/trademark check before release.

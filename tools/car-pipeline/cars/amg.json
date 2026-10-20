@@ -1,0 +1,13 @@
+{
+ "input": "/tmp/mock/amg.glb",
+ "output": "/tmp/mock/amg_game.glb",
+ "length": 4.9,
+ "frontIsPlusZ": true,
+ "triangles": 30000,
+ "texture": 1024,
+ "keepNodes": "^EXT_|^Turnsignal|^Lowbeam|^Highbeam|^Caliper_|^TYRE_|^RIM_|^Disc_|^Antenna",
+ "dropNodes": "Wheelhouse|Hooks|Mechanics_Detail|Detail_Screws|Exhaust_Inside|Exhaust_Fabric|Banner|Lighthouse|Caliperdecal",
+ "wheelNodes": "^TYRE_|^RIM_|^Disc_|^Caliper_",
+ "paintNodes": "^EXT_Carpaint",
+ "error": 0.002
+}

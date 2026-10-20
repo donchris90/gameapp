@@ -1,0 +1,2 @@
+{ "name": "car-pipeline", "private": true, "type": "module", "description": "Makes game-ready car files from big downloaded .glb models",
+  "dependencies": { "@gltf-transform/core": "^4.0.0", "@gltf-transform/extensions": "^4.0.0", "@gltf-transform/functions": "^4.0.0", "meshoptimizer": "^0.22.0", "sharp": "^0.33.0" } }

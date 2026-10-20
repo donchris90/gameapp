@@ -2,11 +2,12 @@ import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef } from 'react';
 import { LayoutChangeEvent, View } from 'react-native';
 import * as THREE from 'three';
-import { loadCarModels } from './model';
+import { loadCarModel } from './model';
+import { lookFor } from './cars';
 import { makeHeroCar } from './scene';
 
 /** Lightweight, rotating Three.js vehicle preview for the garage and workshop. */
-export function CarPreview({ color, tier = 0, height = 190 }: { color: number; tier?: number; height?: number }) {
+export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, height = 190 }: { color: number; carId?: string; upgrades?: number[]; tier?: number; height?: number }) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -16,7 +17,7 @@ export function CarPreview({ color, tier = 0, height = 190 }: { color: number; t
   const sizeRef = useRef({ width: 1, height });
 
   const onContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
-    await loadCarModels();
+    await loadCarModel(carId);
     glRef.current = gl;
     const width = gl.drawingBufferWidth || sizeRef.current.width;
     const heightPx = gl.drawingBufferHeight || sizeRef.current.height;
@@ -36,7 +37,7 @@ export function CarPreview({ color, tier = 0, height = 190 }: { color: number; t
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.04; scene.add(floor);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.025, 8, 80), new THREE.MeshBasicMaterial({ color: 0x328cff, transparent: true, opacity: 0.85 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.005; scene.add(ring);
-    const car = makeHeroCar(color, tier);
+    const car = makeHeroCar(color, tier, carId, lookFor(upgrades));
     car.group.rotation.y = Math.PI;
     car.group.position.y = 0.04;
     scene.add(car.group);
@@ -51,7 +52,7 @@ export function CarPreview({ color, tier = 0, height = 190 }: { color: number; t
       frameRef.current = requestAnimationFrame(draw);
     };
     frameRef.current = requestAnimationFrame(draw);
-  }, [color, tier]);
+  }, [color, tier, carId, upgrades]);
 
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);

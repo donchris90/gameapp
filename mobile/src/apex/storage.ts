@@ -10,12 +10,14 @@ export interface ApexSettings {
   paint: number;
   bodyTier: number;
   completedRaces: number;
+  upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
 }
 const KEY = 'apex.settings';
+const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
-  activeCar: 'starter', unlockedCars: ['starter'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0,
+  activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
+  bodyTier: 0, completedRaces: 0, upgrades: {},
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -24,8 +26,10 @@ export async function loadApex(): Promise<ApexSettings> {
     return {
       ...DEFAULTS,
       ...saved,
-      unlockedCars: Array.isArray(saved.unlockedCars) ? saved.unlockedCars : DEFAULTS.unlockedCars,
-      activeCar: typeof saved.activeCar === 'string' ? saved.activeCar : DEFAULTS.activeCar,
+      // cars from the very first build (starter, sport...) are gone: keep only cars that exist, and always own the first
+      unlockedCars: Array.from(new Set(['cts', ...(Array.isArray(saved.unlockedCars) ? saved.unlockedCars : []).filter((id: string) => KNOWN.includes(id))])),
+      activeCar: typeof saved.activeCar === 'string' && KNOWN.includes(saved.activeCar) ? saved.activeCar : DEFAULTS.activeCar,
+      upgrades: saved.upgrades && typeof saved.upgrades === 'object' ? saved.upgrades : {},
       coins: Number.isFinite(saved.coins) ? Math.max(0, saved.coins) : DEFAULTS.coins,
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,
       bodyTier: Number.isFinite(saved.bodyTier) ? Math.max(0, Math.min(3, saved.bodyTier)) : DEFAULTS.bodyTier,

@@ -9,9 +9,10 @@ import { engineSpeed, engineStart, engineStop, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
-import { loadCarModels } from './model';
+import { loadCarModel } from './model';
+import { RIVAL_MODELS, lookFor } from './cars';
 import { ApexScene, CameraMode, Frame } from './scene';
-import { CARS, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
+import { carStats, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
 export interface RaceResult { level: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
@@ -26,7 +27,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff, bodyTier = 0, onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; bodyTier?: number; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -49,7 +50,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
   const glRef = useRef<any>(null);
   const viewRef = useRef<ApexScene | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
-  const car = CARS[carId] ?? CARS.starter;
+  const car = carStats(carId, upgrades);
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const alive = useRef(true);
   const finished = useRef(false);
@@ -77,7 +78,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
     glRef.current = gl;
-    await loadCarModels(); // the real 3D cars (falls back to the built-in ones if a file cannot be read)
+    await Promise.all([loadCarModel(carId), ...RIVAL_MODELS.map((m) => loadCarModel(m))]); // the real 3D cars (the built-in ones are used if a file cannot be read)
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
@@ -86,7 +87,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
 
     const seed = Math.floor(Math.random() * 2_000_000_000);
     const world = makeWorld(seed, level);
-    const view = new ApexScene(world, carId, bodyTier, paint);
+    const view = new ApexScene(world, carId, 2, paint, lookFor(upgrades));
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
     resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };
@@ -173,7 +174,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
         t, speed: lerp(mePrev.v, me.v), steer: steerNow, nitroOn: me.nitroOn && phase === 'go', braking: keys.current.brake && phase === 'go',
         flash: flash > 0 ? flash : 0, shake, finished: me.finishedAt > 0,
         player: { id: 0, x: lerp(mePrev.x, me.x), z: lerp(mePrev.z, me.z) },
-        others: rivals.map((x) => ({ id: x.id, x: lerp(x.prev.x, x.r.x), z: lerp(x.prev.z, x.r.z) })),
+        others: rivals.map((x) => ({ id: x.id, x: lerp(x.prev.x, x.r.x), z: lerp(x.prev.z, x.r.z), model: RIVAL_MODELS[(x.id + seed) % RIVAL_MODELS.length] })),
         arrived: me.arrived,
       };
       if (flash > 0) flash--;

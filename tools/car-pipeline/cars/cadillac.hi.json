@@ -1,0 +1,28 @@
+{
+ "input": "/tmp/mock/cad.glb",
+ "output": "/home/claude/playcircle/mobile/assets/cars/cts_hi.glb",
+ "length": 4.9,
+ "frontIsPlusZ": true,
+ "triangles": 26000,
+ "texture": 512,
+ "drop": [
+  "^cloth",
+  "headliner",
+  "digital_gauge",
+  "bump_stitching",
+  "mottled",
+  "^solid",
+  "Material_#4",
+  "undercarriage",
+  "^plastic",
+  "^metal",
+  "^misc"
+ ],
+ "wheels": [
+  "^rim",
+  "inner_rim",
+  "^Tyre"
+ ],
+ "paint": "^body",
+ "error": 0.004
+}

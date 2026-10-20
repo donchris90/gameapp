@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODELS, CarModel } from './model';
+import { MODELS, CarModel, MatDesc } from './model';
 import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, poseOf } from './sim';
 
 /**
@@ -9,7 +9,7 @@ import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, poseOf } from './sim';
  * is drawn at (x, 0, -z).
  */
 
-export interface View { x: number; z: number; id: number; color?: number }
+export interface View { x: number; z: number; id: number; color?: number; model?: string }
 export type CameraMode = 'chase' | 'cockpit';
 
 export interface Frame {
@@ -218,39 +218,65 @@ export function buildLuxuryCar(color: number, tier = 2): CarParts {
   return { group, body, tail, head, flame, wheels, paint };
 }
 
-/** A car built from a real 3D file. The `paint` part takes the chosen colour; the wheels spin. */
-function buildModelCar(model: CarModel, color: number): CarParts {
+/** A car built from a real 3D file. The part called `paint` takes the chosen colour; the wheels spin. `glow` adds an underglow colour (0 = none). */
+function buildModelCar(model: CarModel, color: number, look: { glow?: number; flame?: number } = {}): CarParts {
   const group = new THREE.Group();
   const paint = std(color, { metalness: 0.65, roughness: 0.16, envMap: envMap(), envMapIntensity: 1.3 });
-  const carbon = std(0x14161b, { metalness: 0.7, roughness: 0.35, envMap: envMap(), envMapIntensity: 0.9 });
-  const glass = std(0x0b1220, { metalness: 0.95, roughness: 0.05, envMap: envMap(), envMapIntensity: 1.5 });
-  const tail = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.8, metalness: 0.1, roughness: 0.3 });
+  const tailDefault = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.8, metalness: 0.1, roughness: 0.3 });
   const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 1, metalness: 0.1, roughness: 0.2 });
-  const tyre = std(0x0d0e12, { metalness: 0.5, roughness: 0.5, envMap: envMap(), envMapIntensity: 0.6 });
-  const mats: Record<string, THREE.Material> = { paint, carbon, glass, lights: tail };
+  let tail: THREE.MeshStandardMaterial = tailDefault;
   let body: THREE.Mesh | null = null;
   const wheels: THREE.Mesh[] = [];
-  for (const [name, part] of Object.entries(model.parts)) {
-    if (name.startsWith('wheel_')) {
-      const w = new THREE.Mesh(part.geometry, tyre); w.position.set(...part.at); group.add(w); wheels.push(w);
-    } else {
-      const m = new THREE.Mesh(part.geometry, mats[name] ?? carbon); group.add(m); if (name === 'paint') body = m;
+  const cache = new Map<MatDesc, THREE.Material>();
+  const material = (m: MatDesc): THREE.Material => {
+    if (m.name === 'paint') return paint;
+    let x = cache.get(m);
+    if (!x) {
+      const glassy = /glass|window|windscreen/i.test(m.name) || m.blend;
+      const lamp = /tail|brake|rear.?light|stop/i.test(m.name);
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(m.color[0], m.color[1], m.color[2]).multiplyScalar(/carbon/i.test(m.name) ? 0.28 : 1), map: m.map, roughness: glassy ? 0.05 : Math.max(0.2, m.roughness), metalness: glassy ? 0.9 : Math.min(0.8, m.metallic),
+        envMap: envMap(), envMapIntensity: glassy ? 1.5 : 0.9, side: m.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+        emissive: new THREE.Color(m.emissive[0], m.emissive[1], m.emissive[2]), transparent: glassy && m.color[3] < 0.99, opacity: glassy ? Math.min(0.85, m.color[3]) : 1,
+      });
+      if (lamp) { mat.emissive = new THREE.Color(0xff1a1a); mat.emissiveIntensity = 0.8; tail = mat; }
+      x = mat; cache.set(m, mat);
     }
+    return x;
+  };
+  // old-style files (no materials): colour the parts by their names
+  const legacy: Record<string, THREE.Material> = {
+    paint, carbon: std(0x14161b, { metalness: 0.7, roughness: 0.35, envMap: envMap(), envMapIntensity: 0.9 }),
+    glass: std(0x0b1220, { metalness: 0.95, roughness: 0.05, envMap: envMap(), envMapIntensity: 1.5 }), lights: tailDefault,
+  };
+  const tyre = std(0x0d0e12, { metalness: 0.5, roughness: 0.5, envMap: envMap(), envMapIntensity: 0.6 });
+  for (const [name, part] of Object.entries(model.parts)) {
+    const isWheel = name.startsWith('wheel_');
+    const mats: THREE.Material | THREE.Material[] = model.modern ? part.materials.map(material) : isWheel ? tyre : (legacy[name] ?? legacy.carbon);
+    const m = new THREE.Mesh(part.geometry, mats);
+    if (isWheel) { m.position.set(...part.at); wheels.push(m); } else if (!body || name === 'paint' || name === 'body') body = m;
+    group.add(m);
   }
   // headlight glow strips on the nose so the lights read at night
   for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.05, 0.12), head); h.position.set(sx * 0.62, 0.5, -2.34); h.rotation.y = sx * 0.4; group.add(h); }
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.85 }));
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: look.flame ?? 0x66ccff, transparent: true, opacity: 0.85 }));
   flame.position.set(0, 0.42, 3.6); flame.visible = false; group.add(flame);
+  if (look.glow) { // underglow: a soft coloured pool of light under the car
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 6.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: look.glow, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.position.y = 0.04; group.add(g);
+  }
   return { group, body: body ?? (group.children[0] as THREE.Mesh), tail, head, flame, wheels, paint };
 }
 
-/** The player's car: the real 3D model when its file is loaded, otherwise the built-in luxury car. */
-export function makeHeroCar(color: number, tier = 2): CarParts {
-  return MODELS.hero ? buildModelCar(MODELS.hero, color) : buildLuxuryCar(color, tier);
+export interface CarLook { glow?: number; flame?: number }
+/** The player's car: the chosen real 3D model when its file is loaded, otherwise the built-in luxury car. */
+export function makeHeroCar(color: number, tier = 2, carId = 'hero', look: CarLook = {}): CarParts {
+  const m = MODELS.byId[carId] ?? MODELS.hero;
+  return m ? buildModelCar(m, color, look) : buildLuxuryCar(color, tier);
 }
-/** A rival's car: a lighter version of the model (fewer triangles, as there are five of them). */
-export function makeRivalCar(color: number): CarParts {
-  const m = MODELS.rival ?? MODELS.hero;
+/** A rival's car: a lighter version of a model (fewer triangles, as there are five of them). */
+export function makeRivalCar(color: number, modelId = 'rival'): CarParts {
+  const m = MODELS.byId[modelId] ?? MODELS.rival ?? MODELS.hero;
   return m ? buildModelCar(m, color) : buildLuxuryCar(color, 1);
 }
 
@@ -328,9 +354,12 @@ export class ApexScene {
   private trafficCache = new Map<string, THREE.Object3D>();
   private wheelSpin = 0;
   cameraMode: CameraMode = 'chase';
+  private carId = 'hero';
+  private look: CarLook = {};
 
-  constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c) {
+  constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c, look: CarLook = {}) {
     this.theme = themeFor(world.level);
+    this.carId = car; this.look = look;
     this.build(tier, color);
     this.applyTheme();
   }
@@ -400,7 +429,7 @@ export class ApexScene {
 
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 34).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.beam.position.y = 0.05; this.scene.add(this.beam);
-    this.hero = makeHeroCar(color, tier);
+    this.hero = makeHeroCar(color, tier, this.carId, this.look);
     this.scene.add(this.hero.group);
   }
   private road!: THREE.Mesh;
@@ -468,7 +497,7 @@ export class ApexScene {
       seen.add(o.id);
       let c = this.others.get(o.id);
       if (!c) {
-        c = makeRivalCar(o.color ?? PALETTE[o.id % PALETTE.length]);
+        c = makeRivalCar(o.color ?? PALETTE[o.id % PALETTE.length], o.model);
         this.scene.add(c.group); this.others.set(o.id, c);
       }
       const dz = o.z - player.z;

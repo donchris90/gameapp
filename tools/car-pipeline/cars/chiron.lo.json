@@ -1,0 +1,18 @@
+{
+ "input": "/tmp/mock/chs.glb",
+ "output": "/home/claude/playcircle/mobile/assets/cars/chiron_lo.glb",
+ "length": 4.9,
+ "frontIsPlusZ": true,
+ "triangles": 7000,
+ "texture": 256,
+ "error": 0.004,
+ "drop": [
+  "^interior",
+  "^gauges",
+  "^logo",
+  "^gum"
+ ],
+ "dropNodes": "^interior|^gauges",
+ "wheelNodes": "^tire_mat5|^brakes3|^black_m_1[4-8]|^gum_6",
+ "paint": "^body"
+}

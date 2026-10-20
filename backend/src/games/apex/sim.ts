@@ -39,7 +39,30 @@ export const CARS: Record<string, CarStats> = {
   sport: { id: 'sport', vmax: 54, accel: 17, handling: 9.6, nitroSeconds: 2.4 },
   luxury: { id: 'luxury', vmax: 58, accel: 19, handling: 10.2, nitroSeconds: 2.8 },
   flagship: { id: 'flagship', vmax: 62, accel: 21, handling: 10.8, nitroSeconds: 3.2 },
+  // the garage cars (see mobile/src/apex/cars.ts for names and prices): base stats, before upgrades
+  cts: { id: 'cts', vmax: 50, accel: 15, handling: 9.0, nitroSeconds: 2.0 },
+  gt3: { id: 'gt3', vmax: 54, accel: 17, handling: 9.6, nitroSeconds: 2.4 },
+  one1: { id: 'one1', vmax: 58, accel: 19, handling: 10.2, nitroSeconds: 2.8 },
+  chiron: { id: 'chiron', vmax: 60, accel: 20, handling: 10.4, nitroSeconds: 3.0 },
+  mansory: { id: 'mansory', vmax: 62, accel: 21, handling: 10.8, nitroSeconds: 3.2 },
+  senna: { id: 'senna', vmax: 64, accel: 22, handling: 11.2, nitroSeconds: 3.4 },
 };
+
+// ---- upgrades: four kinds, five levels each, bought with coins in the garage ----
+export const UPGRADE_KINDS = ['engine', 'turbo', 'tyres', 'nitro'] as const;
+export const MAX_UPGRADE = 5;
+/** What one level of each upgrade adds. */
+export const UPGRADE_STEP = { engine: 1.0, turbo: 0.9, tyres: 0.35, nitro: 0.25 } as const;
+/** The car's stats with its upgrade levels (engine, turbo, tyres, nitro). The same arithmetic runs on the phone and on the server. */
+export function carStats(id: string, levels: number[] = []): CarStats {
+  const b = CARS[id] ?? CARS.cts;
+  const lv = (i: number) => Math.max(0, Math.min(MAX_UPGRADE, Math.floor(levels[i] ?? 0)));
+  return {
+    id: b.id, vmax: b.vmax + lv(0) * UPGRADE_STEP.engine, accel: b.accel + lv(1) * UPGRADE_STEP.turbo,
+    handling: b.handling + lv(2) * UPGRADE_STEP.tyres, nitroSeconds: b.nitroSeconds + lv(3) * UPGRADE_STEP.nitro,
+  };
+}
+
 
 // ---- the road: what traffic there is depends on the level ----
 export interface Entity {

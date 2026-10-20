@@ -12,7 +12,7 @@ ap = argparse.ArgumentParser(); ap.add_argument('obj'); ap.add_argument('out')
 ap.add_argument('--tris', type=int, default=22000); ap.add_argument('--length', type=float, default=4.9)
 ap.add_argument('--front', default='+z', help='which way the front of the car points in the OBJ: +z or -z')
 ap.add_argument('--paint', default='Car_Texture'); ap.add_argument('--glass', default='Window_Glass'); ap.add_argument('--lights', default='Rear_Lights')
-ap.add_argument("--agg", type=int, default=3)
+ap.add_argument("--agg", type=int, default=5)
 a = ap.parse_args(); AGG = a.agg
 
 V = []; VN = []; objs = collections.OrderedDict(); cur = None; mtl = None

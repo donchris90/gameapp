@@ -39,6 +39,12 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
   const keys = useRef({ left: false, right: false, brake: false, nitro: false });
   const tiltRef = useRef({ raw: 0, base: 0, value: 0, calibrated: false });
   const wideRef = useRef(wide); wideRef.current = wide;
+  // wait until the phone has actually turned sideways before creating the 3D view, or it is made at the old size
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (wide) { const id = setTimeout(() => setReady(true), 150); return () => clearTimeout(id); }
+    const id = setTimeout(() => setReady(true), 2000); return () => clearTimeout(id);
+  }, [wide]);
   const glRef = useRef<any>(null);
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const alive = useRef(true);
@@ -197,7 +203,7 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <GLView style={{ flex: 1 }} onContextCreate={onContextCreate} onLayout={() => { const g: any = glRef.current; if (g && resizeRef.current) setTimeout(() => resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0), 50); }} />
+      {ready ? <GLView style={{ flex: 1 }} onContextCreate={onContextCreate} onLayout={() => { const g: any = glRef.current; if (g && resizeRef.current) setTimeout(() => resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0), 50); }} /> : null}
 
       {/* top bar */}
       <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 6, left: 12, right: 12 }}>

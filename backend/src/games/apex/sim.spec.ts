@@ -232,4 +232,25 @@ describe('Apex Run rules in the app', () => {
     for (let i = 0; i < 12; i++) step(w, car, r, { steer: 0, brake: false, nitro: false });
     expect(r.nitro).toBeGreaterThan(0.5);
   });
+
+  it('splits any road into equal repeating laps without changing the race distance', () => {
+    for (const tr of TRACKS) {
+      const one = makeWorld(9, tr.level, tr.id, 1), three = makeWorld(9, tr.level, tr.id, 3);
+      expect(three.length).toBe(one.length);
+      expect(three.laps).toBe(3);
+      expect(three.lapLength).toBeCloseTo(one.length / 3, 6);
+      expect(three.loop).toBe(false);
+      for (const z of [200, 420, 640]) expect(curvatureAt(three, z)).toBeCloseTo(curvatureAt(three, z + three.lapLength), 9);
+      expect(one.laps).toBe(1);
+      expect(one.lapLength).toBe(0);
+    }
+  });
+
+  it('lets the computer drivers finish a lapped road, and the replay agrees', () => {
+    const w = makeWorld(31, 4, 'coast', 3);
+    const { r, inputs } = race(w, 0.7, 31);
+    expect(r.finishedAt).toBeGreaterThan(0);
+    const again = replay(makeWorld(31, 4, 'coast', 3), CARS.starter, inputs);
+    expect(again.ticks).toBe(r.finishedAt);
+  });
 });

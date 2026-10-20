@@ -75,7 +75,7 @@ export interface Entity {
   amp: number; freq: number; phase: number; // bikes drift sideways: x = lane + amp * tri(t * freq + phase)
   dir: number; trigger: number; // pedestrians: crossing direction (+1 left to right) and how close the player must be before they step out
 }
-export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[]; track: string; curves: Curve[]; lapLength: number; laps: number; driftK: number; pads: Pad[] }
+export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[]; track: string; curves: Curve[]; lapLength: number; laps: number; loop: boolean; driftK: number; pads: Pad[] }
 
 const SIZE: Record<Kind, [number, number]> = { car: [1.9, 4.5], bike: [0.8, 2.0], truck: [2.5, 9.0], bus: [2.6, 11.0], ped: [0.7, 0.7] };
 export const sizeOf = (k: Kind) => SIZE[k];
@@ -108,7 +108,8 @@ export const TRACKS: TrackInfo[] = [
   { id: 'pass', name: 'Mountain Pass', blurb: 'Hairpins and switchbacks at sunset. Only for brave drivers.', level: 10, theme: 1, ground: 0x6b5a3c, feel: 'Expert', pattern: [[220, 0], [150, 170], [100, 0], [170, -160], [90, 0], [120, 150], [160, -190], [140, 0]] },
 ];
 export const CIRCUIT_TRACK: TrackInfo = { id: 'circuit', loop: true, name: 'Apex Circuit', blurb: 'A floodlit closed circuit with nitro pads. Race 2, 3 or 5 laps against five drivers.', level: 1, theme: 1, ground: 0x2e5a45, feel: 'Circuit', pattern: [] };
-export const LAP_CHOICES = [2, 3, 5];
+export const LAP_CHOICES = [2, 3, 5]; // the circuit
+export const ROAD_LAP_CHOICES = [1, 2, 3]; // every other track: the level's road is split into equal laps that repeat the same layout
 export const trackInfo = (id: string): TrackInfo | undefined => (id === 'circuit' ? CIRCUIT_TRACK : TRACKS.find((x) => x.id === id));
 
 export function curvesFor(track: string, length: number): Curve[] {
@@ -128,9 +129,9 @@ export function curvesFor(track: string, length: number): Curve[] {
 }
 
 /** How sharply the road bends at distance z (1/radius, + is right). Eased in and out so there are no jolts. */
-export function curvatureAt(world: { curves: Curve[]; lapLength?: number }, z: number): number {
-  if (world.lapLength) { // a closed circuit: the same lap again and again, read from the table
-    const L = world.lapLength, zl = z - Math.floor(z / L) * L, f = zl / CIRCUIT.step, i = Math.floor(f), u = f - i, n = CIRCUIT.k.length;
+export function curvatureAt(world: { curves: Curve[]; lapLength?: number; loop?: boolean }, z: number): number {
+  if (world.loop) { // a closed circuit: the same lap again and again, read from the table
+    const L = world.lapLength || 1, zl = z - Math.floor(z / L) * L, f = zl / CIRCUIT.step, i = Math.floor(f), u = f - i, n = CIRCUIT.k.length;
     return CIRCUIT.k[i % n] * (1 - u) + CIRCUIT.k[(i + 1) % n] * u;
   }
   const cs = world.curves;
@@ -146,15 +147,18 @@ export function curvatureAt(world: { curves: Curve[]; lapLength?: number }, z: n
 
 export const DRIFT_K = 0.4;
 /** Sideways speed (m/s) a bend pushes a car at speed v towards the outside (+ is right). */
-export const driftAt = (world: { curves: Curve[]; lapLength?: number; driftK?: number }, z: number, v: number) => -(world.driftK ?? DRIFT_K) * curvatureAt(world, z) * v * v;
+export const driftAt = (world: { curves: Curve[]; lapLength?: number; loop?: boolean; driftK?: number }, z: number, v: number) => -(world.driftK ?? DRIFT_K) * curvatureAt(world, z) * v * v;
 
-export function makeWorld(seed: number, level: number, track = 'straight', laps = 3): World {
+export function makeWorld(seed: number, level: number, track = 'straight', laps?: number): World {
   const s = levelSpec(level);
   if (track === 'circuit') { // no traffic: a grid of racers and nitro pads, lap after lap
-    const L = CIRCUIT.length, n = Math.max(1, Math.min(9, Math.floor(laps)));
+    const L = CIRCUIT.length, n = Math.max(1, Math.min(9, Math.floor(laps ?? 3)));
     const pads: Pad[] = [[0.11, -3.5], [0.3, 3], [0.5, 0], [0.7, -3], [0.88, 3.5]].map(([f, x]) => ({ z: f * L, x }));
-    return { seed, level: s.level, length: n * L, track, curves: [], entities: [], peds: [], lapLength: L, laps: n, driftK: 0.3, pads };
+    return { seed, level: s.level, length: n * L, track, curves: [], entities: [], peds: [], lapLength: L, laps: n, loop: true, driftK: 0.3, pads };
   }
+  // A road split into laps: the same layout repeated, so the total distance (and the time and reward) stays the level's.
+  const roadLaps = trackInfo(track) ? Math.max(1, Math.min(3, Math.floor(laps ?? 1))) : 1;
+  const lapLen = roadLaps > 1 ? s.length / roadLaps : 0;
   const r = rng((seed ^ Math.imul(s.level, 0x9e3779b1)) >>> 0);
   const entities: Entity[] = [];
   let z = 95;
@@ -188,8 +192,10 @@ export function makeWorld(seed: number, level: number, track = 'straight', laps 
   entities.forEach((e, i) => { e.id = i; });
   // nitro pickups: one every 220 to 360 m, in any lane, so a driver who has run dry can find more
   const pads: Pad[] = []; const pr = rng((seed ^ 0x6e17a9d1) >>> 0);
-  for (let pz = 220 + pr() * 80; pz < s.length - 140; pz += 220 + pr() * 140) pads.push({ z: pz, x: laneX(Math.floor(pr() * LANES)) });
-  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), lapLength: 0, laps: 1, driftK: DRIFT_K, pads, entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
+  for (let pz = 220 + pr() * 80; pz < (lapLen || s.length) - 140; pz += 220 + pr() * 140) pads.push({ z: pz, x: laneX(Math.floor(pr() * LANES)) });
+  let curves = curvesFor(track, lapLen || s.length);
+  if (lapLen) { const one = curves; curves = []; for (let k = 0; k < roadLaps; k++) for (const c of one) curves.push({ from: c.from + k * lapLen, to: c.to + k * lapLen, k: c.k }); }
+  return { seed, level: s.level, length: s.length, track, curves, lapLength: lapLen, laps: roadLaps, loop: false, driftK: DRIFT_K, pads, entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
 }
 
 /** A triangle wave between -1 and 1 (no sine, so every device agrees). */

@@ -17,6 +17,7 @@ export interface ApexSettings {
   processedRaceKeys: string[]; // prevents a result callback from crediting the same local race twice
   track: string; // the track the next race runs on
   laps: number; // laps on the circuit
+  roadLaps: number; // laps (rounds) on every other track: the level's road is split into this many equal laps
   upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
 }
 const KEY = 'apex.settings';
@@ -25,7 +26,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3,
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1,
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -39,6 +40,7 @@ export async function loadApex(): Promise<ApexSettings> {
       activeCar: typeof saved.activeCar === 'string' && KNOWN.includes(saved.activeCar) ? saved.activeCar : DEFAULTS.activeCar,
       track: TRACK_IDS.includes(saved.track) ? saved.track : DEFAULTS.track,
       laps: [2, 3, 5].includes(saved.laps) ? saved.laps : DEFAULTS.laps,
+      roadLaps: [1, 2, 3].includes(saved.roadLaps) ? saved.roadLaps : DEFAULTS.roadLaps,
       upgrades: saved.upgrades && typeof saved.upgrades === 'object' ? saved.upgrades : {},
       coins: Number.isFinite(saved.coins) ? Math.max(0, saved.coins) : DEFAULTS.coins,
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,

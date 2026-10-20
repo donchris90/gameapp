@@ -18,7 +18,7 @@ export function calculateCareerRewards(result: CareerRaceResult, previousBest = 
   const base = result.ticks > 0 ? 120 : 40;
   const placement = placementReward(Math.max(1, Math.floor(result.rank || 1)));
   const clean = result.hits === 0 && result.pedHits === 0 ? 75 : 0;
-  const recordKey = `${result.track}:${result.track === 'circuit' ? result.laps : 1}`;
+  const recordKey = `${result.track}:${result.laps}`;
   const isRecord = result.bestLap > 0 && (!previousBest || result.bestLap < previousBest);
   const record = isRecord ? 50 : 0;
   const xp = 80 + (result.rank === 1 ? 120 : result.rank <= 3 ? 80 : 30) + (clean ? 25 : 0) + (isRecord ? 30 : 0);

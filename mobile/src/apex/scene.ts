@@ -664,11 +664,13 @@ export class ApexScene {
       }
       this.put(gate, 0, z); gate.name = name; this.scene.add(gate);
     };
-    mk(0, 'start'); if (!this.loop) mk(this.world.length, 'finish');
+    mk(0, 'start'); if (!this.loop) { mk(this.world.length, 'finish'); for (let k = 1; k < this.world.laps; k++) mk(k * this.world.lapLength, 'start'); }
 
     // nitro pads (circuit): cyan chevrons that glow
     const padTex = chevronTexture(), glow = glowTexture();
-    for (const p of this.world.pads) {
+    const padReps = !this.loop && this.world.lapLength ? this.world.laps : 1; // on a road split into laps every lap has the same pads
+    for (const p0 of this.world.pads) for (let rep = 0; rep < padReps; rep++) {
+      const p = { x: p0.x, z: p0.z + rep * this.world.lapLength };
       const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ map: padTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 10).rotateX(-Math.PI / 2), mat); g.add(m);
       const gl = new THREE.Mesh(new THREE.PlaneGeometry(9, 14).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glow, color: 0x3de0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.45, fog: false })); gl.position.y = -0.01; g.add(gl);
@@ -691,7 +693,7 @@ export class ApexScene {
   private loop = false;
   private ribbons: THREE.Mesh[] = [];
   private buildPath() {
-    this.loop = this.world.lapLength > 0;
+    this.loop = this.world.loop;
     if (this.loop) { // a closed circuit: read the lap from its table; every lap is the same road
       const n = CIRCUIT.x.length;
       this.S = CIRCUIT.step; this.z0 = 0;

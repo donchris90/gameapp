@@ -66,9 +66,17 @@ export function sfx(name: Sound) {
  * with wind, tyre squeal, a nitro whoosh, and the nearest rival's engine with a doppler shift as it passes.
  * Safe to call in any state: if audio is unavailable nothing happens.
  */
+// Every car has its own engine: a supercharged V8, a flat-six, an electric whine, and two W16s. Five loops each, at rising revs.
+const ENGINE_SETS: Record<string, number[]> = {
+  cts: [require('../assets/sfx/engine_cts_1.wav'), require('../assets/sfx/engine_cts_2.wav'), require('../assets/sfx/engine_cts_3.wav'), require('../assets/sfx/engine_cts_4.wav'), require('../assets/sfx/engine_cts_5.wav')],
+  gt3: [require('../assets/sfx/engine_gt3_1.wav'), require('../assets/sfx/engine_gt3_2.wav'), require('../assets/sfx/engine_gt3_3.wav'), require('../assets/sfx/engine_gt3_4.wav'), require('../assets/sfx/engine_gt3_5.wav')],
+  one1: [require('../assets/sfx/engine_one1_1.wav'), require('../assets/sfx/engine_one1_2.wav'), require('../assets/sfx/engine_one1_3.wav'), require('../assets/sfx/engine_one1_4.wav'), require('../assets/sfx/engine_one1_5.wav')],
+  chiron: [require('../assets/sfx/engine_chiron_1.wav'), require('../assets/sfx/engine_chiron_2.wav'), require('../assets/sfx/engine_chiron_3.wav'), require('../assets/sfx/engine_chiron_4.wav'), require('../assets/sfx/engine_chiron_5.wav')],
+  mansory: [require('../assets/sfx/engine_mansory_1.wav'), require('../assets/sfx/engine_mansory_2.wav'), require('../assets/sfx/engine_mansory_3.wav'), require('../assets/sfx/engine_mansory_4.wav'), require('../assets/sfx/engine_mansory_5.wav')],
+};
 const LOOP_FILES = {
-  e1: require('../assets/sfx/engine_1.wav'), e2: require('../assets/sfx/engine_2.wav'), e3: require('../assets/sfx/engine_3.wav'), e4: require('../assets/sfx/engine_4.wav'), e5: require('../assets/sfx/engine_5.wav'),
-  rival: require('../assets/sfx/engine_3.wav'),
+  e1: ENGINE_SETS.cts[0], e2: ENGINE_SETS.cts[1], e3: ENGINE_SETS.cts[2], e4: ENGINE_SETS.cts[3], e5: ENGINE_SETS.cts[4],
+  rival: ENGINE_SETS.cts[2],
   wind: require('../assets/sfx/wind.wav'), squeal: require('../assets/sfx/squeal.wav'), whoosh: require('../assets/sfx/whoosh.wav'),
 };
 const ENGINE_AT = [1800, 3200, 5000, 6800, 8600]; // the revs each engine loop was recorded at
@@ -85,7 +93,7 @@ const ENGINE_PROFILES: Record<string, EngineProfile> = {
   mansory: { idle: 1050, redline: 7200, launch: 5800, pitch: 1.02, volume: 1 },
 };
 const DEFAULT_PROFILE: EngineProfile = { idle: 1200, redline: 7600, launch: 5600, pitch: 1, volume: 0.95 };
-const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false, profile: DEFAULT_PROFILE };
+const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false, profile: DEFAULT_PROFILE, car: '' };
 
 function loopOf(name: Loop): AudioPlayer {
   let p = loops[name];
@@ -130,7 +138,14 @@ export function engineStart(carId = 'gt3') {
   if (!enabled) return;
   box.profile = ENGINE_PROFILES[carId] ?? DEFAULT_PROFILE;
   try {
-    (Object.keys(LOOP_FILES) as Loop[]).forEach((n) => { const p = loopOf(n); void p.seekTo(0); p.play(); });
+    const set = ENGINE_SETS[carId] ?? ENGINE_SETS.cts;
+    (Object.keys(LOOP_FILES) as Loop[]).forEach((n) => {
+      const p = loopOf(n);
+      const j = ['e1', 'e2', 'e3', 'e4', 'e5'].indexOf(n);
+      if (j >= 0 && box.car !== carId) { try { p.replace(set[j]); p.loop = true; (p as any).shouldCorrectPitch = false; delete lastRate[n]; } catch { /* keep the old sound */ } }
+      void p.seekTo(0); p.play();
+    });
+    box.car = carId;
     Object.assign(box, { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: Date.now(), rGear: 1, rShift: 0, rRpm: 1500, live: true });
   } catch { /* no audio */ }
 }

@@ -9,6 +9,8 @@ import { makeHeroCar } from './scene';
 /** Lightweight, rotating Three.js vehicle preview for the garage and workshop. */
 export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, height = 190 }: { color: number; carId?: string; upgrades?: number[]; tier?: number; height?: number }) {
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(true);
+  const alive = useRef(true);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -18,8 +20,6 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
   const sizeRef = useRef({ width: 1, height });
 
   const onContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
-    await loadCarModel(carId);
-    setErr(MODEL_ERRORS[carId] ?? '');
     glRef.current = gl;
     const width = gl.drawingBufferWidth || sizeRef.current.width;
     const heightPx = gl.drawingBufferHeight || sizeRef.current.height;
@@ -39,11 +39,21 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.04; scene.add(floor);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.025, 8, 80), new THREE.MeshBasicMaterial({ color: 0x328cff, transparent: true, opacity: 0.85 })); ring.name = '__preview_ring';
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.005; scene.add(ring);
-    const car = makeHeroCar(color, tier, carId, lookFor(upgrades));
-    car.group.rotation.y = Math.PI;
-    car.group.position.y = 0.04;
-    scene.add(car.group);
-    rendererRef.current = renderer; sceneRef.current = scene; cameraRef.current = camera; carRef.current = car.group;
+    rendererRef.current = renderer; sceneRef.current = scene; cameraRef.current = camera;
+    // The real car file can take a few seconds to read, so the stage is drawn first and the car is added when it is ready.
+    void (async () => {
+      try {
+        await loadCarModel(carId);
+        if (!alive.current || sceneRef.current !== scene) return;
+        setErr(MODEL_ERRORS[carId] ?? '');
+        const car = makeHeroCar(color, tier, carId, lookFor(upgrades));
+        car.group.rotation.y = Math.PI;
+        car.group.position.y = 0.04;
+        scene.add(car.group);
+        carRef.current = car.group;
+        setBusy(false);
+      } catch (e) { if (alive.current) { setErr(String((e as Error)?.message ?? e).slice(0, 200)); setBusy(false); } }
+    })();
     let last = Date.now();
     const draw = () => {
       const r = rendererRef.current; const g = glRef.current; const s = sceneRef.current; const c = cameraRef.current;
@@ -56,7 +66,9 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     frameRef.current = requestAnimationFrame(draw);
   }, [color, tier, carId, upgrades]);
 
+  useEffect(() => { alive.current = true; }, []);
   useEffect(() => () => {
+    alive.current = false;
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     // The preview's floor/ring are private to this scene. Do not dispose car materials here:
     // car meshes may use module-level shared materials also used by the live race renderer.
@@ -82,5 +94,5 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     }
   };
 
-  return <View onLayout={onLayout} style={{ height, overflow: 'hidden', borderRadius: 14 }}><GLView style={{ flex: 1 }} onContextCreate={onContextCreate} />{err ? <Text style={{ position: 'absolute', left: 8, right: 8, bottom: 6, color: '#ff8a80', fontSize: 10, backgroundColor: '#000a', padding: 4, borderRadius: 6 }}>3D model failed: {err}</Text> : null}</View>;
+  return <View onLayout={onLayout} style={{ height, overflow: 'hidden', borderRadius: 14 }}><GLView style={{ flex: 1 }} onContextCreate={onContextCreate} />{busy && !err ? <Text style={{ position: 'absolute', alignSelf: 'center', top: '45%', color: '#9db4d8', fontSize: 12, fontWeight: '700' }}>Loading car…</Text> : null}{err ? <Text style={{ position: 'absolute', left: 8, right: 8, bottom: 6, color: '#ff8a80', fontSize: 10, backgroundColor: '#000a', padding: 4, borderRadius: 6 }}>3D model failed: {err}</Text> : null}</View>;
 }

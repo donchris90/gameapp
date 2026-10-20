@@ -10,8 +10,7 @@ import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
 import { ApexScene, CameraMode, Frame } from './scene';
-import { keepApart } from './solid';
-import { CARS, DT, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
+import { CARS, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
 export interface RaceResult { level: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
@@ -141,7 +140,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
       mePrev = snap(me);
       step(world, car, me, input);
       for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d)); }
-      keepApart(me, rivals.map((x) => x.r));
+      collideRacers([me, ...rivals.map((x) => x.r)]);
       if (me.hit) { sfx('crash'); shake = me.hit === 'ped' ? 1.6 : 1; flash = 12; }
       if (me.finishedAt > 0) finishRace();
       else if (me.tick >= MAX_RACE_TICKS) { me.finishedAt = 0; finishRace(); }

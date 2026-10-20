@@ -60,7 +60,7 @@ export function levelSpec(level: number) {
   return {
     level: L,
     length: Math.min(4200, 2800 + L * 25), // metres to the finish line
-    gapMin: Math.max(13, 34 - L * 0.55), gapMax: Math.max(24, 62 - L * 0.8),
+    gapMin: Math.max(22, 50 - L * 0.6), gapMax: Math.max(38, 88 - L * 0.9), // fewer, more spread-out rows of traffic
     trafficSpeed: 1 + Math.min(0.35, L * 0.012),
     bikes: L >= 3 ? Math.min(0.3, 0.08 + L * 0.006) : 0,
     trucks: L >= 6 ? Math.min(0.22, 0.05 + L * 0.004) : 0,
@@ -81,7 +81,7 @@ export function makeWorld(seed: number, level: number): World {
     // A row: at most LANES - 1 lanes are taken, so there is always a way through.
     const lanes = [0, 1, 2, 3].sort(() => 0); // keep order, shuffled below with our own random numbers
     for (let i = lanes.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = lanes[i]; lanes[i] = lanes[j]; lanes[j] = t; }
-    const count = r() < 0.55 ? 1 : r() < 0.75 ? 2 : 3;
+    const count = r() < 0.7 ? 1 : r() < 0.85 ? 2 : 3;
     for (let k = 0; k < count; k++) {
       const pick = r();
       const kind: Kind = pick < s.buses ? 'bus' : pick < s.buses + s.trucks ? 'truck' : pick < s.buses + s.trucks + s.bikes ? 'bike' : 'car';
@@ -187,8 +187,17 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
         const ped = e.kind === 'ped';
         const heavy = e.kind === 'truck' || e.kind === 'bus';
         r.v = Math.max(MIN_SPEED, r.v * (ped ? 0.28 : heavy ? 0.4 : 0.5));
+        // a solid thing: you cannot drive through it. Hitting its back, you drop behind it and fall to its speed; hitting its side, you are pushed clear.
+        if (p.z >= r.z - 0.3) {
+          const stop = p.z - (e.l / 2 + CAR_HALF_L * (ped ? 0.3 : 0.8));
+          if (r.z > stop) r.z = stop;
+          if (!ped) r.v = Math.max(MIN_SPEED, Math.min(r.v, e.speed * 0.9));
+        }
         r.invul = ped ? 30 : 20;
-        r.x += (r.x >= p.x ? 1 : -1) * 0.7; r.x = Math.max(-edge, Math.min(edge, r.x));
+        const clear = e.w / 2 + CAR_HALF_W * 0.9;
+        const dir = r.x >= p.x ? 1 : -1;
+        r.x = dir > 0 ? Math.max(r.x + 0.7, p.x + clear * 0.8) : Math.min(r.x - 0.7, p.x - clear * 0.8);
+        r.x = Math.max(-edge, Math.min(edge, r.x));
         r.hits++; if (ped) r.pedHits++;
         r.hit = e.kind;
         break;
@@ -208,6 +217,27 @@ function lowerBound(es: Entity[], z: number): number {
 /** One input per tick, packed in a number: steer (0..200) | brake << 8 | nitro << 9. */
 export const packInput = (i: Input) => (Math.round(clampSteer(i.steer) * 100) + 100) | (i.brake ? 256 : 0) | (i.nitro ? 512 : 0);
 export const unpackInput = (n: number): Input => ({ steer: ((n & 255) - 100) / 100, brake: (n & 256) !== 0, nitro: (n & 512) !== 0 });
+
+/**
+ * Cars are solid: two racers never share the same space. Run this after every racer has taken its step.
+ * The car behind drops to the speed of the car in front (and counts a hit if it was going faster); both are pushed apart sideways.
+ * It uses only simple arithmetic, so the phone and the server agree exactly.
+ */
+export function collideRacers(racers: Racer[]): void {
+  const long = CAR_HALF_L * 2 + 0.2, wide = CAR_HALF_W * 2 + 0.15, edge = ROAD_HALF - CAR_HALF_W;
+  for (let pass = 0; pass < 3; pass++) for (let i = 0; i < racers.length; i++) for (let j = i + 1; j < racers.length; j++) {
+    const a = racers[i], b = racers[j];
+    const dz = a.z - b.z, dx = a.x - b.x;
+    if (Math.abs(dz) >= long || Math.abs(dx) >= wide) continue;
+    const front = dz >= 0 ? a : b, rear = dz >= 0 ? b : a;
+    if (rear.finishedAt === 0 && rear.invul === 0 && rear.v > front.v) { rear.v = Math.max(MIN_SPEED, Math.min(rear.v * 0.6, front.v * 0.95)); rear.invul = 20; rear.hits++; rear.hit = 'car'; }
+    if (rear.z > front.z - long) rear.z = front.z - long;
+    if (rear.v > front.v) rear.v = Math.max(MIN_SPEED, front.v);
+    const away = dx === 0 ? (i % 2 ? 1 : -1) : (dx > 0 ? 1 : -1);
+    a.x = Math.max(-edge, Math.min(edge, a.x + away * 0.16));
+    b.x = Math.max(-edge, Math.min(edge, b.x - away * 0.16));
+  }
+}
 
 export const MAX_RACE_TICKS = 150 * TICKS_PER_SECOND;
 

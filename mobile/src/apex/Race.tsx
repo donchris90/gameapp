@@ -9,14 +9,13 @@ import { engineSpeed, engineStart, engineStop, sfx } from '../sfx';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
-import { ApexScene, Frame } from './scene';
+import { ApexScene, CameraMode, Frame } from './scene';
 import { CARS, DT, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
 export interface RaceResult { level: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
 
 const FIELD = 6; // you and five computer drivers
-const CAR = CARS.luxury;
 const snap = (r: Racer) => ({ x: r.x, z: r.z, v: r.v });
 
 interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: number; v: number }; d: ReturnType<typeof newDriver> }
@@ -25,7 +24,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff, bodyTier = 0, onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; bodyTier?: number; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -46,6 +45,9 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
     const id = setTimeout(() => setReady(true), 2000); return () => clearTimeout(id);
   }, [wide]);
   const glRef = useRef<any>(null);
+  const viewRef = useRef<ApexScene | null>(null);
+  const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
+  const car = CARS[carId] ?? CARS.starter;
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const alive = useRef(true);
   const finished = useRef(false);
@@ -81,17 +83,18 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
 
     const seed = Math.floor(Math.random() * 2_000_000_000);
     const world = makeWorld(seed, level);
-    const view = new ApexScene(world);
+    const view = new ApexScene(world, carId, bodyTier, paint);
+    view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
     resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };
 
-    const me = newRacer(world, CAR);
+    const me = newRacer(world, car);
     let mePrev = snap(me);
     const inputs: number[] = [];
     const nameRng = rng(seed ^ 0x5bd1e995);
     const base = Math.max(0.1, Math.min(0.92, 0.12 + level * 0.022));
     const rivals: Rival[] = Array.from({ length: FIELD - 1 }, (_, i) => {
-      const r = newRacer(world, CAR);
+      const r = newRacer(world, car);
       r.x = ((i % 3) - 1) * 3.2 + 1.6 - (i >= 3 ? 1.6 : 0); // a grid, not one stack
       return { id: i + 1, name: randomName(nameRng), r, prev: snap(r), d: newDriver(seed + 77 * (i + 1), base + (i - 2) * 0.06) };
     });
@@ -115,7 +118,7 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
       // let the others finish at full speed so the table has real times
       for (let i = me.tick; i < MAX_RACE_TICKS; i++) {
         let open = false;
-        for (const x of rivals) if (x.r.finishedAt === 0) { step(world, CAR, x.r, drive(world, CAR, x.r, x.d)); open = true; }
+        for (const x of rivals) if (x.r.finishedAt === 0) { step(world, car, x.r, drive(world, car, x.r, x.d)); open = true; }
         if (!open) break;
       }
       const table: Standing[] = [{ name: 'You', ticks: me.finishedAt, you: true }, ...rivals.map((x) => ({ name: x.name, ticks: x.r.finishedAt, you: false }))];
@@ -133,8 +136,8 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
       const input = { steer: steerNow, brake: keys.current.brake, nitro: keys.current.nitro };
       inputs.push(packInput(input));
       mePrev = snap(me);
-      step(world, CAR, me, input);
-      for (const x of rivals) { x.prev = snap(x.r); step(world, CAR, x.r, drive(world, CAR, x.r, x.d)); }
+      step(world, car, me, input);
+      for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d)); }
       if (me.hit) { sfx('crash'); shake = me.hit === 'ped' ? 1.6 : 1; flash = 12; }
       if (me.finishedAt > 0) finishRace();
       else if (me.tick >= MAX_RACE_TICKS) { me.finishedAt = 0; finishRace(); }
@@ -183,7 +186,7 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
         const aheadRival = ahead ? rivals.find((x) => x.id === ahead.id) : null;
         setHud((s) => ({
           ...s, speed: Math.round(me.v * 3.6), rank: pos + 1, ahead: aheadRival ? aheadRival.name : '', gap: aheadRival ? Math.max(0, Math.round(aheadRival.r.z - me.z)) : 0,
-          progress: Math.min(1, me.z / world.length), nitro: me.nitro / CAR.nitroSeconds, time: me.tick * DT, hits: me.hits,
+          progress: Math.min(1, me.z / world.length), nitro: me.nitro / car.nitroSeconds, time: me.tick * DT, hits: me.hits,
           rivals: rivals.map((x) => Math.min(1, x.r.z / world.length)), over: me.finishedAt > 0,
         }));
         if (frames % 3 === 0) engineSpeed(me.v * 3.6);
@@ -192,6 +195,8 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
     };
     requestAnimationFrame(loop);
   };
+
+  useEffect(() => { viewRef.current?.setCameraMode(cameraMode); }, [cameraMode]);
 
   const press = (k: 'left' | 'right' | 'brake' | 'nitro', down: boolean) => { keys.current[k] = down; };
   const btn = (k: 'left' | 'right' | 'brake' | 'nitro', label: string, style: object) => (
@@ -255,6 +260,9 @@ export function Race({ level, tilt, invert, onDone, onFlip }: { level: number; t
           {btn('right', '▶', { flex: 1.3 })}
         </View>
       )}
+      <Pressable onPress={() => setCameraMode((m) => m === 'chase' ? 'cockpit' : 'chase')} style={{ position: 'absolute', top: insets.top + 56, left: Math.max(insets.left, 12), backgroundColor: 'rgba(10,14,30,.72)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(94,194,255,.6)' }}>
+        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{cameraMode === 'chase' ? '▣ Chase view' : '◉ Cockpit view'}</Text>
+      </Pressable>
       {tilt && onFlip ? (
         <Pressable onPress={onFlip} style={{ position: 'absolute', top: insets.top + 56, right: Math.max(insets.right, 12), backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>⇄ Flip tilt</Text>

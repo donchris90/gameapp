@@ -9,6 +9,8 @@ import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, poseOf } from './sim';
  */
 
 export interface View { x: number; z: number; id: number; color?: number }
+export type CameraMode = 'chase' | 'cockpit';
+
 export interface Frame {
   t: number; speed: number; steer: number; nitroOn: boolean; braking: boolean; flash: number; shake: number;
   player: View; others: View[]; arrived: number[]; finished: boolean;
@@ -262,6 +264,7 @@ export class ApexScene {
   private theme: Theme;
   private trafficCache = new Map<string, THREE.Object3D>();
   private wheelSpin = 0;
+  cameraMode: CameraMode = 'chase';
 
   constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c) {
     this.theme = themeFor(world.level);
@@ -374,12 +377,14 @@ export class ApexScene {
   }
 
   resize(w: number, h: number) { this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  setCameraMode(mode: CameraMode) { this.cameraMode = mode; }
 
   update(f: Frame) {
     const { player } = f;
     const pz = -player.z;
     // hero car
     const hero = this.hero;
+    hero.group.visible = this.cameraMode !== 'cockpit'; // inside the car you do not see your own roof
     hero.group.position.set(player.x, 0, pz);
     hero.group.rotation.y = -f.steer * 0.1;
     hero.group.rotation.z = -f.steer * 0.05;
@@ -477,9 +482,17 @@ export class ApexScene {
     // camera: behind and above, wider and shakier when fast
     const cam = this.camera;
     const sh = f.shake;
-    cam.fov = 60 + Math.min(18, f.speed * 0.22) + (f.nitroOn ? 8 : 0); cam.updateProjectionMatrix();
-    cam.position.set(player.x * 0.75 + (sh ? Math.sin(f.t * 83) * sh * 0.25 : 0), 4.6 + (sh ? Math.sin(f.t * 71) * sh * 0.2 : 0), pz + 10.5);
-    cam.lookAt(player.x * 0.9, 1.2, pz - 16);
+    if (this.cameraMode === 'cockpit') {
+      // A low forward-facing camera approximates the driver's eye line without changing race physics.
+      cam.fov = 76 + (f.nitroOn ? 4 : 0);
+      cam.position.set(player.x * 0.96, 1.42, pz + 0.05);
+      cam.lookAt(player.x * 0.96, 1.3, pz - 28);
+    } else {
+      cam.fov = 60 + Math.min(18, f.speed * 0.22) + (f.nitroOn ? 8 : 0);
+      cam.position.set(player.x * 0.75 + (sh ? Math.sin(f.t * 83) * sh * 0.25 : 0), 4.6 + (sh ? Math.sin(f.t * 71) * sh * 0.2 : 0), pz + 10.5);
+      cam.lookAt(player.x * 0.9, 1.2, pz - 16);
+    }
+    cam.updateProjectionMatrix();
   }
 
   dispose() { this.scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); }

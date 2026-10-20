@@ -49,6 +49,32 @@ function glowTexture(): THREE.DataTexture {
   const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tex.needsUpdate = true; return tex;
 }
 
+// A small made-up sky for the paint to reflect (no image files): bright sky, warm horizon, dark ground, one soft light strip.
+let ENV: THREE.CubeTexture | null = null;
+function envMap(): THREE.CubeTexture {
+  if (ENV) return ENV;
+  const n = 16;
+  const face = (kind: 'side' | 'up' | 'down', strip: boolean) => {
+    const data = new Uint8Array(n * n * 4);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const v = y / (n - 1); // 0 top .. 1 bottom
+      let r: number, g: number, b: number;
+      if (kind === 'up') { r = 170; g = 205; b = 245; if (strip && x > 4 && x < 11 && y > 3 && y < 12) { r = 255; g = 255; b = 255; } }
+      else if (kind === 'down') { r = 38; g = 36; b = 40; }
+      else if (v < 0.42) { const k = v / 0.42; r = 120 + 110 * k; g = 170 + 60 * k; b = 235 - 10 * k; }
+      else if (v < 0.52) { r = 255; g = 236; b = 205; }
+      else { const k = Math.min(1, (v - 0.52) / 0.3); r = 150 - 112 * k; g = 138 - 100 * k; b = 130 - 94 * k; }
+      if (kind === 'side' && strip && y > 2 && y < 5) { r = 255; g = 255; b = 255; }
+      const i = (y * n + x) * 4; data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+    }
+    const tx = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tx.needsUpdate = true; return tx;
+  };
+  const faces = [face('side', true), face('side', false), face('up', true), face('down', false), face('side', true), face('side', false)];
+  ENV = new THREE.CubeTexture(faces as any);
+  ENV.needsUpdate = true;
+  return ENV;
+}
+
 // ---- shared geometry and materials ----
 const std = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2, ...o });
 
@@ -160,10 +186,10 @@ function addWheels(group: THREE.Group, shape: Shape, tyre: THREE.Material, rimM:
 /** The hero car: a low, wide luxury car. `tier` adds more: 0 starter saloon, 1 sport (spoiler), 2 luxury (chrome, long), 3 flagship (stripe + wing). */
 export function buildLuxuryCar(color: number, tier = 2): CarParts {
   const shape = tier >= 1 ? SHAPES.super : SHAPES.saloon;
-  const paint = std(color, { metalness: 0.45, roughness: 0.22 });
-  const glass = std(0x0d1626, { metalness: 0.7, roughness: 0.08 });
+  const paint = std(color, { metalness: 0.6, roughness: 0.18, envMap: envMap(), envMapIntensity: 1.25 });
+  const glass = std(0x0d1626, { metalness: 0.9, roughness: 0.05, envMap: envMap(), envMapIntensity: 1.4 });
   const { group, body } = carBody(shape, paint, glass, shape.wheelR);
-  const chrome = std(0xe4e8ef, { metalness: 0.95, roughness: 0.15 });
+  const chrome = std(0xe4e8ef, { metalness: 1, roughness: 0.1, envMap: envMap(), envMapIntensity: 1.3 });
   const dark = std(0x0e1015, { metalness: 0.6, roughness: 0.4 });
   const wheels = addWheels(group, shape, TYRE_M, chrome);
   const L = shape.len;
@@ -194,8 +220,8 @@ export function buildLuxuryCar(color: number, tier = 2): CarParts {
 /** A plainer car for the traffic: shorter and taller than the hero car. */
 function buildTrafficCar(color: number, kind: number) {
   const shape = kind === 1 ? SHAPES.hatch : SHAPES.saloon;
-  const paint = std(color, { metalness: 0.3, roughness: 0.4 });
-  const glass = std(0x172338, { metalness: 0.5, roughness: 0.15 });
+  const paint = std(color, { metalness: 0.4, roughness: 0.3, envMap: envMap(), envMapIntensity: 0.8 });
+  const glass = std(0x172338, { metalness: 0.7, roughness: 0.12, envMap: envMap(), envMapIntensity: 1 });
   const { group } = carBody(shape, paint, glass, shape.wheelR);
   addWheels(group, shape, TYRE_M, RIM_M);
   const tail = std(0x330000, { emissive: 0xff2a2a, emissiveIntensity: 0.7 });
@@ -386,8 +412,10 @@ export class ApexScene {
     const hero = this.hero;
     hero.group.visible = this.cameraMode !== 'cockpit'; // inside the car you do not see your own roof
     hero.group.position.set(player.x, 0, pz);
-    hero.group.rotation.y = -f.steer * 0.1;
-    hero.group.rotation.z = -f.steer * 0.05;
+    hero.group.rotation.order = 'YXZ';
+    hero.group.rotation.y = -f.steer * 0.14;
+    hero.group.rotation.z = -f.steer * 0.045 * Math.min(1, f.speed / 30);
+    hero.group.rotation.x = f.braking ? -0.035 : f.nitroOn ? 0.03 : 0; // nose dips under braking, lifts on nitro
     hero.group.position.y = f.flash > 0 ? 0.06 * Math.sin(f.t * 60) : 0;
     this.wheelSpin += f.speed * 0.033 / 0.36;
     hero.wheels.forEach((w) => { w.rotation.x = this.wheelSpin; });
@@ -397,18 +425,17 @@ export class ApexScene {
 
     this.beam.position.set(player.x, 0.05, pz - 17);
 
-    // other racers (see-through, so they never block the view)
+    // other racers (solid cars)
     const seen = new Set<number>();
     for (const o of f.others) {
       seen.add(o.id);
       let c = this.others.get(o.id);
       if (!c) {
         c = buildLuxuryCar(o.color ?? PALETTE[o.id % PALETTE.length], 1);
-        c.group.traverse((m) => { const mesh = m as THREE.Mesh; if (mesh.material) { const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]; mats.forEach((mm) => { const x = mm.clone(); x.transparent = true; x.opacity = 0.55; x.depthWrite = false; mesh.material = x; }); } });
         this.scene.add(c.group); this.others.set(o.id, c);
       }
       const dz = o.z - player.z;
-      c.group.visible = dz > -4 && dz < VIEW_AHEAD; // never between the camera and your own car
+      c.group.visible = dz > -12 && dz < VIEW_AHEAD; // hidden only once it is behind the camera
       c.group.position.set(o.x, 0, -o.z);
     }
     for (const [id, c] of this.others) if (!seen.has(id)) { this.scene.remove(c.group); this.others.delete(id); }

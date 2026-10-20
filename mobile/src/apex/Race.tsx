@@ -10,6 +10,7 @@ import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
 import { ApexScene, CameraMode, Frame } from './scene';
+import { keepApart } from './solid';
 import { CARS, DT, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
@@ -19,6 +20,7 @@ const FIELD = 6; // you and five computer drivers
 const snap = (r: Racer) => ({ x: r.x, z: r.z, v: r.v });
 
 interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: number; v: number }; d: ReturnType<typeof newDriver> }
+
 
 /**
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
@@ -95,7 +97,8 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
     const base = Math.max(0.1, Math.min(0.92, 0.12 + level * 0.022));
     const rivals: Rival[] = Array.from({ length: FIELD - 1 }, (_, i) => {
       const r = newRacer(world, car);
-      r.x = ((i % 3) - 1) * 3.2 + 1.6 - (i >= 3 ? 1.6 : 0); // a grid, not one stack
+      const slot = [[-3.2, 0], [3.2, 0], [-1.6, -6], [1.6, -6], [0, -12]][i]; // a staggered grid: no two cars start on top of each other
+      r.x = slot[0]; r.z = slot[1];
       return { id: i + 1, name: randomName(nameRng), r, prev: snap(r), d: newDriver(seed + 77 * (i + 1), base + (i - 2) * 0.06) };
     });
 
@@ -138,6 +141,7 @@ export function Race({ level, tilt, invert, carId = 'starter', paint = 0x2788ff,
       mePrev = snap(me);
       step(world, car, me, input);
       for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d)); }
+      keepApart(me, rivals.map((x) => x.r));
       if (me.hit) { sfx('crash'); shake = me.hit === 'ped' ? 1.6 : 1; flash = 12; }
       if (me.finishedAt > 0) finishRace();
       else if (me.tick >= MAX_RACE_TICKS) { me.finishedAt = 0; finishRace(); }

@@ -7,7 +7,8 @@ import { Race, RaceResult } from '../src/apex/Race';
 import { CarPreview } from '../src/apex/CarPreview';
 import { CATALOG, STAT_MAX, UPGRADE_INFO, catalogCar, lookFor, upgradeCost } from '../src/apex/cars';
 import { loadCarModel } from '../src/apex/model';
-import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_SECOND } from '../src/apex/sim';
+import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_SECOND, TRACKS, trackInfo } from '../src/apex/sim';
+import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
@@ -18,7 +19,7 @@ const PAINTS = [
   { name: 'Midnight', hex: 0x171b2b }, { name: 'Volt Yellow', hex: 0xf4c542 },
   { name: 'Emerald', hex: 0x12a87b },
 ];
-type Panel = 'home' | 'garage' | 'customize' | 'career' | 'friends';
+type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends';
 const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : String(n));
 const fmt = (ticks: number) => (ticks ? `${Math.floor(ticks / TICKS_PER_SECOND / 60)}:${((ticks / TICKS_PER_SECOND) % 60).toFixed(1).padStart(4, '0')}` : 'DNF');
 const rewardFor = (r: RaceResult) => (r.ticks > 0 ? 120 : 40) + ([0, 300, 200, 120, 80, 60, 40][r.rank] ?? 30);
@@ -27,7 +28,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, upgrades: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, upgrades: {}, track: 'coast' });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -82,7 +83,7 @@ export default function Apex() {
     setNotice(`${UPGRADE_INFO[UPGRADE_KINDS[kind]].label} upgraded to level ${next}!`); sfx('complete');
   };
 
-  if (phase === 'race') return <Race key={run} level={level} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={settings.paint} upgrades={levelsOf(settings.activeCar)} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} level={level} track={settings.track} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={settings.paint} upgrades={levelsOf(settings.activeCar)} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -91,7 +92,7 @@ export default function Apex() {
         <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
           <Text style={{ color: colors.x, fontWeight: '900', letterSpacing: 3, marginTop: 8 }}>APEX RUN / RACE REPORT</Text>
           <H1>{result.rank === 1 ? 'VICTORY // 🏆' : result.rank <= 3 ? `PODIUM // ${medal(result.rank)}` : `FINISH // #${result.rank}`}</H1>
-          <Dim>Level {result.level} · {fmt(result.ticks)} · {result.hits} collision{result.hits === 1 ? '' : 's'}</Dim>
+          <Dim>{trackInfo(result.track)?.name ?? 'Road'} · Level {result.level} · {fmt(result.ticks)} · {result.hits} collision{result.hits === 1 ? '' : 's'}</Dim>
           <Card style={{ marginTop: 16, borderColor: '#28578b', backgroundColor: '#101b34', gap: 10 }}>
             <Dim>RACE REWARD</Dim>
             <Text style={{ color: colors.gold, fontWeight: '900', fontSize: 34 }}>+{rewardFor(result)} COINS</Text>
@@ -213,6 +214,28 @@ export default function Apex() {
           <Coins amount={settings.coins} size={13} />
         </View>
 
+        {panel === 'tracks' ? <>
+          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHOOSE YOUR ROAD</Text><H1>Tracks</H1>
+          <Dim>Every track bends. In a corner the car is pushed to the outside: steer against it, or brake. Reach the career level shown to open the harder roads.</Dim>
+          <View style={{ gap: 10, marginTop: 14 }}>
+            {TRACKS.map((tr) => {
+              const open = settings.unlocked >= tr.level, on = settings.track === tr.id;
+              return <Pressable key={tr.id} disabled={!open} onPress={() => { update({ track: tr.id }); setNotice(`${tr.name} selected.`); }}>
+                <Card style={{ flexDirection: 'row', gap: 14, alignItems: 'center', borderColor: on ? '#5eaaff' : colors.line, backgroundColor: on ? '#12254a' : colors.card, opacity: open ? 1 : 0.65 }}>
+                  <TrackMap track={tr.id} height={92} locked={!open} />
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>{tr.name}</Text>
+                    <Text style={{ color: open ? colors.x : colors.gold, fontWeight: '800', fontSize: 11 }}>{open ? tr.feel.toUpperCase() : `🔒 LEVEL ${tr.level} NEEDED`}{['  ·  DAY', '  ·  SUNSET', '  ·  NIGHT'][tr.theme]}</Text>
+                    <Dim style={{ fontSize: 11 }}>{tr.blurb}</Dim>
+                    {on ? <Text style={{ color: colors.good, fontWeight: '900', fontSize: 11 }}>● SELECTED</Text> : null}
+                  </View>
+                </Card>
+              </Pressable>;
+            })}
+          </View>
+          <Button title="RACE ON THIS TRACK  →" onPress={() => startRace(level)} style={{ marginTop: 16 }} />
+        </> : null}
+
         {panel === 'home' ? <>
           <Card style={{ padding: 0, overflow: 'hidden', borderColor: '#28578b', backgroundColor: '#0e1830' }}>
             <View style={{ padding: 18, gap: 8, backgroundColor: '#111f40' }}>
@@ -223,6 +246,11 @@ export default function Apex() {
                 <View style={{ flex: 1 }}><Text style={{ color: '#8fcaff', fontSize: 12, fontWeight: '800' }}>ACTIVE BUILD</Text><Text style={{ color: '#fff', fontSize: 44 }}>🏎️</Text></View>
                 <View style={{ alignItems: 'flex-end', gap: 5 }}><Dim>TOP SPEED</Dim><Text style={{ color: '#fff', fontWeight: '900', fontSize: 20 }}>{Math.round(carStats(settings.activeCar, levelsOf(settings.activeCar)).vmax * 3.6)} KM/H</Text><Text style={{ color: colors.good, fontSize: 11, fontWeight: '800' }}>● READY TO RACE</Text></View>
               </View>
+              <Pressable onPress={() => { setPanel('tracks'); setNotice(''); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, backgroundColor: '#0c1531', borderWidth: 1, borderColor: '#28578b' }}>
+                <TrackMap track={settings.track} height={54} />
+                <View style={{ flex: 1 }}><Text style={{ color: colors.dim, fontSize: 10, fontWeight: '800' }}>TRACK</Text><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{trackInfo(settings.track)?.name}</Text></View>
+                <Text style={{ color: colors.x, fontWeight: '900', fontSize: 12 }}>CHANGE ›</Text>
+              </Pressable>
               <Button title="START CAREER RACE  →" onPress={() => startRace(level)} style={{ marginTop: 4, backgroundColor: '#245fff', borderColor: '#5eaaff' }} />
             </View>
           </Card>
@@ -231,7 +259,7 @@ export default function Apex() {
           </View>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', marginTop: 20, marginBottom: 10 }}>QUICK ACCESS</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {[{ p: 'garage' as Panel, i: '🚘', t: 'My Garage', d: 'Choose your car' }, { p: 'customize' as Panel, i: '🔧', t: 'Customize', d: 'Make it yours' }, { p: 'career' as Panel, i: '🏆', t: 'Career', d: '60 race levels' }, { p: 'friends' as Panel, i: '👥', t: 'Play with Friends', d: 'Private rooms' }].map((x) => <Pressable key={x.p} onPress={() => { setPanel(x.p); setNotice(''); }} style={{ width: '48%', flexGrow: 1 }}><Card style={{ gap: 6, minHeight: 105, borderColor: x.p === 'friends' ? '#4e45a8' : colors.line }}><Text style={{ fontSize: 23 }}>{x.i}</Text><Text style={{ color: '#fff', fontWeight: '900' }}>{x.t}</Text><Dim style={{ fontSize: 11 }}>{x.d}</Dim></Card></Pressable>)}
+            {[{ p: 'tracks' as Panel, i: '🛣️', t: 'Tracks', d: 'Pick where you race' }, { p: 'garage' as Panel, i: '🚘', t: 'My Garage', d: 'Choose your car' }, { p: 'customize' as Panel, i: '🔧', t: 'Customize', d: 'Make it yours' }, { p: 'career' as Panel, i: '🏆', t: 'Career', d: '60 race levels' }, { p: 'friends' as Panel, i: '👥', t: 'Play with Friends', d: 'Private rooms' }].map((x) => <Pressable key={x.p} onPress={() => { setPanel(x.p); setNotice(''); }} style={{ width: '48%', flexGrow: 1 }}><Card style={{ gap: 6, minHeight: 105, borderColor: x.p === 'friends' ? '#4e45a8' : colors.line }}><Text style={{ fontSize: 23 }}>{x.i}</Text><Text style={{ color: '#fff', fontWeight: '900' }}>{x.t}</Text><Dim style={{ fontSize: 11 }}>{x.d}</Dim></Card></Pressable>)}
           </View>
           <Card style={{ marginTop: 12, gap: 7 }}><Text style={{ color: '#fff', fontWeight: '900' }}>DAILY DRIVER BRIEFING</Text><Dim>Earn coins by finishing races. Place in the top three to unlock the next career level. Use your winnings to expand your garage.</Dim><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Dim>Next race</Dim><Text style={{ color: colors.x, fontWeight: '900' }}>LEVEL {level} · {time.toUpperCase()}</Text></View></Card>
         </> : null}

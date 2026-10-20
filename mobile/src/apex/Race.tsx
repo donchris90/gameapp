@@ -15,7 +15,7 @@ import { ApexScene, CameraMode, Frame } from './scene';
 import { carStats, DT, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
-export interface RaceResult { level: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
+export interface RaceResult { level: number; track: string; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
 
 const FIELD = 6; // you and five computer drivers
 const snap = (r: Racer) => ({ x: r.x, z: r.z, v: r.v });
@@ -27,7 +27,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; track?: string; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -86,7 +86,7 @@ export function Race({ level, tilt, invert, carId = 'cts', paint = 0x2788ff, upg
     renderer.setSize(w, h, false);
 
     const seed = Math.floor(Math.random() * 2_000_000_000);
-    const world = makeWorld(seed, level);
+    const world = makeWorld(seed, level, track);
     const view = new ApexScene(world, carId, 2, paint, lookFor(upgrades));
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
@@ -129,7 +129,7 @@ export function Race({ level, tilt, invert, carId = 'cts', paint = 0x2788ff, upg
       const table: Standing[] = [{ name: 'You', ticks: me.finishedAt, you: true }, ...rivals.map((x) => ({ name: x.name, ticks: x.r.finishedAt, you: false }))];
       table.sort((a, b) => (a.ticks && b.ticks ? a.ticks - b.ticks : a.ticks ? -1 : b.ticks ? 1 : 0));
       const rank = table.findIndex((s) => s.you) + 1;
-      setTimeout(() => { if (alive.current) onDoneRef.current({ level, seed, standings: table, rank, ticks: me.finishedAt, hits: me.hits, pedHits: me.pedHits, inputs }); }, 1600);
+      setTimeout(() => { if (alive.current) onDoneRef.current({ level, track, seed, standings: table, rank, ticks: me.finishedAt, hits: me.hits, pedHits: me.pedHits, inputs }); }, 1600);
     };
 
     const advance = () => {

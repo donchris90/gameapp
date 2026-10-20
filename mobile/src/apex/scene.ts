@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODELS, CarModel, MatDesc } from './model';
-import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, poseOf } from './sim';
+import { Entity, Kind, LANES, LANE_W, ROAD_HALF, World, curvatureAt, poseOf, trackInfo } from './sim';
 
 /**
  * The 3D look of Apex Run: a luxury car on a road with traffic, motorbikes, buses and people crossing.
@@ -358,8 +358,10 @@ export class ApexScene {
   private look: CarLook = {};
 
   constructor(readonly world: World, car = 'luxury', tier = 2, color = 0xd9283c, look: CarLook = {}) {
-    this.theme = themeFor(world.level);
+    const info = trackInfo(world.track);
+    this.theme = info ? { ...THEMES[info.theme], ground: info.ground } : themeFor(world.level);
     this.carId = car; this.look = look;
+    this.buildPath();
     this.build(tier, color);
     this.applyTheme();
   }
@@ -377,12 +379,15 @@ export class ApexScene {
     this.sky = new THREE.Mesh(skyG, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
     s.add(this.sky);
 
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 700).rotateX(-Math.PI / 2), std(0x6f8f4e, { roughness: 1, metalness: 0 })); this.ground.position.y = -0.02; s.add(this.ground);
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2 + 0.6, 700).rotateX(-Math.PI / 2), std(0x2a2d34, { roughness: 0.95, metalness: 0 })); road.position.y = 0; road.name = 'road'; s.add(road);
-    this.road = road;
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2), std(0x6f8f4e, { roughness: 1, metalness: 0 })); this.ground.position.y = -0.02; s.add(this.ground);
+    this.road = this.ribbon(-ROAD_HALF - 0.3, ROAD_HALF + 0.3, 0, std(0x2a2d34, { roughness: 0.95, metalness: 0 }));
+    const lineM = std(0xf2f2f2, { roughness: 0.6 });
+    const kerbM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+    const rail = std(0xaab0ba, { metalness: 0.5, roughness: 0.5 }); rail.side = THREE.DoubleSide;
     for (const sx of [-1, 1]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 700), std(0xf2f2f2, { roughness: 0.6 })); edge.position.set(sx * (ROAD_HALF - 0.1), 0.02, 0); edge.name = 'edge'; s.add(edge); this.edges.push(edge);
-      const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 700), std(0x9aa0a8)); kerb.position.set(sx * (ROAD_HALF + 0.55), 0.07, 0); s.add(kerb); this.edges.push(kerb);
+      this.ribbon(Math.min(sx * (ROAD_HALF - 0.3), sx * ROAD_HALF), Math.max(sx * (ROAD_HALF - 0.3), sx * ROAD_HALF), 0.02, lineM);
+      this.ribbon(Math.min(sx * (ROAD_HALF + 0.3), sx * (ROAD_HALF + 1.1)), Math.max(sx * (ROAD_HALF + 0.3), sx * (ROAD_HALF + 1.1)), 0.03, kerbM, [0xd23a3a, 0xf2f2f2]);
+      this.wall(sx * (ROAD_HALF + 1.4), 0.95, rail);
     }
     // dashes between lanes (recycled as the car moves)
     const dashM = std(0xeeeeee, { roughness: 0.6 });
@@ -423,7 +428,7 @@ export class ApexScene {
         const cc = new THREE.Mesh(new THREE.BoxGeometry(ROAD_HALF * 2 / 12, 0.02, 0.9), new THREE.MeshBasicMaterial({ color: (i + r) % 2 ? 0x111111 : 0xffffff }));
         cc.position.set(-ROAD_HALF + ((i + 0.5) * ROAD_HALF * 2) / 12, 0.03, (r - 0.5) * 0.9); gate.add(cc);
       }
-      gate.position.set(0, 0, -z); gate.name = name; this.scene.add(gate);
+      this.put(gate, 0, z); gate.name = name; this.scene.add(gate);
     };
     mk(0, 'start'); mk(this.world.length, 'finish');
 
@@ -432,9 +437,58 @@ export class ApexScene {
     this.hero = makeHeroCar(color, tier, this.carId, this.look);
     this.scene.add(this.hero.group);
   }
+  // ---- the road path: the bends are drawn by walking down the road in 2 m steps ----
+  private readonly S = 2;
+  private readonly z0 = -80;
+  private px!: Float32Array; private pz!: Float32Array; private th!: Float32Array;
+  private ribbons: THREE.Mesh[] = [];
+  private buildPath() {
+    const n = Math.ceil((this.world.length + 240 - this.z0) / this.S) + 2;
+    this.px = new Float32Array(n); this.pz = new Float32Array(n); this.th = new Float32Array(n);
+    let x = 0, zz = -this.z0, th = 0;
+    for (let i = 0; i < n; i++) {
+      this.px[i] = x; this.pz[i] = zz; this.th[i] = th;
+      const next = th + curvatureAt(this.world, this.z0 + (i + 0.5) * this.S) * this.S, mid = (th + next) / 2;
+      x += this.S * Math.sin(mid); zz -= this.S * Math.cos(mid); th = next;
+    }
+  }
+  /** Road space (x across, z along) to a scene position; returns the road's heading there. */
+  private at(x: number, z: number, out: THREE.Vector3, y = 0): number {
+    const f = Math.max(0, Math.min(this.th.length - 1.001, (z - this.z0) / this.S)), i = Math.floor(f), u = f - i;
+    const th = this.th[i] + (this.th[i + 1] - this.th[i]) * u;
+    out.set(this.px[i] + (this.px[i + 1] - this.px[i]) * u + x * Math.cos(th), y, this.pz[i] + (this.pz[i + 1] - this.pz[i]) * u + x * Math.sin(th));
+    return th;
+  }
+  private put(o: THREE.Object3D, x: number, z: number, yaw = 0, y = 0): number { const th = this.at(x, z, o.position, y); o.rotation.y = -th + yaw; return th; }
+  /** A strip of road surface between two distances from the middle, as one mesh (a quad every 2 m, so it can bend and be striped). */
+  private strip(a: (i: number, out: THREE.Vector3) => void, b: (i: number, out: THREE.Vector3) => void, mat: THREE.Material, colors?: number[]): THREE.Mesh {
+    const n = this.th.length - 1, pos = new Float32Array(n * 12), idx = new Uint16Array(n * 6), col = colors ? new Float32Array(n * 12) : null, v = new THREE.Vector3(), c = new THREE.Color();
+    const write = (o: number, p: THREE.Vector3) => { pos[o] = p.x; pos[o + 1] = p.y; pos[o + 2] = p.z; };
+    for (let i = 0; i < n; i++) {
+      const o = i * 12;
+      a(i, v); write(o, v); b(i, v); write(o + 3, v); a(i + 1, v); write(o + 6, v); b(i + 1, v); write(o + 9, v);
+      const q = i * 4; idx.set([q, q + 1, q + 2, q + 1, q + 3, q + 2], i * 6);
+      if (col && colors) { c.setHex(colors[Math.floor(i / 2) % colors.length]); for (let k = 0; k < 4; k++) { col[o + k * 3] = c.r; col[o + k * 3 + 1] = c.g; col[o + k * 3 + 2] = c.b; } }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    if (col) g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat); m.frustumCulled = false; this.scene.add(m); this.ribbons.push(m);
+    return m;
+  }
+  private ribbon(x0: number, x1: number, y: number, mat: THREE.Material, colors?: number[]): THREE.Mesh {
+    const at = (x: number) => (i: number, out: THREE.Vector3) => { this.at(x, this.z0 + i * this.S, out, y); };
+    return this.strip(at(x0), at(x1), mat, colors);
+  }
+  private wall(x: number, h: number, mat: THREE.Material): THREE.Mesh {
+    return this.strip((i, out) => { this.at(x, this.z0 + i * this.S, out, 0); }, (i, out) => { this.at(x, this.z0 + i * this.S, out, h); }, mat);
+  }
+  private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
+
   private road!: THREE.Mesh;
   private beam!: THREE.Mesh;
-  private edges: THREE.Mesh[] = [];
 
   private applyTheme() {
     const t = this.theme;
@@ -473,13 +527,11 @@ export class ApexScene {
 
   update(f: Frame) {
     const { player } = f;
-    const pz = -player.z;
     // hero car
     const hero = this.hero;
     hero.group.visible = this.cameraMode !== 'cockpit'; // inside the car you do not see your own roof
-    hero.group.position.set(player.x, 0, pz);
     hero.group.rotation.order = 'YXZ';
-    hero.group.rotation.y = -f.steer * 0.14;
+    this.put(hero.group, player.x, player.z, -f.steer * 0.14);
     hero.group.rotation.z = -f.steer * 0.045 * Math.min(1, f.speed / 30);
     hero.group.rotation.x = f.braking ? -0.035 : f.nitroOn ? 0.03 : 0; // nose dips under braking, lifts on nitro
     hero.group.position.y = f.flash > 0 ? 0.06 * Math.sin(f.t * 60) : 0;
@@ -489,7 +541,7 @@ export class ApexScene {
     hero.flame.visible = f.nitroOn; if (f.nitroOn) hero.flame.scale.set(1, 1, 0.8 + 0.4 * Math.abs(Math.sin(f.t * 40)));
     hero.paint.emissive.setHex(f.flash > 0 ? 0x661111 : 0x000000);
 
-    this.beam.position.set(player.x, 0.05, pz - 17);
+    this.put(this.beam, player.x, player.z + 17, 0, 0.05);
 
     // other racers (solid cars)
     const seen = new Set<number>();
@@ -502,7 +554,7 @@ export class ApexScene {
       }
       const dz = o.z - player.z;
       c.group.visible = dz > -12 && dz < VIEW_AHEAD; // hidden only once it is behind the camera
-      c.group.position.set(o.x, 0, -o.z);
+      this.put(c.group, o.x, o.z);
     }
     for (const [id, c] of this.others) if (!seen.has(id)) { this.scene.remove(c.group); this.others.delete(id); }
 
@@ -520,14 +572,14 @@ export class ApexScene {
       let entry = this.live.get(e.id);
       if (!entry) { entry = { obj: this.vehicle(e), ent: e }; this.live.set(e.id, entry); this.scene.add(entry.obj); }
       const o = entry.obj;
-      o.position.set(p.x, 0, -p.z);
+      const th = this.put(o, p.x, p.z);
       if (e.kind === 'ped') {
         const crossing = p.moving && pi >= 0 && f.arrived[pi] >= 0;
-        o.rotation.y = -e.dir * Math.PI / 2 * (crossing ? 1 : 0.0) + (crossing ? 0 : e.dir * 0.5);
+        o.rotation.y = -e.dir * Math.PI / 2 * (crossing ? 1 : 0.0) + (crossing ? 0 : e.dir * 0.5) - th;
         o.position.y = crossing ? 0.06 * Math.abs(Math.sin(f.t * 9 + e.id)) : 0;
         const warn = o.getObjectByName('warn'); if (warn) { warn.position.y = 2.35 + 0.12 * Math.sin(f.t * 6); warn.rotation.y = f.t * 3; warn.visible = !crossing || p.z - player.z > 0; }
       } else if (e.amp) {
-        const q = poseOf(e, f.t + 0.1, -1); o.rotation.y = Math.atan2(-(q.x - p.x), 0.1 * e.speed) * 0.9 * -1;
+        const q = poseOf(e, f.t + 0.1, -1); o.rotation.y = Math.atan2(-(q.x - p.x), 0.1 * e.speed) * 0.9 * -1 - th;
       }
     }
     for (const [id, entry] of this.live) if (!now.has(id)) { this.scene.remove(entry.obj); this.live.delete(id); }
@@ -538,7 +590,7 @@ export class ApexScene {
     let k = 0;
     for (let lane = 1; lane < LANES; lane++) for (let i = 0; i < 24; i++) {
       const d = this.dashes[k++];
-      d.position.set(-ROAD_HALF + lane * LANE_W, 0.02, -(base + i * (spacing * 2)));
+      this.put(d, -ROAD_HALF + lane * LANE_W, base + i * (spacing * 2), 0, 0.02);
     }
     const slotLen = 36;
     const first = Math.floor((player.z - 60) / slotLen);
@@ -565,26 +617,28 @@ export class ApexScene {
         }
         s.lamp.position.set(sx * (ROAD_HALF + 1.4), 0, slotLen * 0.5);
       }
-      s.g.position.set(0, 0, -(slot * slotLen));
+      this.put(s.g, 0, slot * slotLen);
     }
 
-    // the sky and ground follow the car so they never run out
-    this.sky.position.set(0, 0, pz); this.ground.position.z = pz;
-    this.road.position.z = pz - 100; for (const e of this.edges) e.position.z = pz - 100;
+    // the sky and ground follow the car so they never run out; only the stretch of road near the car is drawn
+    this.at(0, player.z, this.tmpA); this.sky.position.set(this.tmpA.x, 0, this.tmpA.z); this.ground.position.set(this.tmpA.x, -0.02, this.tmpA.z);
+    const i0 = Math.max(0, Math.floor((player.z - 60 - this.z0) / this.S)), i1 = Math.min(this.th.length - 1, Math.ceil((player.z + VIEW_AHEAD + 60 - this.z0) / this.S));
+    for (const m of this.ribbons) m.geometry.setDrawRange(i0 * 6, Math.max(0, i1 - i0) * 6);
 
-    // camera: behind and above, wider and shakier when fast
-    const cam = this.camera;
-    const sh = f.shake;
+    // camera: behind and above, following the bend; wider and shakier when fast
+    const cam = this.camera, sh = f.shake, look = this.tmpB;
     if (this.cameraMode === 'cockpit') {
       // A low forward-facing camera approximates the driver's eye line without changing race physics.
       cam.fov = 76 + (f.nitroOn ? 4 : 0);
-      cam.position.set(player.x * 0.96, 1.42, pz + 0.05);
-      cam.lookAt(player.x * 0.96, 1.3, pz - 28);
+      this.at(player.x * 0.96, player.z - 0.05, cam.position, 1.42);
+      this.at(player.x * 0.96, player.z + 28, look, 1.3);
     } else {
       cam.fov = 60 + Math.min(18, f.speed * 0.22) + (f.nitroOn ? 8 : 0);
-      cam.position.set(player.x * 0.75 + (sh ? Math.sin(f.t * 83) * sh * 0.25 : 0), 4.6 + (sh ? Math.sin(f.t * 71) * sh * 0.2 : 0), pz + 10.5);
-      cam.lookAt(player.x * 0.9, 1.2, pz - 16);
+      this.at(player.x * 0.75, player.z - 10.5, cam.position, 4.6 + (sh ? Math.sin(f.t * 71) * sh * 0.2 : 0));
+      if (sh) cam.position.x += Math.sin(f.t * 83) * sh * 0.25;
+      this.at(player.x * 0.9, player.z + 16, look, 1.2);
     }
+    cam.lookAt(look);
     cam.updateProjectionMatrix();
   }
 

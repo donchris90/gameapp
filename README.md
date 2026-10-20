@@ -219,3 +219,6 @@ A 3D racing game (three.js on expo-gl). You race 5 computer drivers (random name
 
 ### Apex garage
 Six-car catalogue in `mobile/src/apex/cars.ts` (price, career level, upgrade cost factor). Each car has 4 upgrades (engine, turbo, tyres, nitro) up to level 5; they change the stats (`carStats` in the shared sim) and the look (underglow, flame colour). New cars: run `tools/car-pipeline/optimize_car.mjs` on the source model, drop `<id>_hi.glb`/`<id>_lo.glb` into `mobile/assets/cars/`, and register it in `cars.ts`. After installing, run `npm install --legacy-peer-deps` (new deps: expo-screen-orientation, expo-asset, upng-js). Real-brand models need a licence/trademark check before release.
+
+### Apex tracks
+`TRACKS` in `backend/src/games/apex/sim.ts` (synced to the app): Coastal Sweep, Desert Esses, Downtown Night, Mountain Pass. Each is a list of `[length, radius]` bends (+ right, - left, 0 straight) with a straight start and finish. Rules stay in road space (x across, z along); a bend pushes the car to the outside (`driftAt`) and scraping the barrier slows it, so you steer against it or brake. The phone draws the road curved (`ApexScene.buildPath`), and `replay`/`makeWorld` take the track id, so the server check will use it too. The player picks a track in the Tracks panel; harder tracks open by career level.

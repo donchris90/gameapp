@@ -1,4 +1,4 @@
-import { CAR_HALF_W, CarStats, DT, Entity, Input, LANES, PED_SPEED, ROAD_HALF, Racer, World, laneX, poseOf, rng } from './sim';
+import { driftAt, CAR_HALF_W, CarStats, DT, Entity, Input, LANES, PED_SPEED, ROAD_HALF, Racer, World, laneX, poseOf, rng } from './sim';
 
 /**
  * A computer driver. It looks down the road for the lane with the most room, steers there (checking the lanes it has to
@@ -65,8 +65,11 @@ export function drive(world: World, car: CarStats, r: Racer, d: Driver): Input {
     if (d.mistake) d.target = Math.min(LANES - 1, Math.max(0, d.target + (d.next() < 0.5 ? -1 : 1)));
   }
   const dx = laneX(d.target) - r.x;
-  const steer = Math.max(-1, Math.min(1, dx * 0.9));
-  const brake = d.brakeFor === 1 && r.v > 16;
+  // bends: lean against the push towards the outside, and lift off when it is more than the car can hold
+  const grip = 0.65 + 0.35 * Math.min(1, r.v / 30);
+  const push = driftAt(world, r.z + 12, r.v) / (car.handling * grip);
+  const steer = Math.max(-1, Math.min(1, dx * 0.9 - push * (0.8 + 0.2 * d.skill)));
+  const brake = (d.brakeFor === 1 && r.v > 16) || (Math.abs(push) > 0.9 && r.v > 24);
   const clear = !brake && Math.abs(dx) < 0.5 && r.nitro > 0.6;
   return { steer, brake, nitro: clear && d.skill > 0.2 && d.next() < 0.4 };
 }

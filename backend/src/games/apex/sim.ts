@@ -73,7 +73,7 @@ export interface Entity {
   amp: number; freq: number; phase: number; // bikes drift sideways: x = lane + amp * tri(t * freq + phase)
   dir: number; trigger: number; // pedestrians: crossing direction (+1 left to right) and how close the player must be before they step out
 }
-export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[] }
+export interface World { seed: number; level: number; length: number; entities: Entity[]; peds: number[]; track: string; curves: Curve[] }
 
 const SIZE: Record<Kind, [number, number]> = { car: [1.9, 4.5], bike: [0.8, 2.0], truck: [2.5, 9.0], bus: [2.6, 11.0], ped: [0.7, 0.7] };
 export const sizeOf = (k: Kind) => SIZE[k];
@@ -93,7 +93,53 @@ export function levelSpec(level: number) {
   };
 }
 
-export function makeWorld(seed: number, level: number): World {
+
+// ---- tracks: the road bends. Everything in the rules stays in "road space" (x across, z along the road); a bend only pushes
+// cars towards the outside edge, and the phone draws the road curved. Radius R in metres: + turns right, - turns left, 0 is straight.
+export interface Curve { from: number; to: number; k: number } // k = 1 / radius at the middle of the bend (+ right)
+export interface TrackInfo { id: string; name: string; blurb: string; level: number; theme: number; ground: number; pattern: Array<[number, number]>; feel: string }
+export const TRACKS: TrackInfo[] = [
+  { id: 'coast', name: 'Coastal Sweep', blurb: 'Long, flowing bends along the sea. A good place to learn.', level: 1, theme: 0, ground: 0x7a9a58, feel: 'Easy', pattern: [[260, 0], [240, 420], [200, 0], [260, -380], [180, 0], [220, 450], [240, -400]] },
+  { id: 'dunes', name: 'Desert Esses', blurb: 'Back-to-back S-bends through the dunes. Stay smooth.', level: 3, theme: 1, ground: 0xb59a62, feel: 'Medium', pattern: [[160, 0], [140, 300], [140, -300], [140, 300], [140, -300], [200, 0], [180, -250], [180, 250]] },
+  { id: 'city', name: 'Downtown Night', blurb: 'Tight city corners under the lights. Brake early.', level: 6, theme: 2, ground: 0x1b2438, feel: 'Hard', pattern: [[200, 0], [180, 260], [140, -260], [160, 0], [200, -240], [120, 300], [180, 0]] },
+  { id: 'pass', name: 'Mountain Pass', blurb: 'Hairpins and switchbacks at sunset. Only for brave drivers.', level: 10, theme: 1, ground: 0x6b5a3c, feel: 'Expert', pattern: [[220, 0], [150, 170], [100, 0], [170, -160], [90, 0], [120, 150], [160, -190], [140, 0]] },
+];
+export const trackInfo = (id: string): TrackInfo | undefined => TRACKS.find((x) => x.id === id);
+
+export function curvesFor(track: string, length: number): Curve[] {
+  const info = trackInfo(track);
+  if (!info) return [];
+  const out: Curve[] = [];
+  let z = 150, open = true; // a straight start
+  while (open) {
+    open = false;
+    for (const [len, radius] of info.pattern) {
+      if (z + len > length - 150) { open = false; break; } // and a straight finish
+      if (radius !== 0) out.push({ from: z, to: z + len, k: 1 / radius });
+      z += len; open = true;
+    }
+  }
+  return out;
+}
+
+/** How sharply the road bends at distance z (1/radius, + is right). Eased in and out so there are no jolts. */
+export function curvatureAt(world: { curves: Curve[] }, z: number): number {
+  const cs = world.curves;
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i];
+    if (z < c.from) return 0;
+    if (z > c.to) continue;
+    const len = c.to - c.from, ramp = len * 0.3, a = Math.min(1, (z - c.from) / ramp), b = Math.min(1, (c.to - z) / ramp);
+    return c.k * (a * a * (3 - 2 * a)) * (b * b * (3 - 2 * b));
+  }
+  return 0;
+}
+
+export const DRIFT_K = 0.4;
+/** Sideways speed (m/s) a bend pushes a car at speed v towards the outside (+ is right). */
+export const driftAt = (world: { curves: Curve[] }, z: number, v: number) => -DRIFT_K * curvatureAt(world, z) * v * v;
+
+export function makeWorld(seed: number, level: number, track = 'straight'): World {
   const s = levelSpec(level);
   const r = rng((seed ^ Math.imul(s.level, 0x9e3779b1)) >>> 0);
   const entities: Entity[] = [];
@@ -126,7 +172,7 @@ export function makeWorld(seed: number, level: number): World {
   }
   entities.sort((a, b) => a.z - b.z);
   entities.forEach((e, i) => { e.id = i; });
-  return { seed, level: s.level, length: s.length, entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
+  return { seed, level: s.level, length: s.length, track, curves: curvesFor(track, s.length), entities, peds: entities.filter((e) => e.kind === 'ped').map((e) => e.id) };
 }
 
 /** A triangle wave between -1 and 1 (no sine, so every device agrees). */
@@ -183,9 +229,11 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
 
   // steering: a little stiffer at speed so it stays readable
   const grip = 0.65 + 0.35 * Math.min(1, r.v / 30);
-  r.x += steer * car.handling * grip * DT;
+  r.x += (steer * car.handling * grip + driftAt(world, r.z, r.v)) * DT;
   const edge = ROAD_HALF - CAR_HALF_W;
+  const pinned = (r.x <= -edge && driftAt(world, r.z, r.v) < 0) || (r.x >= edge && driftAt(world, r.z, r.v) > 0);
   r.x = Math.max(-edge, Math.min(edge, r.x));
+  if (pinned && r.v > MIN_SPEED) r.v = Math.max(MIN_SPEED, r.v - 9 * DT); // scraping the barrier in a bend
   r.z += r.v * DT;
   r.tick++;
   if (r.invul > 0) r.invul--;

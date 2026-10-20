@@ -1,5 +1,5 @@
 import { drive, newDriver } from './bot';
-import { CARS, DT, MAX_RACE_TICKS, Racer, World, makeWorld, newRacer, packInput, replay, step, unpackInput, levelSpec, poseOf } from './sim';
+import { CARS, DT, MAX_RACE_TICKS, Racer, World, makeWorld, newRacer, packInput, replay, step, unpackInput, levelSpec, poseOf, TRACKS, curvatureAt, driftAt } from './sim';
 
 function race(world: World, skill: number, seed = 1, carId = 'starter') {
   const car = CARS[carId];
@@ -115,6 +115,34 @@ describe('Apex Run rules in the app', () => {
     const root = join(__dirname, '..', '..', '..', '..');
     for (const f of ['sim.ts', 'bot.ts']) {
       expect(readFileSync(join(root, 'mobile', 'src', 'apex', f), 'utf8')).toBe(readFileSync(join(__dirname, f), 'utf8'));
+    }
+  });
+
+  it('bends the road on every track, and straight tracks stay straight', () => {
+    expect(makeWorld(5, 5).curves).toEqual([]);
+    for (const tr of TRACKS) {
+      const w = makeWorld(5, 8, tr.id);
+      expect(w.curves.length).toBeGreaterThan(3);
+      expect(w.curves.every((c) => c.from >= 150 && c.to <= w.length - 150)).toBe(true);
+      expect(curvatureAt(w, 20)).toBe(0);
+      expect(curvatureAt(w, w.length - 20)).toBe(0);
+      const mid = w.curves[0]; expect(Math.abs(curvatureAt(w, (mid.from + mid.to) / 2))).toBeGreaterThan(0.9 * Math.abs(mid.k) * 0.9);
+    }
+  });
+
+  it('pushes a car to the outside of a bend', () => {
+    const w = makeWorld(5, 8, 'pass'); const c = w.curves.find((x) => x.k > 0)!;
+    expect(driftAt(w, (c.from + c.to) / 2, 50)).toBeLessThan(0); // right-hand bend, pushed left
+  });
+
+  it('lets a computer driver finish every track, and the server check agrees', () => {
+    for (const tr of TRACKS) {
+      const w = makeWorld(11, 8, tr.id);
+      const { r, inputs } = race(w, 0.8, 3, 'cts');
+      expect(r.finishedAt).toBeGreaterThan(0);
+      const rep = replay(w, CARS.cts, inputs);
+      expect(rep.finished).toBe(true);
+      expect(rep.ticks).toBe(r.finishedAt);
     }
   });
 });

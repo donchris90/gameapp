@@ -9,7 +9,9 @@ import { AppConfig, CONFIG } from '../config/config';
  * DATABASE_POOL_MAX limits connections (hosted plans cap how many you may open).
  */
 export function poolOptions(url: string) {
-  const max = Number(process.env.DATABASE_POOL_MAX) || 10;
+  const rawMax = process.env.DATABASE_POOL_MAX;
+  const max = rawMax === undefined || rawMax === '' ? 10 : Number(rawMax);
+  if (!Number.isInteger(max) || max < 1 || max > 50) throw new Error('DATABASE_POOL_MAX must be an integer between 1 and 50');
   if (process.env.DATABASE_SSL !== 'no-verify') return { connectionString: url, max };
   const u = new URL(url);
   u.searchParams.delete('sslmode');

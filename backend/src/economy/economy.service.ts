@@ -55,7 +55,8 @@ export class EconomyService {
       if (!isUnique(e)) throw e;
       const existing = await this.prisma.purchase.findUnique({ where: { platform_transactionId: { platform: dto.platform, transactionId: verified.transactionId } } });
       if (!existing || existing.userId !== userId) throw appError(409, 'RECEIPT_ALREADY_USED', 'This purchase was already used by another account');
-      return { credited: false, coins: pack.coins, balance: Number(await this.wallet.getBalance(userId)) };
+      if (existing.productId !== pack.productId || existing.coins !== BigInt(pack.coins)) throw appError(409, 'RECEIPT_MISMATCH', 'This transaction was already redeemed for a different product');
+      return { credited: false, coins: Number(existing.coins), balance: Number(await this.wallet.getBalance(userId)) };
     }
     return { credited: true, coins: pack.coins, balance: Number(await this.wallet.getBalance(userId)) };
   }

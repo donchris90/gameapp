@@ -241,13 +241,24 @@ export function step(world: World, car: CarStats, r: Racer, input: Input): void 
   if (wantsNitro) r.nitro = Math.max(0, r.nitro - DT);
   else if (r.nitro < car.nitroSeconds) r.nitro = Math.min(car.nitroSeconds, r.nitro + 0.12 * DT);
   const cap = car.vmax * (wantsNitro ? 1.3 : 1) * (r.boost > 0 ? 1.12 : 1);
-  if (input.brake) r.v = Math.max(MIN_SPEED, r.v - 28 * DT);
-  else if (r.v < cap) r.v = Math.min(cap, r.v + car.accel * (wantsNitro ? 1.8 : 1) * (1 - (r.v / cap) * 0.55) * DT);
-  else r.v = Math.max(cap, r.v - 14 * DT);
-  if (r.v < MIN_SPEED && r.tick > 0) r.v = MIN_SPEED;
+  if (input.brake) {
+    // Brakes can bring the car to a complete stop; holding the brake must not secretly
+    // apply throttle just to maintain an arcade minimum speed.
+    r.v = Math.max(0, r.v - (31 + r.v * 0.12) * DT);
+  } else {
+    // A simple deterministic torque curve with aerodynamic drag. Clamp at the speed
+    // cap to avoid the old accelerate/decelerate oscillation at maximum speed.
+    const speedRatio = Math.min(1, r.v / Math.max(1, cap));
+    const engine = car.accel * (wantsNitro ? 1.8 : 1) * (0.42 + 0.58 * (1 - speedRatio * 0.72));
+    const drag = 0.12 + r.v * r.v * 0.00032;
+    r.v = Math.min(cap, Math.max(0, r.v + (engine - drag) * DT));
+  }
 
-  // steering: a little stiffer at speed so it stays readable
-  const grip = 0.65 + 0.35 * Math.min(1, r.v / 30);
+  // Steering authority builds as the car rolls, while high-speed grip gently tapers
+  // to avoid instant, full-lock lane changes. Car handling remains a meaningful stat.
+  const speedGrip = 1 - 0.22 * Math.min(1, r.v / Math.max(1, car.vmax));
+  const steeringBuild = 0.72 + 0.28 * Math.min(1, r.v / 24);
+  const grip = speedGrip * steeringBuild;
   r.x += (steer * car.handling * grip + driftAt(world, r.z, r.v)) * DT;
   const edge = ROAD_HALF - CAR_HALF_W;
   const pinned = (r.x <= -edge && driftAt(world, r.z, r.v) < 0) || (r.x >= edge && driftAt(world, r.z, r.v) > 0);
@@ -329,8 +340,11 @@ export function collideRacers(racers: Racer[]): void {
     if (rear.z > front.z - long) rear.z = front.z - long;
     if (rear.v > front.v) rear.v = Math.max(MIN_SPEED, front.v);
     const away = dx === 0 ? (i % 2 ? 1 : -1) : (dx > 0 ? 1 : -1);
-    a.x = Math.max(-edge, Math.min(edge, a.x + away * 0.16));
-    b.x = Math.max(-edge, Math.min(edge, b.x - away * 0.16));
+    // Separate by the overlap, not a tiny fixed nudge. The previous 0.16 m push
+    // could leave cars interpenetrating after all three collision passes.
+    const separation = Math.min(1.1, (wide - Math.abs(dx)) * 0.6);
+    a.x = Math.max(-edge, Math.min(edge, a.x + away * separation));
+    b.x = Math.max(-edge, Math.min(edge, b.x - away * separation));
   }
 }
 

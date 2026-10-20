@@ -93,21 +93,40 @@ export class AuthService {
 
   async refresh(refreshToken: string, userAgent?: string) {
     const hash = sha256(refreshToken);
-    const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash }, include: { user: true } });
-    if (!row) throw new UnauthorizedException('Invalid refresh token');
+    const candidate = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash }, select: { id: true } });
+    if (!candidate) throw new UnauthorizedException('Invalid refresh token');
 
-    // Atomically claim the token. If it was already used, someone is replaying
-    // it, so every token in the family is revoked and the user signs in again.
-    const claimed = await this.prisma.refreshToken.updateMany({
-      where: { id: row.id, revokedAt: null, expiresAt: { gt: new Date() } },
-      data: { revokedAt: new Date() },
+    // Lock the presented token and rotate it in the same transaction. This closes
+    // the race where a replay could revoke the family just before a concurrent
+    // request created a fresh, still-valid token.
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "RefreshToken" WHERE "id" = ${candidate.id} FOR UPDATE`;
+      const row = await tx.refreshToken.findUnique({ where: { id: candidate.id }, include: { user: true } });
+      if (!row) return { kind: 'invalid' as const };
+      if (row.revokedAt || row.expiresAt <= new Date()) {
+        await tx.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+        return { kind: 'invalid' as const };
+      }
+      if (row.user.status !== 'ACTIVE') {
+        await tx.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+        return { kind: 'inactive' as const };
+      }
+      const now = new Date();
+      await tx.refreshToken.update({ where: { id: row.id }, data: { revokedAt: now } });
+      const accessToken = await this.jwt.signAsync({ sub: row.user.id, role: row.user.role });
+      const nextRefreshToken = randomBytes(48).toString('base64url');
+      await tx.refreshToken.create({
+        data: {
+          userId: row.user.id, familyId: row.familyId, tokenHash: sha256(nextRefreshToken),
+          userAgent: userAgent?.slice(0, 200),
+          expiresAt: new Date(Date.now() + this.config.refreshTokenTtlDays * 86_400_000),
+        },
+      });
+      return { kind: 'ok' as const, tokens: { accessToken, refreshToken: nextRefreshToken, expiresIn: this.config.accessTokenTtlSeconds } };
     });
-    if (claimed.count !== 1) {
-      await this.prisma.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-    this.assertActive(row.user);
-    return { tokens: await this.issueTokens(row.user, row.familyId, userAgent) };
+    if (result.kind === 'inactive') throw new ForbiddenException('Account is not active');
+    if (result.kind !== 'ok') throw new UnauthorizedException('Invalid refresh token');
+    return { tokens: result.tokens };
   }
 
   async logout(refreshToken: string) {

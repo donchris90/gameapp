@@ -1,5 +1,5 @@
 import { drive, newDriver } from './bot';
-import { CARS, DT, MAX_RACE_TICKS, Racer, World, makeWorld, newRacer, packInput, replay, step, unpackInput, levelSpec, poseOf, TRACKS, curvatureAt, driftAt } from './sim';
+import { CARS, DT, MAX_RACE_TICKS, Racer, World, makeWorld, newRacer, packInput, replay, step, unpackInput, levelSpec, poseOf, TRACKS, curvatureAt, driftAt, collideRacers, laneX } from './sim';
 
 function race(world: World, skill: number, seed = 1, carId = 'starter') {
   const car = CARS[carId];
@@ -52,6 +52,67 @@ describe('Apex Run rules', () => {
     expect(again.finished).toBe(true);
     expect(again.ticks).toBe(r.finishedAt);
     expect(again.hits).toBe(r.hits);
+  });
+
+
+  it('lets the brakes bring a car to a full stop, then accelerates cleanly when released', () => {
+    const w = makeWorld(17, 1, 'circuit', 2);
+    const car = CARS.starter;
+    const r = newRacer(w, car);
+    r.v = 32;
+    for (let i = 0; i < 90; i++) step(w, car, r, { steer: 0, brake: true, nitro: false });
+    expect(r.v).toBe(0);
+    step(w, car, r, { steer: 0, brake: false, nitro: false });
+    expect(r.v).toBeGreaterThan(0);
+  });
+
+  it('keeps speed within the active cap and separates overlapping rival cars', () => {
+    const w = makeWorld(18, 1, 'circuit', 2);
+    const car = CARS.starter;
+    const a = newRacer(w, car), b = newRacer(w, car);
+    a.x = b.x = 0; a.z = b.z = 100; a.v = 30; b.v = 25;
+    collideRacers([a, b]);
+    expect(Math.abs(a.x - b.x)).toBeGreaterThanOrEqual(1.9);
+    expect(Math.abs(a.z - b.z)).toBeGreaterThanOrEqual(4.79);
+    const r = newRacer(w, car);
+    for (let i = 0; i < 500; i++) step(w, car, r, { steer: 0, brake: false, nitro: true });
+    expect(r.v).toBeLessThanOrEqual(car.vmax * 1.3 + 0.001);
+  });
+
+  it('keeps a six-car field moving and lets the computer drivers finish the circuit', () => {
+    const w = makeWorld(123, 5, 'circuit', 2);
+    const car = CARS.cts;
+    const slots: Array<[number, number]> = [[0, 0], [-3.2, 0], [3.2, 0], [-1.6, -6], [1.6, -6], [0, -12]];
+    const racers = slots.map(([x, z]) => { const r = newRacer(w, car); r.x = x; r.z = z; return r; });
+    const drivers = racers.map((_, i) => newDriver(123 + i * 77, 0.5 + i * 0.07));
+    for (let tick = 0; tick < MAX_RACE_TICKS && racers.some((r) => r.finishedAt === 0); tick++) {
+      for (let i = 0; i < racers.length; i++) {
+        const r = racers[i];
+        if (r.finishedAt > 0) continue;
+        const input = drive(w, car, r, drivers[i], racers.filter((_, j) => j !== i));
+        step(w, car, r, input);
+      }
+      collideRacers(racers);
+    }
+    expect(racers.every((r) => r.finishedAt > 0)).toBe(true);
+  });
+
+  it('assigns deterministic rival personalities with different risk and braking preferences', () => {
+    expect(newDriver(3, 0.7).style).toBe('aggressive');
+    expect(newDriver(4, 0.7).style).toBe('balanced');
+    expect(newDriver(5, 0.7).style).toBe('defensive');
+    expect(newDriver(5, 0.7).style).toBe(newDriver(5, 0.7).style);
+  });
+
+  it('avoids moving into the path of a faster rival approaching from behind', () => {
+    const w = makeWorld(19, 1, 'circuit', 2);
+    const car = CARS.starter;
+    const player = newRacer(w, car), rear = newRacer(w, car);
+    player.x = laneX(1); player.z = 100; player.v = 30;
+    rear.x = laneX(2); rear.z = 82; rear.v = 45;
+    const driver = newDriver(23, 0.9);
+    drive(w, car, player, driver, [player, rear]);
+    expect(driver.target).not.toBe(2);
   });
 
   it('packs and unpacks inputs without loss', () => {

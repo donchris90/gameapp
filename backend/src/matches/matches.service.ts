@@ -114,25 +114,31 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
   async startSolo(userId: string, game: GameType, requested?: number) {
     const engine = this.games.get(game);
     if (!engine || !isSolo(game)) throw appError(400, 'NOT_SOLO', 'That game is not played alone');
-    const busy = await this.prisma.matchPlayer.count({ where: { userId, leftAt: null, match: { status: 'ACTIVE' } } });
-    if (busy > 0) throw appError(409, 'ALREADY_IN_MATCH', 'Finish your current game first');
-    // Water Sort has levels: continue from the next unsolved one. A player may replay a lower level but not skip ahead.
-    let level: number | undefined;
-    if (game === 'WATER_SORT') {
-      const rows = await this.prisma.$queryRaw<Array<{ top: number | null }>>`
-        SELECT MAX(("m"."state"->>'level')::int) AS "top" FROM "Match" "m" JOIN "MatchPlayer" "p" ON "p"."matchId" = "m"."id"
-        WHERE "p"."userId" = ${userId} AND "m"."game" = 'WATER_SORT' AND "p"."result" = 'WON'`;
-      const next = Number(rows[0]?.top ?? 0) + 1;
-      level = requested && requested >= 1 ? Math.min(Math.floor(requested), next) : next;
-    }
-    const init = engine.init(1, ctx, { level });
-    const id = randomUUID();
-    await this.prisma.match.create({
-      data: {
-        id, game, stake: 0n, pot: 0n, state: init.state as Prisma.InputJsonValue, turnSeat: null,
-        turnDeadline: new Date(Date.now() + (engine.matchTimeoutMs ?? 5 * 60_000)),
-        players: { create: [{ userId, seat: 0, stake: 0n }] },
-      },
+    const id = await this.prisma.$transaction(async (tx) => {
+      // Serialize solo starts per user; the old check-then-create sequence allowed
+      // two simultaneous requests to create two active matches for one player.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'solo-match:' + userId}))`;
+      const busy = await tx.matchPlayer.count({ where: { userId, leftAt: null, match: { status: 'ACTIVE' } } });
+      if (busy > 0) throw appError(409, 'ALREADY_IN_MATCH', 'Finish your current game first');
+      // Water Sort has levels: continue from the next unsolved one. A player may replay a lower level but not skip ahead.
+      let level: number | undefined;
+      if (game === 'WATER_SORT') {
+        const rows = await tx.$queryRaw<Array<{ top: number | null }>>`
+          SELECT MAX(("m"."state"->>'level')::int) AS "top" FROM "Match" "m" JOIN "MatchPlayer" "p" ON "p"."matchId" = "m"."id"
+          WHERE "p"."userId" = ${userId} AND "m"."game" = 'WATER_SORT' AND "p"."result" = 'WON'`;
+        const next = Number(rows[0]?.top ?? 0) + 1;
+        level = requested && requested >= 1 ? Math.min(Math.floor(requested), next) : next;
+      }
+      const init = engine.init(1, ctx, { level });
+      const matchId = randomUUID();
+      await tx.match.create({
+        data: {
+          id: matchId, game, stake: 0n, pot: 0n, state: init.state as Prisma.InputJsonValue, turnSeat: null,
+          turnDeadline: new Date(Date.now() + (engine.matchTimeoutMs ?? 5 * 60_000)),
+          players: { create: [{ userId, seat: 0, stake: 0n }] },
+        },
+      });
+      return matchId;
     });
     return this.get(userId, id);
   }

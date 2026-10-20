@@ -27,7 +27,10 @@ const CHAT_WINDOW_MS = 5_000;
  * match:found, match:failed, match:timeout, match:emote, match:rematch, call:incoming, call:answered, call:declined, call:ended.
  * From the client: room:chat, match:emote.
  */
-@WebSocketGateway({ cors: { origin: true } })
+@WebSocketGateway({
+  // Never reflect arbitrary browser origins. Native clients generally omit Origin; browser clients must be listed in CORS_ORIGINS.
+  cors: { origin: (process.env.CORS_ORIGINS ?? '').split(',').map((v) => v.trim()).filter(Boolean) },
+})
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly log = new Logger('Realtime');
   @WebSocketServer() server!: Server;
@@ -51,7 +54,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     try {
       const token = socket.handshake.auth?.token;
       if (typeof token !== 'string') throw new Error('missing token');
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      const payload = await this.jwt.verifyAsync<{ sub?: unknown }>(token, { algorithms: ['HS256'] });
+      if (typeof payload.sub !== 'string' || payload.sub.length < 1 || payload.sub.length > 128) throw new Error('invalid subject');
       const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, status: true } });
       if (!user || user.status !== 'ACTIVE') throw new Error('inactive');
 

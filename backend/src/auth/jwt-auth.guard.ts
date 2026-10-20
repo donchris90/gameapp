@@ -12,10 +12,11 @@ export class JwtAuthGuard implements CanActivate {
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException();
     let payload: { sub: string };
     try {
-      payload = await this.jwt.verifyAsync(header.slice(7));
+      payload = await this.jwt.verifyAsync(header.slice(7), { algorithms: ['HS256'] });
     } catch {
       throw new UnauthorizedException();
     }
+    if (typeof payload?.sub !== 'string' || payload.sub.length < 1 || payload.sub.length > 128) throw new UnauthorizedException();
     // One cheap lookup so a ban or suspension takes effect immediately,
     // not when the access token eventually expires.
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { id: true, role: true, status: true } });

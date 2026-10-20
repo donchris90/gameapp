@@ -29,6 +29,8 @@ export interface AppConfig {
   authRatePerMinute: number;
   /** Max requests per minute per IP on everything else. */
   globalRatePerMinute: number;
+  /** Exact browser origins allowed to call the API and connect to Socket.IO. Native apps normally send no Origin header. */
+  corsOrigins: string[];
 }
 
 function int(name: string, raw: string | undefined, fallback: number, min = 0): number {
@@ -42,10 +44,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const production = env.NODE_ENV === 'production';
   const databaseUrl = env.DATABASE_URL;
   const fee = Number(env.HOUSE_FEE_PERCENT ?? 10);
-  if (fee > 50) throw new Error('HOUSE_FEE_PERCENT must be between 0 and 50');
+  if (!Number.isFinite(fee) || fee < 0 || fee > 50) throw new Error('HOUSE_FEE_PERCENT must be between 0 and 50');
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
+  let parsedDatabaseUrl: URL;
+  try { parsedDatabaseUrl = new URL(databaseUrl); } catch { throw new Error('DATABASE_URL must be a valid PostgreSQL connection URL'); }
+  if (!['postgres:', 'postgresql:'].includes(parsedDatabaseUrl.protocol)) throw new Error('DATABASE_URL must use PostgreSQL');
   const secret = env.JWT_ACCESS_SECRET ?? (production ? '' : 'dev-only-secret-not-for-production-use');
   if (secret.length < 32) throw new Error('JWT_ACCESS_SECRET must be at least 32 characters');
+  if (production && !env.JWT_ACCESS_SECRET) throw new Error('JWT_ACCESS_SECRET is required in production');
+  const corsOrigins = [...new Set((env.CORS_ORIGINS ?? '').split(',').map((v) => v.trim()).filter(Boolean))];
+  for (const origin of corsOrigins) {
+    let parsed: URL;
+    try { parsed = new URL(origin); } catch { throw new Error(`Invalid CORS origin: ${origin}`); }
+    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.origin !== origin) throw new Error(`CORS_ORIGINS must contain exact origins only: ${origin}`);
+  }
+  if (production && corsOrigins.some((origin) => origin === '*')) throw new Error('Wildcard CORS is not allowed in production');
   const storeMode = (env.STORE_MODE ?? 'live') as string;
   if (storeMode !== 'live' && storeMode !== 'fake') throw new Error('STORE_MODE must be live or fake');
   if (storeMode === 'fake' && production) throw new Error('STORE_MODE=fake is not allowed in production');
@@ -70,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       ? { bundleId: env.APPLE_BUNDLE_ID, issuerId: env.APPLE_ISSUER_ID, keyId: env.APPLE_KEY_ID, privateKey: env.APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'), sandbox: env.APPLE_SANDBOX === 'true' } : null,
     authRatePerMinute: int('AUTH_RATE_PER_MINUTE', env.AUTH_RATE_PER_MINUTE, 10, 1),
     globalRatePerMinute: int('GLOBAL_RATE_PER_MINUTE', env.GLOBAL_RATE_PER_MINUTE, 120, 1),
+    corsOrigins,
   };
 }
 

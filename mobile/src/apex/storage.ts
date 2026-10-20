@@ -10,6 +10,11 @@ export interface ApexSettings {
   paint: number;
   bodyTier: number;
   completedRaces: number;
+  careerXP: number;
+  podiums: number;
+  cleanRaces: number;
+  bestLaps: Record<string, number>;
+  processedRaceKeys: string[]; // prevents a result callback from crediting the same local race twice
   track: string; // the track the next race runs on
   laps: number; // laps on the circuit
   upgrades: Record<string, number[]>; // per car: engine, turbo, tyres, nitro levels
@@ -20,7 +25,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, upgrades: {}, track: 'circuit', laps: 3,
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3,
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -39,7 +44,18 @@ export async function loadApex(): Promise<ApexSettings> {
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,
       bodyTier: Number.isFinite(saved.bodyTier) ? Math.max(0, Math.min(3, saved.bodyTier)) : DEFAULTS.bodyTier,
       completedRaces: Number.isFinite(saved.completedRaces) ? Math.max(0, saved.completedRaces) : DEFAULTS.completedRaces,
+      careerXP: Number.isFinite(saved.careerXP) ? Math.max(0, Math.floor(saved.careerXP)) : DEFAULTS.careerXP,
+      podiums: Number.isFinite(saved.podiums) ? Math.max(0, Math.floor(saved.podiums)) : DEFAULTS.podiums,
+      cleanRaces: Number.isFinite(saved.cleanRaces) ? Math.max(0, Math.floor(saved.cleanRaces)) : DEFAULTS.cleanRaces,
+      bestLaps: saved.bestLaps && typeof saved.bestLaps === 'object' && !Array.isArray(saved.bestLaps) ? saved.bestLaps : DEFAULTS.bestLaps,
+      processedRaceKeys: Array.isArray(saved.processedRaceKeys) ? saved.processedRaceKeys.filter((x: unknown) => typeof x === 'string').slice(-250) : [],
     };
   } catch { return DEFAULTS; }
 }
-export async function saveApex(s: ApexSettings) { try { await SecureStore.setItemAsync(KEY, JSON.stringify(s)); } catch { /* kept in memory */ } }
+// Serialize writes: fast consecutive purchases/rewards must not finish out of order and overwrite newer progress.
+let saveQueue: Promise<void> = Promise.resolve();
+export function saveApex(s: ApexSettings) {
+  const snapshot = JSON.stringify(s);
+  saveQueue = saveQueue.then(() => SecureStore.setItemAsync(KEY, snapshot)).then(() => undefined).catch(() => undefined);
+  return saveQueue;
+}

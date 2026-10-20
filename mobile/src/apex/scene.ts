@@ -254,9 +254,9 @@ export function buildLuxuryCar(color: number, tier = 2): CarParts {
 }
 
 /** A car built from a real 3D file. The part called `paint` takes the chosen colour; the wheels spin. `glow` adds an underglow colour (0 = none). */
-function buildModelCar(model: CarModel, color: number, look: { glow?: number; flame?: number } = {}): CarParts {
+function buildModelCar(model: CarModel, color: number, look: { glow?: number; flame?: number } = {}, tier = 0, carId = 'hero'): CarParts {
   const group = new THREE.Group();
-  const paint = std(color, { metalness: 0.65, roughness: 0.16, envMap: envMap(), envMapIntensity: 1.3 });
+  const paint = new THREE.MeshPhysicalMaterial({ color, metalness: 0.68, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.06, envMap: envMap(), envMapIntensity: 1.65 });
   const tailDefault = std(0x330000, { emissive: 0xff1a1a, emissiveIntensity: 0.8, metalness: 0.1, roughness: 0.3 });
   const head = std(0xffffff, { emissive: 0xfff3c4, emissiveIntensity: 1, metalness: 0.1, roughness: 0.2 });
   let tail: THREE.MeshStandardMaterial = tailDefault;
@@ -268,7 +268,7 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
     let x = cache.get(m);
     if (!x) {
       const glassy = /glass|window|windscreen/i.test(m.name) || m.blend;
-      const lamp = /tail|brake|rear.?light|stop/i.test(m.name);
+      const lamp = /tail|brake|rear.?light|stop|emissive_rear/i.test(m.name);
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(m.color[0], m.color[1], m.color[2]).multiplyScalar(/carbon/i.test(m.name) ? 0.28 : 1), map: m.map, roughness: glassy ? 0.05 : Math.max(0.2, m.roughness), metalness: glassy ? 0.9 : Math.min(0.8, m.metallic),
         envMap: envMap(), envMapIntensity: glassy ? 1.5 : 0.9, side: m.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
@@ -289,13 +289,104 @@ function buildModelCar(model: CarModel, color: number, look: { glow?: number; fl
     const isWheel = name.startsWith('wheel_');
     const mats: THREE.Material | THREE.Material[] = model.modern ? part.materials.map(material) : isWheel ? tyre : (legacy[name] ?? legacy.carbon);
     const m = new THREE.Mesh(part.geometry, mats);
+    m.name = name;
     if (isWheel) { m.position.set(...part.at); wheels.push(m); } else if (!body || name === 'paint' || name === 'body') body = m;
     group.add(m);
   }
-  // headlight glow strips on the nose so the lights read at night
-  for (const sx of [-1, 1]) { const h = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.05, 0.12), head); h.position.set(sx * 0.62, 0.5, -2.34); h.rotation.y = sx * 0.4; group.add(h); }
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 2.2, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: look.flame ?? 0x66ccff, transparent: true, opacity: 0.85 }));
-  flame.position.set(0, 0.42, 3.6); flame.visible = false; group.add(flame);
+  // Fit lighting accents to the imported model's real bounds instead of assuming every car has the same proportions.
+  const bounds = new THREE.Box3().setFromObject(body ?? group);
+  const size = new THREE.Vector3(); bounds.getSize(size);
+  const min = bounds.min, max = bounds.max;
+  const width = Math.max(1.55, Math.min(2.35, size.x));
+  const length = Math.max(4.2, Math.min(5.3, size.z));
+  const height = Math.max(1.0, size.y);
+  // Slim headlamp accents are placed just inside the nose; their emissive material remains readable at night.
+  for (const sx of [-1, 1]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(width * 0.19, Math.max(0.035, height * 0.035), 0.055), head);
+    h.position.set(sx * width * 0.29, min.y + height * 0.43, min.z + 0.08);
+    h.rotation.y = sx * 0.16; h.name = `apex_headlamp_${sx}`; group.add(h);
+  }
+  // Add functional-looking aftermarket aero as the body-kit tier rises. These pieces are separate meshes,
+  // so the supplied GLB body, paint, wheels and textures remain untouched.
+  const carbon = new THREE.MeshStandardMaterial({ color: 0x10141b, metalness: 0.72, roughness: 0.28, envMap: envMap(), envMapIntensity: 1.0 });
+  const accent = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.72), metalness: 0.62, roughness: 0.22, envMap: envMap(), envMapIntensity: 0.8 });
+  const brakeMaterial = std(0x4b080d, { emissive: 0xff1027, emissiveIntensity: 0.8, metalness: 0.05, roughness: 0.28 });
+  const addBox = (name: string, geometry: THREE.BufferGeometry, x: number, y: number, z: number, material: THREE.Material = carbon) => {
+    const part = new THREE.Mesh(geometry, material); part.name = name; part.position.set(x, y, z); part.castShadow = false; part.receiveShadow = false; group.add(part); return part;
+  };
+  // Model-specific finishing details: hood heat extractors, side gills and visible brake hardware.
+  // They are sized from the imported bounds so they remain proportional across the supplied cars.
+  const ventMaterial = new THREE.MeshStandardMaterial({ color: 0x080b10, metalness: 0.58, roughness: 0.34 });
+  const ventAccent = new THREE.MeshStandardMaterial({ color: 0x9ba8b8, metalness: 0.82, roughness: 0.24 });
+  const ventY = min.y + height * 0.43;
+  const ventZ = min.z + length * 0.31;
+  for (const sx of [-1, 1]) {
+    const hoodVent = addBox(`apex_hood_vent_${sx}`, new THREE.BoxGeometry(width * 0.055, 0.018, length * 0.17), sx * width * 0.17, ventY, ventZ, ventMaterial);
+    hoodVent.rotation.x = -0.025;
+    for (let i = 0; i < 3; i++) {
+      addBox(`apex_hood_vent_slats_${sx}_${i}`, new THREE.BoxGeometry(width * 0.05, 0.009, 0.018), sx * width * 0.17, ventY + 0.012, ventZ - length * 0.055 + i * length * 0.055, ventAccent);
+    }
+    const sideVent = addBox(`apex_side_gill_${sx}`, new THREE.BoxGeometry(0.025, height * 0.075, length * 0.11), sx * width * 0.478, min.y + height * 0.35, min.z + length * 0.55, ventMaterial);
+    sideVent.rotation.y = sx * 0.08;
+    for (let i = 0; i < 2; i++) {
+      const gill = addBox(`apex_side_gill_slat_${sx}_${i}`, new THREE.BoxGeometry(0.03, 0.012, length * 0.075), sx * width * 0.482, min.y + height * (0.33 + i * 0.035), min.z + length * 0.55, ventAccent);
+      gill.rotation.y = sx * 0.08;
+    }
+  }
+  // Add rotor/caliper details only when a model exposes named wheel meshes. The parts sit slightly inboard
+  // of the wheel face so the rim remains visible and the extra geometry stays inexpensive on mobile.
+  const rotorMaterial = new THREE.MeshStandardMaterial({ color: 0x737b85, metalness: 0.92, roughness: 0.31 });
+  const caliperMaterial = new THREE.MeshStandardMaterial({ color: carId === 'cts' || carId === 'gt3' ? 0xff3b30 : 0xe2b34b, metalness: 0.48, roughness: 0.3 });
+  const wheelParts = Object.entries(model.parts).filter(([name]) => name.startsWith('wheel_'));
+  for (const [wheelName, wheelPart] of wheelParts) {
+    const [wx, wy, wz] = wheelPart.at;
+    const side = wx >= 0 ? 1 : -1;
+    const radius = Math.max(0.24, Math.min(0.43, height * 0.19));
+    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, 0.025, 16).rotateZ(Math.PI / 2), rotorMaterial);
+    rotor.name = `apex_brake_rotor_${wheelName}`;
+    rotor.position.set(wx - side * 0.055, wy, wz);
+    group.add(rotor);
+    const caliper = addBox(`apex_brake_caliper_${wheelName}`, new THREE.BoxGeometry(0.055, radius * 0.58, radius * 0.34), wx - side * 0.075, wy + radius * 0.13, wz + radius * 0.48, caliperMaterial);
+    caliper.rotation.x = -0.08;
+  }
+  // A thin rear LED bar provides consistent brake-light feedback even on models with dark baked lamp textures.
+  const rearBar = addBox('apex_rear_light_bar', new THREE.BoxGeometry(width * 0.48, Math.max(0.035, height * 0.035), 0.035), 0, min.y + height * 0.34, max.z - 0.025, brakeMaterial);
+  rearBar.renderOrder = 2;
+  tail = brakeMaterial;
+  // Polished exhaust tips add a readable metallic detail at chase-camera distance.
+  const exhaust = new THREE.MeshStandardMaterial({ color: 0x777e88, metalness: 0.92, roughness: 0.2, envMap: envMap(), envMapIntensity: 1.2 });
+  for (const sx of [-1, 1]) {
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.13, 10, 1, true).rotateX(Math.PI / 2), exhaust);
+    tip.name = `apex_exhaust_${sx}`; tip.position.set(sx * width * 0.16, min.y + height * 0.12, max.z + 0.025); group.add(tip);
+  }
+  const kit = Math.max(0, Math.min(3, Math.round(tier)));
+  if (kit >= 1) {
+    // Front splitter and two side skirts give the car a lower, wider track stance.
+    addBox('apex_aero_front_splitter', new THREE.BoxGeometry(width * 0.94, 0.055, 0.28), 0, min.y + height * 0.105, min.z + 0.16);
+    for (const sx of [-1, 1]) addBox(`apex_aero_side_skirt_${sx}`, new THREE.BoxGeometry(0.075, 0.095, length * 0.48), sx * width * 0.465, min.y + height * 0.12, (min.z + max.z) * 0.5);
+  }
+  if (kit >= 2) {
+    // Rear diffuser with three fins and subtle front canards.
+    addBox('apex_aero_rear_diffuser', new THREE.BoxGeometry(width * 0.68, 0.07, 0.25), 0, min.y + height * 0.11, max.z - 0.12);
+    for (const sx of [-1, 0, 1]) addBox(`apex_aero_diffuser_fin_${sx}`, new THREE.BoxGeometry(0.035, 0.095, 0.24), sx * width * 0.19, min.y + height * 0.13, max.z - 0.12);
+    for (const sx of [-1, 1]) {
+      const canard = addBox(`apex_aero_canard_${sx}`, new THREE.BoxGeometry(0.22, 0.035, 0.12), sx * width * 0.42, min.y + height * 0.22, min.z + 0.27, accent);
+      canard.rotation.y = sx * 0.22;
+    }
+  }
+  if (kit >= 3) {
+    // A compact GT-style rear wing is reserved for the sleek road-car models; the CTS and GT3 already have race aero.
+    if (carId === 'chiron' || carId === 'one1') {
+      const wingY = min.y + height * 0.64, wingZ = max.z - 0.36;
+      for (const sx of [-1, 1]) addBox(`apex_aero_wing_support_${sx}`, new THREE.BoxGeometry(0.055, height * 0.18, 0.07), sx * width * 0.27, wingY - height * 0.09, wingZ);
+      const wing = addBox('apex_aero_rear_wing', new THREE.BoxGeometry(width * 0.82, 0.055, 0.23), 0, wingY + height * 0.02, wingZ - 0.035);
+      wing.rotation.x = -0.035;
+    }
+    // Fine colour line along the splitter gives high-tier builds a distinctive finish without changing the paint texture.
+    addBox('apex_aero_front_accent', new THREE.BoxGeometry(width * 0.72, 0.018, 0.025), 0, min.y + height * 0.12, min.z + 0.025, accent);
+  }
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: look.flame ?? 0x66ccff, transparent: true, opacity: 0.85 }));
+  flame.position.set(0, min.y + height * 0.19, max.z + 0.42); flame.visible = false; group.add(flame);
   if (look.glow) { // underglow: a soft coloured pool of light under the car
     const g = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 6.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: look.glow, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
     g.position.y = 0.04; group.add(g);
@@ -312,12 +403,12 @@ export interface CarLook { glow?: number; flame?: number }
 /** The player's car: the chosen real 3D model when its file is loaded, otherwise the built-in luxury car. */
 export function makeHeroCar(color: number, tier = 2, carId = 'hero', look: CarLook = {}): CarParts {
   const m = MODELS.byId[carId] ?? MODELS.hero;
-  return m ? buildModelCar(m, color, look) : buildLuxuryCar(color, tier);
+  return m ? buildModelCar(m, color, look, tier, carId) : buildLuxuryCar(color, tier);
 }
 /** A rival's car: a lighter version of a model (fewer triangles, as there are five of them). */
 export function makeRivalCar(color: number, modelId = 'rival'): CarParts {
   const m = MODELS.byId[modelId] ?? MODELS.rival ?? MODELS.hero;
-  return m ? buildModelCar(m, color) : buildLuxuryCar(color, 1);
+  return m ? buildModelCar(m, color, {}, 0, modelId) : buildLuxuryCar(color, 1);
 }
 
 /** A plainer car for the traffic: shorter and taller than the hero car. */
@@ -385,7 +476,7 @@ export class ApexScene {
   private others = new Map<number, CarParts>();
   private live = new Map<number, { obj: THREE.Object3D; ent: Entity }>();
   private dashes: THREE.Mesh[] = [];
-  private sides: Array<{ g: THREE.Group; building: THREE.Mesh; crown: THREE.Mesh; trunk: THREE.Mesh; lamp: THREE.Group; slot: number }> = [];
+  private sides: Array<{ g: THREE.Group; building: THREE.Mesh; crown: THREE.Mesh; trunk: THREE.Mesh; lamp: THREE.Group; sign: THREE.Group; slot: number }> = [];
   private ground!: THREE.Mesh;
   private sun!: THREE.DirectionalLight;
   private hemi!: THREE.HemisphereLight;
@@ -396,6 +487,12 @@ export class ApexScene {
   private theme: Theme;
   private trafficCache = new Map<string, THREE.Object3D>();
   private wheelSpin = 0;
+  /** Camera-mounted interior pieces: visible only in cockpit mode, so this adds no world-space physics. */
+  private cockpit!: THREE.Group;
+  private cockpitWheel!: THREE.Group;
+  private cockpitNeedle!: THREE.Group;
+  private cockpitSpeedBars: THREE.Mesh[] = [];
+  private cockpitDisplay!: THREE.MeshBasicMaterial;
   cameraMode: CameraMode = 'chase';
   private carId = 'hero';
   private look: CarLook = {};
@@ -406,7 +503,71 @@ export class ApexScene {
     this.carId = car; this.look = look;
     this.buildPath();
     this.build(tier, color);
+    this.buildCockpit();
     this.applyTheme();
+  }
+
+  /** A lightweight, camera-mounted cockpit gives first-person mode a visible dashboard and steering wheel.
+   * These meshes are deliberately simple and unlit to stay readable on mobile GPUs.
+   */
+  private buildCockpit() {
+    const group = new THREE.Group();
+    group.name = 'cockpit-interior';
+    const dashMat = new THREE.MeshStandardMaterial({ color: 0x111722, roughness: 0.82, metalness: 0.18 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x353f50, roughness: 0.42, metalness: 0.65 });
+    const screenMat = new THREE.MeshBasicMaterial({ color: 0x39e6ff });
+    this.cockpitDisplay = screenMat;
+
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.24, 0.32), dashMat);
+    dash.position.set(0, -0.88, -1.58);
+    group.add(dash);
+
+    const binnacle = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.18), trimMat);
+    binnacle.position.set(0, -0.69, -1.52);
+    group.add(binnacle);
+
+    const display = new THREE.Mesh(new THREE.PlaneGeometry(0.23, 0.075), screenMat);
+    display.position.set(0, -0.685, -1.414);
+    group.add(display);
+
+    // A compact analogue speed dial and a five-segment boost/engine bar make the cockpit react to the race.
+    const gaugeRing = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.009, 6, 24), trimMat);
+    gaugeRing.position.set(-0.43, -0.79, -1.365);
+    group.add(gaugeRing);
+    const needlePivot = new THREE.Group();
+    needlePivot.position.set(-0.43, -0.79, -1.345);
+    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.012), new THREE.MeshBasicMaterial({ color: 0xff5d55 }));
+    needle.position.y = 0.042;
+    needlePivot.add(needle);
+    group.add(needlePivot);
+    this.cockpitNeedle = needlePivot;
+    for (let i = 0; i < 5; i++) {
+      const barMat = new THREE.MeshBasicMaterial({ color: 0x253849 });
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.018, 0.012), barMat);
+      bar.position.set(0.31 + i * 0.055, -0.79, -1.365);
+      group.add(bar);
+      this.cockpitSpeedBars.push(bar);
+    }
+
+    const steeringWheel = new THREE.Group();
+    steeringWheel.position.set(0, -0.56, -1.38);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.027, 8, 28), trimMat);
+    steeringWheel.add(wheel);
+
+    // Three spokes make the wheel read as a steering wheel instead of a floating ring.
+    const spokeA = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.19, 0.025), trimMat);
+    steeringWheel.add(spokeA);
+    const spokeB = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.025, 0.025), trimMat);
+    spokeB.position.set(0, -0.03, 0);
+    steeringWheel.add(spokeB);
+    group.add(steeringWheel);
+
+    // Camera-attached meshes must be reachable from the scene graph to be rendered by Three.js.
+    this.scene.add(this.camera);
+    this.camera.add(group);
+    this.cockpit = group;
+    this.cockpitWheel = steeringWheel;
+    group.visible = false;
   }
 
   private build(tier: number, color: number) {
@@ -462,8 +623,26 @@ export class ApexScene {
         const arm = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 0.1), lampPoleM); arm.position.set(-sx * 0.9, 7, 0); lamp.add(arm);
         const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), new THREE.MeshBasicMaterial({ color: 0xfff2c0 })); bulb.position.set(-sx * 1.7, 6.92, 0); bulb.name = 'bulb'; lamp.add(bulb);
         g.add(lamp);
+        // High-contrast corner boards give the player an early visual cue before a bend.
+        // They are part of the recycled roadside slot, so they add no per-frame allocations.
+        const sign = new THREE.Group();
+        const signPole = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.09), lampPoleM);
+        signPole.position.y = 1.05;
+        sign.add(signPole);
+        const signPlate = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.78, 0.12), new THREE.MeshBasicMaterial({ color: 0x101827 }));
+        signPlate.position.y = 2.0;
+        sign.add(signPlate);
+        const chevronMat = new THREE.MeshBasicMaterial({ color: 0x48dfff });
+        for (let ci = 0; ci < 2; ci++) {
+          const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.04), chevronMat);
+          arrow.position.set((ci - 0.5) * 0.38, 2.0, 0.09);
+          arrow.rotation.z = -Math.PI / 4;
+          sign.add(arrow);
+        }
+        sign.position.set(sx * (ROAD_HALF + 2.1), 0, 0);
+        g.add(sign);
         this.scene.add(g);
-        this.sides.push({ g, building, crown, trunk, lamp, slot: -9999 });
+        this.sides.push({ g, building, crown, trunk, lamp, sign, slot: -9999 });
         (g as any).userData.sx = sx;
       }
     }
@@ -630,13 +809,28 @@ export class ApexScene {
     // hero car
     const hero = this.hero;
     hero.group.visible = this.cameraMode !== 'cockpit'; // inside the car you do not see your own roof
+    this.cockpit.visible = this.cameraMode === 'cockpit';
+    // Wheel input is mirrored into the interior so the first-person view responds to steering.
+    this.cockpitWheel.rotation.z = -f.steer * 0.72;
+    const speedRatio = Math.max(0, Math.min(1, f.speed / 65));
+    this.cockpitNeedle.rotation.z = -1.12 + speedRatio * 2.24;
+    this.cockpitSpeedBars.forEach((bar, i) => {
+      const active = i < Math.ceil(speedRatio * this.cockpitSpeedBars.length);
+      const material = bar.material as THREE.MeshBasicMaterial;
+      material.color.setHex(active ? (f.nitroOn ? 0xff9b38 : 0x39e6ff) : 0x253849);
+    });
+    this.cockpitDisplay.color.setHex(f.nitroOn ? 0xffa33c : f.braking ? 0xff5d55 : 0x39e6ff);
     hero.group.rotation.order = 'YXZ';
     this.put(hero.group, player.x, player.z, -f.steer * 0.14);
     hero.group.rotation.z = -f.steer * 0.045 * Math.min(1, f.speed / 30);
     hero.group.rotation.x = f.braking ? -0.035 : f.nitroOn ? 0.03 : 0; // nose dips under braking, lifts on nitro
     hero.group.position.y = f.flash > 0 ? 0.06 * Math.sin(f.t * 60) : 0;
     this.wheelSpin += f.speed * 0.033 / 0.36;
-    hero.wheels.forEach((w) => { w.rotation.x = -this.wheelSpin; });
+    hero.wheels.forEach((w) => {
+      w.rotation.x = -this.wheelSpin;
+      // The front wheel meshes steer as well as rolling, which makes the high-detail models feel planted in turns.
+      w.rotation.y = w.name.startsWith('wheel_f') ? -f.steer * 0.34 : 0;
+    });
     hero.tail.emissiveIntensity = f.braking ? 3 : 0.7;
     hero.flame.visible = f.nitroOn; if (f.nitroOn) hero.flame.scale.set(1, 1, 0.8 + 0.4 * Math.abs(Math.sin(f.t * 40)));
     hero.paint.emissive.setHex(f.flash > 0 ? 0x661111 : 0x000000);
@@ -718,6 +912,10 @@ export class ApexScene {
           s.trunk.position.set(x, 3, 0); s.crown.position.set(x, 7, 0); s.crown.scale.setScalar(0.8 + hash(hs * 5 + 7) * 0.6);
         }
         s.lamp.position.set(sx * (ROAD_HALF + 1.4), 0, slotLen * 0.5);
+        const bend = Math.abs(curvatureAt(this.world, slot * slotLen + slotLen * 0.5));
+        s.sign.visible = bend > 0.0018 && clear > 14 && hash(hs * 11 + (sx > 0 ? 4 : 9)) > 0.22;
+        s.sign.rotation.y = sx > 0 ? Math.PI : 0;
+        s.sign.position.z = slotLen * 0.5;
       }
       this.put(s.g, 0, slot * slotLen);
     }
@@ -743,8 +941,41 @@ export class ApexScene {
       this.at(player.x * 0.9, player.z + 16, look, 1.2);
     }
     cam.lookAt(look);
+    // Small body roll adds speed feedback without moving the simulation or making the camera hard to read.
+    if (this.cameraMode === 'chase') cam.rotateZ(-f.steer * Math.min(0.035, f.speed * 0.0008));
+    else cam.rotateZ(-f.steer * 0.018);
     cam.updateProjectionMatrix();
   }
 
-  dispose() { this.scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); }
+  /** Release GPU resources when a race screen is unmounted. Materials and textures can be
+   * referenced by many meshes, so each resource is disposed at most once. The environment
+   * cube map and module-level wheel/glass materials are shared with previews and other scenes.
+   */
+  dispose() {
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    const sharedMaterials = new Set<THREE.Material>([TYRE_M, RIM_M, GLASS_M]);
+    const sharedGeometries = new Set<THREE.BufferGeometry>([WHEEL_G, RIM_G]);
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) geometries.add(m.geometry);
+      const list = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const material of list) {
+        if (sharedMaterials.has(material)) continue;
+        materials.add(material);
+        const values = material as THREE.Material & { [key: string]: unknown };
+        for (const value of Object.values(values)) {
+          if (value && typeof value === 'object' && (value as THREE.Texture).isTexture) {
+            const texture = value as THREE.Texture;
+            if (texture !== ENV) textures.add(texture);
+          }
+        }
+      }
+    });
+    geometries.forEach((geometry) => { if (!sharedGeometries.has(geometry)) geometry.dispose(); });
+    materials.forEach((material) => material.dispose());
+    textures.forEach((texture) => texture.dispose());
+    this.scene.clear();
+  }
 }

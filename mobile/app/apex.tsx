@@ -1,6 +1,6 @@
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { adDue, preloadInterstitial, showInterstitial } from '../src/ads';
 import { Race, RaceResult } from '../src/apex/Race';
@@ -10,6 +10,7 @@ import { loadCarModel } from '../src/apex/model';
 import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_SECOND, TRACKS, CIRCUIT_TRACK, LAP_CHOICES, trackInfo } from '../src/apex/sim';
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
+import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
@@ -22,18 +23,20 @@ const PAINTS = [
 type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends';
 const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : String(n));
 const fmt = (ticks: number) => (ticks ? `${Math.floor(ticks / TICKS_PER_SECOND / 60)}:${((ticks / TICKS_PER_SECOND) % 60).toFixed(1).padStart(4, '0')}` : 'DNF');
-const rewardFor = (r: RaceResult) => (r.ticks > 0 ? 120 : 40) + ([0, 300, 200, 120, 80, 60, 40][r.rank] ?? 30);
+const careerRankForXP = driverRankForXP;
 
 export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, upgrades: {}, track: 'circuit', laps: 3 });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3 });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [notice, setNotice] = useState('');
+  const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
+  const processedRaceKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
   useEffect(() => {
@@ -53,10 +56,28 @@ export default function Apex() {
   const time = ['Day', 'Day', 'Sunset', 'Night'][(level - 1) % 4 === 0 ? 0 : (level - 1) % 4];
 
   const done = (r: RaceResult) => {
+    const raceKey = `${r.track}:${r.seed}`;
+    // Race completion can arrive after a GL context reset; never grant the same result twice.
+    if (processedRaceKeysRef.current.has(raceKey) || (settings.processedRaceKeys ?? []).includes(raceKey)) return;
+    processedRaceKeysRef.current.add(raceKey);
     setResult(r);
-    const reward = rewardFor(r);
+    const recordKey = `${r.track}:${r.track === 'circuit' ? r.laps : 1}`;
+    const rewards = calculateCareerRewards(r, Number(settings.bestLaps?.[recordKey] ?? 0));
+    const reward = rewards.base + rewards.placement + rewards.clean + rewards.record;
     const nextUnlocked = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
-    update({ coins: settings.coins + reward, completedRaces: settings.completedRaces + 1, unlocked: nextUnlocked });
+    const bestLaps = { ...(settings.bestLaps ?? {}) };
+    if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
+    setLastReward({ base: rewards.base, placement: rewards.placement, clean: rewards.clean, record: rewards.record, xp: rewards.xp, isRecord: rewards.isRecord });
+    update({
+      coins: settings.coins + reward,
+      careerXP: (settings.careerXP ?? 0) + rewards.xp,
+      completedRaces: settings.completedRaces + 1,
+      podiums: (settings.podiums ?? 0) + (r.rank <= 3 ? 1 : 0),
+      cleanRaces: (settings.cleanRaces ?? 0) + (rewards.clean ? 1 : 0),
+      bestLaps,
+      processedRaceKeys: [...(settings.processedRaceKeys ?? []), raceKey].slice(-250),
+      unlocked: nextUnlocked,
+    });
     if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
     setPhase('result');
     sfx(r.rank === 1 ? 'win' : r.rank <= 3 ? 'complete' : 'lose');
@@ -83,7 +104,7 @@ export default function Apex() {
     setNotice(`${UPGRADE_INFO[UPGRADE_KINDS[kind]].label} upgraded to level ${next}!`); sfx('complete');
   };
 
-  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={settings.laps} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={settings.paint} upgrades={levelsOf(settings.activeCar)} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={settings.laps} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={settings.paint} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -95,9 +116,11 @@ export default function Apex() {
           <Dim>{trackInfo(result.track)?.name ?? 'Road'}{result.track === 'circuit' ? ` · ${result.laps} laps` : ''} · Level {result.level} · {fmt(result.ticks)}{result.bestLap > 0 ? ` · best lap ${fmt(Math.round(result.bestLap * 30))}` : ''} · {result.hits} collision{result.hits === 1 ? '' : 's'}</Dim>
           <Card style={{ marginTop: 16, borderColor: '#28578b', backgroundColor: '#101b34', gap: 10 }}>
             <Dim>RACE REWARD</Dim>
-            <Text style={{ color: colors.gold, fontWeight: '900', fontSize: 34 }}>+{rewardFor(result)} COINS</Text>
+            <Text style={{ color: colors.gold, fontWeight: '900', fontSize: 34 }}>+{lastReward.base + lastReward.placement + lastReward.clean + lastReward.record} COINS</Text>
+            {[['Finish reward', lastReward.base], ['Position bonus', lastReward.placement], ['Clean race bonus', lastReward.clean], ['Track record bonus', lastReward.record]].map(([label, amount]) => <View key={String(label)} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Dim>{String(label)}</Dim><Text style={{ color: Number(amount) > 0 ? colors.good : colors.dim, fontWeight: '800' }}>{Number(amount) > 0 ? `+${amount}` : '—'}</Text></View>)}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}><Dim>Career XP earned</Dim><Text style={{ color: colors.x, fontWeight: '900' }}>+{lastReward.xp} XP</Text></View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Dim>Wallet balance</Dim><Coins amount={settings.coins} /></View>
-            <Dim>{result.rank <= 3 ? 'Top-three finish: career progression advanced.' : 'Keep racing to earn more coins and unlock the next level.'}</Dim>
+            <Dim>{lastReward.isRecord ? 'NEW TRACK RECORD! Your best lap has been saved.' : result.rank <= 3 ? 'Podium finish: career progression advanced.' : 'Keep racing to earn more coins and unlock the next level.'}</Dim>
           </Card>
           <Card style={{ marginTop: 12, gap: 10 }}>
             <Body style={{ fontWeight: '900' }}>FINAL STANDINGS</Body>
@@ -142,7 +165,7 @@ export default function Apex() {
 
       <View style={{ borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#28578b' }}>
         {car.ready
-          ? <CarPreview key={`g-${car.id}-${settings.paint}-${lv.join('')}`} color={settings.paint} carId={car.id} upgrades={lv} height={230} />
+          ? <CarPreview key={`g-${car.id}-${settings.paint}-${settings.bodyTier}-${lv.join('')}`} color={settings.paint} carId={car.id} upgrades={lv} tier={settings.bodyTier} height={230} />
           : <View style={{ height: 230, alignItems: 'center', justifyContent: 'center', backgroundColor: '#101a31' }}><Text style={{ fontSize: 46 }}>🛠️</Text><Dim>3D model arriving soon</Dim></View>}
         <Pressable onPress={() => step(-1)} style={{ position: 'absolute', left: 6, top: 90, padding: 10, borderRadius: 20, backgroundColor: 'rgba(10,14,30,.6)' }}><Text style={{ color: '#fff', fontSize: 22 }}>‹</Text></Pressable>
         <Pressable onPress={() => step(1)} style={{ position: 'absolute', right: 6, top: 90, padding: 10, borderRadius: 20, backgroundColor: 'rgba(10,14,30,.6)' }}><Text style={{ color: '#fff', fontSize: 22 }}>›</Text></Pressable>
@@ -269,24 +292,29 @@ export default function Apex() {
 
         {panel === 'customize' ? <>
           <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>WORKSHOP</Text><H1>Customize</H1><Dim>Choose a paint colour. It is saved and used in the race.</Dim>
-          <View style={{ marginTop: 14, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#28578b' }}><CarPreview key={`custom-${settings.activeCar}-${settings.paint}`} color={settings.paint} carId={settings.activeCar} upgrades={levelsOf(settings.activeCar)} height={220} /></View>
+          <View style={{ marginTop: 14, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#28578b' }}><CarPreview key={`custom-${settings.activeCar}-${settings.paint}-${settings.bodyTier}`} color={settings.paint} carId={settings.activeCar} upgrades={levelsOf(settings.activeCar)} tier={settings.bodyTier} height={220} /></View>
           <Card style={{ marginTop: 10, alignItems: 'center', gap: 8, paddingVertical: 14, borderColor: '#28578b', backgroundColor: '#101b34' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}>{selectedCar.name}</Text><View style={{ width: 88, height: 8, borderRadius: 4, backgroundColor: `#${settings.paint.toString(16).padStart(6, '0')}`, borderWidth: 1, borderColor: '#fff' }} /><Text style={{ color: colors.dim, fontSize: 11 }}>ACTIVE PAINT PREVIEW</Text></Card>
           <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: 18, marginBottom: 8 }}>PAINT FINISH</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{PAINTS.map((p) => <Pressable key={p.name} onPress={() => update({ paint: p.hex })} style={{ width: '30%', flexGrow: 1, padding: 10, alignItems: 'center', borderRadius: 14, backgroundColor: settings.paint === p.hex ? '#1b3766' : colors.card, borderWidth: 1, borderColor: settings.paint === p.hex ? '#5eaaff' : colors.line }}><View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `#${p.hex.toString(16).padStart(6, '0')}`, borderWidth: 1, borderColor: '#aab5cf' }} /><Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', marginTop: 7 }}>{p.name}</Text>{settings.paint === p.hex ? <Text style={{ color: colors.x, fontSize: 9, marginTop: 3 }}>SELECTED</Text> : null}</Pressable>)}</View>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: 20, marginBottom: 8 }}>BODY STYLE</Text><Dim>The paint applies to the body panels of the car you drive. Pick which car to drive in the Garage.</Dim>
+          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17, marginTop: 20, marginBottom: 8 }}>BODY KIT</Text>
+          <Dim>Choose a body kit. Each tier adds visible aerodynamic parts to the 3D preview and your race car.</Dim>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            {[{ tier: 0, title: 'STREET', sub: 'Stock body' }, { tier: 1, title: 'SPORT', sub: 'Splitter + skirts' }, { tier: 2, title: 'GT', sub: 'Diffuser + canards' }, { tier: 3, title: 'FLAGSHIP', sub: 'Accent + aero wing' }].map((kit) => <Pressable key={kit.tier} onPress={() => update({ bodyTier: kit.tier })} style={{ flex: 1, padding: 9, borderRadius: 12, backgroundColor: settings.bodyTier === kit.tier ? '#1b3766' : colors.card, borderWidth: 1, borderColor: settings.bodyTier === kit.tier ? '#5eaaff' : colors.line, alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 10 }}>{kit.title}</Text><Text style={{ color: colors.dim, fontSize: 9, textAlign: 'center', marginTop: 4 }}>{kit.sub}</Text>{settings.bodyTier === kit.tier ? <Text style={{ color: colors.x, fontSize: 9, marginTop: 4 }}>ACTIVE</Text> : null}</Pressable>)}
+          </View>
           <Button title="BACK TO GARAGE" kind="ghost" onPress={() => setPanel('garage')} style={{ marginTop: 18 }} />
         </> : null}
 
         {panel === 'career' ? <>
-          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CAREER MODE</Text><H1>Race progression</H1><Dim>Complete a level in the top three to unlock the next event. Each completed race earns coins.</Dim>
-          <Card style={{ marginTop: 14, gap: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: '#fff', fontWeight: '900' }}>LEVEL {level}</Text><Text style={{ color: colors.x, fontWeight: '900' }}>{settings.unlocked}/{MAX_LEVEL} OPEN</Text></View><Text style={{ color: '#fff', fontSize: 25, fontWeight: '900' }}>{time} CIRCUIT</Text><Dim>{Math.round(spec.length)} m · Traffic: {traffic}</Dim><Button title={`RACE LEVEL ${level}`} onPress={() => startRace(level)} style={{ marginTop: 8 }} /></Card>
+          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CAREER MODE</Text><H1>Race progression</H1><Dim>Complete a level in the top three to unlock the next event. Clean driving and new lap records now earn extra coins and career XP.</Dim>
+          <Card style={{ marginTop: 14, gap: 8, borderColor: '#28578b', backgroundColor: '#101b34' }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: '#fff', fontWeight: '900' }}>DRIVER RANK {careerRankForXP(settings.careerXP ?? 0)}</Text><Text style={{ color: colors.x, fontWeight: '900' }}>{(settings.careerXP ?? 0).toLocaleString()} XP</Text></View><View style={{ height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' }}><View style={{ height: 8, width: `${xpIntoRank(settings.careerXP ?? 0) / 5}%`, backgroundColor: '#3ddc97' }} /></View><Dim>{500 - xpIntoRank(settings.careerXP ?? 0)} XP to Driver Rank {careerRankForXP(settings.careerXP ?? 0) + 1}</Dim><View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}><Dim>Podiums</Dim><Body>{settings.podiums ?? 0}</Body><Dim>Clean races</Dim><Body>{settings.cleanRaces ?? 0}</Body></View></Card>
+          <Card style={{ marginTop: 10, gap: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: '#fff', fontWeight: '900' }}>LEVEL {level}</Text><Text style={{ color: colors.x, fontWeight: '900' }}>{settings.unlocked}/{MAX_LEVEL} OPEN</Text></View><Text style={{ color: '#fff', fontSize: 25, fontWeight: '900' }}>{time} CIRCUIT</Text><Dim>{Math.round(spec.length)} m · Traffic: {traffic}</Dim><Button title={`RACE LEVEL ${level}`} onPress={() => startRace(level)} style={{ marginTop: 8 }} /></Card>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>{Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).map((n) => <Chip key={n} label={`${n}`} selected={n === level} disabled={n > settings.unlocked} onPress={() => setLevel(n)} />)}</View>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}><Button title="PREVIOUS" kind="ghost" disabled={level <= 1} onPress={() => setLevel((l) => Math.max(1, l - 1))} style={{ flex: 1 }} /><Button title="NEXT OPEN" disabled={level >= settings.unlocked} onPress={() => setLevel((l) => Math.min(settings.unlocked, l + 1))} style={{ flex: 1 }} /></View>
         </> : null}
 
         {panel === 'friends' ? <>
-          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>MULTIPLAYER / PHASE 2</Text><H1>Play with friends</H1><Dim>Friends-first private rooms are part of the agreed scope. The uploaded mobile package contains the client app, but no multiplayer server implementation was supplied with it.</Dim>
-          <Card style={{ marginTop: 14, gap: 10, borderColor: '#4e45a8', backgroundColor: '#111833' }}><Text style={{ fontSize: 38 }}>👥</Text><Text style={{ color: '#fff', fontSize: 20, fontWeight: '900' }}>Private race rooms</Text><Dim>Planned: create a room, share a code, invite friends, ready up, race together, and view synchronized results.</Dim><Text style={{ color: colors.gold, fontWeight: '900' }}>SERVER REQUIRED</Text><Dim>We need the backend repository or its API/socket contracts before this screen can honestly create real online rooms. I have not added fake matchmaking or simulated online players.</Dim></Card>
-          <Card style={{ marginTop: 10, gap: 8 }}><Text style={{ color: '#fff', fontWeight: '900' }}>READY FOR THE NEXT BUILD STAGE</Text><Dim>The client already includes socket.io-client. The next dependency is confirming the server's authentication, room events, race synchronization and result validation.</Dim></Card>
+          <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>MULTIPLAYER / INTEGRATION PENDING</Text><H1>Play with friends</H1><Dim>The project backend has general-purpose private game rooms, but Apex racing is not registered as a supported online game yet. The lobby and driving-state protocol must be added together before online races can be enabled.</Dim>
+          <Card style={{ marginTop: 14, gap: 10, borderColor: '#4e45a8', backgroundColor: '#111833' }}><Text style={{ fontSize: 38 }}>👥</Text><Text style={{ color: '#fff', fontSize: 20, fontWeight: '900' }}>Private race rooms</Text><Dim>Planned: create a room, share a code, invite friends, ready up, race together, and view synchronized results.</Dim><Text style={{ color: colors.gold, fontWeight: '900' }}>SERVER REQUIRED</Text><Dim>The existing room endpoints currently support board/puzzle games only. This screen intentionally does not pretend local AI cars are online players.</Dim></Card>
+          <Card style={{ marginTop: 10, gap: 8 }}><Text style={{ color: '#fff', fontWeight: '900' }}>READY FOR THE NEXT BUILD STAGE</Text><Dim>The client already includes socket.io-client. Next required backend work: add an Apex room type, synchronize fixed-tick race inputs/state, validate finishes server-side, and recover safely after disconnects.</Dim></Card>
           <Button title="BACK HOME" kind="ghost" onPress={() => setPanel('home')} style={{ marginTop: 14 }} />
         </> : null}
 

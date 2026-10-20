@@ -31,7 +31,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, onDone, onFlip }: { level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -53,6 +53,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
   }, [wide]);
   const glRef = useRef<any>(null);
   const viewRef = useRef<ApexScene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
   const car = carStats(carId, upgrades);
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
@@ -60,6 +61,17 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
   const finished = useRef(false);
   const [hud, setHud] = useState({ dots: [] as Array<{ z: number; color: string; r: number }>, banner: '', lap: 1, laps: 1, lapLen: 0, best: 0, count: 3, speed: 0, rank: 1, ahead: '', gap: 0, progress: 0, nitro: 1, time: 0, hits: 0, rivals: [] as number[], over: false });
   const onDoneRef = useRef(onDone); onDoneRef.current = onDone;
+
+  // A GL context can be recreated after navigation or a device/context reset. Release the old
+  // scene and renderer first, and release them again when the race screen unmounts.
+  useEffect(() => () => {
+    alive.current = false;
+    viewRef.current?.dispose();
+    viewRef.current = null;
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+    engineStop();
+  }, []);
   const pathRef = useRef<TrackPath | null>(null);
 
   useEffect(() => {
@@ -82,11 +94,16 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
   }, [tilt, invert]);
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
+    viewRef.current?.dispose();
+    rendererRef.current?.dispose();
+    viewRef.current = null;
+    rendererRef.current = null;
     glRef.current = gl;
     await Promise.all([loadCarModel(carId), ...RIVAL_MODELS.map((m) => loadCarModel(m))]); // the real 3D cars (the built-in ones are used if a file cannot be read)
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     const canvas: any = { width: w, height: h, style: {}, addEventListener: () => undefined, removeEventListener: () => undefined, clientWidth: w, clientHeight: h, getContext: () => gl };
     const renderer = new THREE.WebGLRenderer({ canvas, context: gl as any, antialias: false });
+    rendererRef.current = renderer;
     renderer.setPixelRatio(1);
     renderer.setSize(w, h, false);
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; // a richer, more filmic picture
@@ -95,7 +112,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     const world = makeWorld(seed, level, track, laps);
     pathRef.current = trackPath(world);
     setHud((s) => ({ ...s, laps: world.laps, lapLen: world.lapLength }));
-    const view = new ApexScene(world, carId, 2, paint, lookFor(upgrades));
+    const view = new ApexScene(world, carId, bodyTier, paint, lookFor(upgrades));
     view.setCameraMode(cameraMode); viewRef.current = view;
     view.resize(w, h);
     resizeRef.current = (nw, nh) => { renderer.setSize(nw, nh, false); view.resize(nw, nh); };
@@ -133,7 +150,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       // let the others finish at full speed so the table has real times
       for (let i = me.tick; i < MAX_RACE_TICKS; i++) {
         let open = false;
-        for (const x of rivals) if (x.r.finishedAt === 0) { step(world, car, x.r, drive(world, car, x.r, x.d)); open = true; }
+        for (const x of rivals) if (x.r.finishedAt === 0) { step(world, car, x.r, drive(world, car, x.r, x.d, [...rivals.filter((other) => other !== x).map((other) => other.r), me])); open = true; }
         if (!open) break;
       }
       const table: Standing[] = [{ name: 'You', ticks: me.finishedAt, you: true }, ...rivals.map((x) => ({ name: x.name, ticks: x.r.finishedAt, you: false }))];
@@ -152,7 +169,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       inputs.push(packInput(input));
       mePrev = snap(me);
       step(world, car, me, input);
-      for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d)); }
+      for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d, [...rivals.filter((other) => other !== x).map((other) => other.r), me])); }
       collideRacers([me, ...rivals.map((x) => x.r)]);
       if (world.lapLength && me.finishedAt === 0) { // lap by lap
         const lap = Math.floor(me.z / world.lapLength);
@@ -174,7 +191,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
         countLeft -= dt;
         const shown = Math.ceil(countLeft);
         if (shown < lastBeep && shown >= 1) { lastBeep = shown; sfx('beep'); setHud((s) => ({ ...s, count: shown })); }
-        if (countLeft <= 0) { phase = 'go'; tiltRef.current.base = tiltRef.current.raw; tiltRef.current.calibrated = true; sfx('go'); engineStart(); setHud((s) => ({ ...s, count: 0 })); }
+        if (countLeft <= 0) { phase = 'go'; tiltRef.current.base = tiltRef.current.raw; tiltRef.current.calibrated = true; sfx('go'); engineStart(carId); setHud((s) => ({ ...s, count: 0 })); }
       } else if (phase === 'go' || phase === 'done') {
         acc += dt;
         let guard = 0;

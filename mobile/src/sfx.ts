@@ -25,6 +25,7 @@ const FILES = {
   engine: require('../assets/sfx/engine.wav'),
   blowoff: require('../assets/sfx/blowoff.wav'),
   pop: require('../assets/sfx/pop.wav'),
+  shift: require('../assets/sfx/shift.wav'),
 };
 export type Sound = keyof typeof FILES;
 
@@ -46,7 +47,7 @@ export async function setSoundOn(on: boolean) {
 
 /** Play a short effect and buzz. Never throws: a missing audio device must not break a game. */
 /** Sounds that play many times a second must not buzz the phone each time. */
-const QUIET: Sound[] = ['drop', 'tap', 'pour', 'dice_roll', 'beep', 'go', 'nitro', 'engine', 'blowoff', 'pop'];
+const QUIET: Sound[] = ['drop', 'tap', 'pour', 'dice_roll', 'beep', 'go', 'nitro', 'engine', 'blowoff', 'pop', 'shift'];
 
 export function sfx(name: Sound) {
   if (!enabled) return;
@@ -74,7 +75,16 @@ const ENGINE_AT = [1500, 3000, 4800, 7000]; // the revs each engine loop was rec
 type Loop = keyof typeof LOOP_FILES;
 const loops: Partial<Record<Loop, AudioPlayer>> = {};
 const TOPS = [0, 14, 25, 36, 47, 58, 95]; // top speed of each gear, in m/s
-const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false };
+type EngineProfile = { idle: number; redline: number; launch: number; pitch: number; volume: number };
+const ENGINE_PROFILES: Record<string, EngineProfile> = {
+  cts: { idle: 1050, redline: 6500, launch: 5000, pitch: 0.92, volume: 0.94 },
+  gt3: { idle: 1550, redline: 7900, launch: 6100, pitch: 1.04, volume: 0.9 },
+  one1: { idle: 1350, redline: 8500, launch: 6500, pitch: 1.1, volume: 0.88 },
+  chiron: { idle: 950, redline: 6800, launch: 5400, pitch: 0.98, volume: 1 },
+  mansory: { idle: 1050, redline: 7200, launch: 5800, pitch: 1.02, volume: 1 },
+};
+const DEFAULT_PROFILE: EngineProfile = { idle: 1200, redline: 7600, launch: 5600, pitch: 1, volume: 0.95 };
+const box = { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: 0, rGear: 1, rShift: 0, rRpm: 1500, live: false, profile: DEFAULT_PROFILE };
 
 function loopOf(name: Loop): AudioPlayer {
   let p = loops[name];
@@ -97,16 +107,18 @@ function rpmOf(speed: number, thr: number, dt: number, rival = false): number {
   let g = 1; while (g < 6 && speed > TOPS[g]) g++;
   const gear = rival ? box.rGear : box.gear;
   if (g !== gear) { if (g > gear) { if (rival) box.rShift = 0.13; else box.shift = 0.13; } if (rival) box.rGear = g; else box.gear = g; }
-  let target = 1800 + Math.min(1, speed / TOPS[g]) * 6400;
-  if (thr < 0.3) target -= 500;
-  if (speed < 3 && thr > 0.5) target = 5600; // revving on the line
+  const profile = rival ? DEFAULT_PROFILE : box.profile;
+  let target = profile.idle + Math.min(1, speed / TOPS[g]) * (profile.redline - profile.idle);
+  if (thr < 0.3) target -= 420;
+  if (speed < 3 && thr > 0.5) target = profile.launch; // controlled launch revs
   const cur = rival ? box.rRpm : box.rpm, next = cur + (target - cur) * Math.min(1, dt * (thr > 0.5 ? 9 : 4));
   if (rival) { box.rRpm = next; box.rShift = Math.max(0, box.rShift - dt); } else { box.rpm = next; box.shift = Math.max(0, box.shift - dt); }
   return Math.max(1200, next);
 }
 
-export function engineStart() {
+export function engineStart(carId = 'gt3') {
   if (!enabled) return;
+  box.profile = ENGINE_PROFILES[carId] ?? DEFAULT_PROFILE;
   try {
     (Object.keys(LOOP_FILES) as Loop[]).forEach((n) => { const p = loopOf(n); void p.seekTo(0); p.play(); });
     Object.assign(box, { gear: 1, shift: 0, rpm: 1500, lastThr: 1, last: Date.now(), rGear: 1, rShift: 0, rRpm: 1500, live: true });
@@ -123,18 +135,26 @@ export function engineUpdate(i: EngineIn) {
   if (!box.live || !enabled) return;
   const now = Date.now(), dt = Math.min(0.25, Math.max(0.01, (now - box.last) / 1000)); box.last = now;
   const thr = i.braking ? 0 : 1;
-  const rpm = rpmOf(i.speed, thr, dt), cut = box.shift > 0 ? 0.35 : 1;
-  const base = (0.42 + 0.3 * thr) * cut;
-  ENGINE_AT.forEach((at, j) => { // two neighbouring loops blend as the revs climb, each stretched a little to match
-    const next = ENGINE_AT[j + 1], prev = ENGINE_AT[j - 1];
-    const w = rpm >= at ? (next ? Math.max(0, 1 - (rpm - at) / (next - at)) : 1) : (prev ? Math.max(0, 1 - (at - rpm) / (at - prev)) : 1);
-    setLoop(`e${j + 1}` as Loop, base * w, rpm / at);
+  const previousGear = box.gear;
+  const rpm = rpmOf(i.speed, thr, dt), cut = box.shift > 0 ? 0.32 : 1;
+  if (box.gear > previousGear) sfx('shift');
+  const base = (0.38 + 0.34 * thr) * cut * box.profile.volume;
+  // Continuous two-sample crossfade: neighboring RPM loops sum to one, preventing loudness jumps at blend points.
+  let lower = 0, upper = 0, mix = 0;
+  if (rpm <= ENGINE_AT[0]) { lower = upper = 0; }
+  else if (rpm >= ENGINE_AT[ENGINE_AT.length - 1]) { lower = upper = ENGINE_AT.length - 1; }
+  else {
+    for (let j = 0; j < ENGINE_AT.length - 1; j++) if (rpm >= ENGINE_AT[j] && rpm <= ENGINE_AT[j + 1]) { lower = j; upper = j + 1; mix = (rpm - ENGINE_AT[j]) / (ENGINE_AT[j + 1] - ENGINE_AT[j]); break; }
+  }
+  ENGINE_AT.forEach((at, j) => {
+    const w = lower === upper ? (j === lower ? 1 : 0) : (j === lower ? 1 - mix : j === upper ? mix : 0);
+    setLoop(`e${j + 1}` as Loop, base * w, (rpm / at) * box.profile.pitch);
   });
   const k = Math.min(1, i.speed / 90);
-  setLoop('wind', 0.03 + k * k * 0.55, 0.8 + k * 0.5);
+  setLoop('wind', 0.025 + k * k * 0.46, 0.82 + k * 0.42);
   setLoop('squeal', i.speed > 14 ? Math.max(0, Math.min(1, (i.slip - 4.5) / 9)) * 0.32 : 0, 0.9 + Math.min(0.5, i.slip * 0.03));
   setLoop('whoosh', i.boost ? 0.4 : 0);
-  if (box.lastThr > 0.6 && thr < 0.4 && i.speed > 30) { sfx('blowoff'); setTimeout(() => sfx('pop'), 90); setTimeout(() => sfx('pop'), 210); }
+  if (box.lastThr > 0.6 && thr < 0.4 && i.speed > 30) { sfx('blowoff'); setTimeout(() => sfx('pop'), 100); }
   box.lastThr = thr;
   if (i.rival && i.rival.dist < 90) {
     const dop = 1 + Math.max(-0.18, Math.min(0.18, i.rival.closing / 343 * 3));

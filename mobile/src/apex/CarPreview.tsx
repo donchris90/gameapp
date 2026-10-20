@@ -33,9 +33,9 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
     scene.add(new THREE.HemisphereLight(0xd8e8ff, 0x15172c, 2.1));
     const key = new THREE.DirectionalLight(0xffffff, 3.0); key.position.set(4, 8, 5); scene.add(key);
     const rim = new THREE.PointLight(0x398bff, 12, 20); rim.position.set(-5, 3, -4); scene.add(rim);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshStandardMaterial({ color: 0x121a2d, metalness: 0.4, roughness: 0.55 }));
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshStandardMaterial({ color: 0x121a2d, metalness: 0.4, roughness: 0.55 })); floor.name = '__preview_floor';
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.04; scene.add(floor);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.025, 8, 80), new THREE.MeshBasicMaterial({ color: 0x328cff, transparent: true, opacity: 0.85 }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.025, 8, 80), new THREE.MeshBasicMaterial({ color: 0x328cff, transparent: true, opacity: 0.85 })); ring.name = '__preview_ring';
     ring.rotation.x = Math.PI / 2; ring.position.y = 0.005; scene.add(ring);
     const car = makeHeroCar(color, tier, carId, lookFor(upgrades));
     car.group.rotation.y = Math.PI;
@@ -56,6 +56,17 @@ export function CarPreview({ color, carId = 'cts', upgrades = [], tier = 2, heig
 
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    // The preview's floor/ring are private to this scene. Do not dispose car materials here:
+    // car meshes may use module-level shared materials also used by the live race renderer.
+    const scene = sceneRef.current;
+    scene?.traverse((object) => {
+      if (object.name === '__preview_floor' || object.name === '__preview_ring') {
+        const mesh = object as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+        mats.forEach((material) => material.dispose());
+      }
+    });
     rendererRef.current?.dispose();
     rendererRef.current = null; glRef.current = null; sceneRef.current = null; cameraRef.current = null; carRef.current = null;
   }, []);

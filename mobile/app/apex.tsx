@@ -13,30 +13,34 @@ import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_S
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
+import { AFRICA_STORY, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, storyMissionComplete } from '../src/apex/story';
+import { LagosDrive } from '../src/apex/LagosDrive';
+import { AfricaScene } from '../src/apex/AfricaScene';
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
-type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends';
+type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends' | 'story';
 const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : String(n));
 const fmt = (ticks: number) => (ticks ? `${Math.floor(ticks / TICKS_PER_SECOND / 60)}:${((ticks / TICKS_PER_SECOND) % 60).toFixed(1).padStart(4, '0')}` : 'DNF');
 const careerRankForXP = driverRankForXP;
 
 export default function Apex() {
   const router = useRouter();
-  const [phase, setPhase] = useState<'menu' | 'race' | 'result'>('menu');
+  const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [notice, setNotice] = useState('');
+  const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
   useEffect(() => {
-    void ScreenOrientation.lockAsync(phase === 'race' ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+    void ScreenOrientation.lockAsync((phase === 'race' || phase === 'drive' || phase === 'africa') ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
   }, [phase]);
   useEffect(() => () => { void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined); }, []);
 
@@ -63,6 +67,9 @@ export default function Apex() {
     const recordKey = `${r.track}:${r.laps}`;
     const rewards = calculateCareerRewards(r, Number(settings.bestLaps?.[recordKey] ?? 0));
     const reward = rewards.base + rewards.placement + rewards.clean + rewards.record;
+    const activeMission = STORY_MISSIONS.find((mission) => mission.id === activeStoryMissionId);
+    const storyWon = Boolean(activeMission && !settings.storyCompleted.includes(activeMission.id) && storyMissionComplete(activeMission, r, settings.completedRaces + 1));
+    const storyCompleted = storyWon ? [...settings.storyCompleted, activeMission!.id] : settings.storyCompleted;
     const nextUnlocked = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
     const bestLaps = { ...(settings.bestLaps ?? {}) };
     if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
@@ -76,14 +83,26 @@ export default function Apex() {
       bestLaps,
       processedRaceKeys: [...(settings.processedRaceKeys ?? []), raceKey].slice(-250),
       unlocked: nextUnlocked,
+      storyCompleted,
     });
-    if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
+    if (storyWon) setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}`);
+    else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) setNotice(`Mission not complete yet: ${activeMission.objective}`);
+    else if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
     setPhase('result');
     sfx(r.rank === 1 ? 'win' : r.rank <= 3 ? 'complete' : 'lose');
     void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); });
   };
 
   const startRace = (nextLevel = level) => { setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
+  const startStoryMission = (missionId: string) => {
+    const mission = STORY_MISSIONS.find((item) => item.id === missionId);
+    if (!mission || settings.storyCompleted.includes(mission.id)) return;
+    if (mission.level > settings.unlocked) { setNotice(mission.lockedHint ?? `Reach career level ${mission.level} first.`); return; }
+    setActiveStoryMissionId(mission.id);
+    update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
+    setNotice('');
+    startRace(mission.level);
+  };
   const unlockCar = (id: string) => {
     const car = catalogCar(id);
     if (!car.ready) { setNotice(`${car.name}: the 3D model is still on its way.`); return; }
@@ -111,6 +130,9 @@ export default function Apex() {
     <Dim style={{ fontSize: 11 }}>{onCircuit ? 'LAPS' : 'ROUNDS'}</Dim>
     {roundChoices.map((n) => <Pressable key={n} onPress={() => update(onCircuit ? { laps: n } : { roadLaps: n })} style={{ paddingVertical: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: roundsNow === n ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: roundsNow === n ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{n}</Text></Pressable>)}
   </View>;
+  if (phase === 'drive') return <LagosDrive carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); }} />;
+  if (phase === 'africa') return <AfricaScene carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); }} />;
+
   if (phase === 'race') return <Race key={run} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
@@ -135,10 +157,10 @@ export default function Apex() {
           </Card>
           {notice ? <Text style={{ color: colors.good, marginTop: 12, fontWeight: '800' }}>{notice}</Text> : null}
           <View style={{ gap: 10, marginTop: 18 }}>
-            {next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => startRace(level + 1)} /> : null}
+            {next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { setActiveStoryMissionId(null); startRace(level + 1); }} /> : null}
             <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startRace(level)} />
-            <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setPhase('menu'); setPanel('garage'); }} />
-            <Button title="HOME" kind="ghost" onPress={() => { setPhase('menu'); setPanel('home'); }} />
+            <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('garage'); }} />
+            <Button title="HOME" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('home'); }} />
           </View>
         </ScrollView>
       </Screen>
@@ -301,7 +323,7 @@ export default function Apex() {
           </View>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', marginTop: 20, marginBottom: 10 }}>QUICK ACCESS</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {[{ p: 'tracks' as Panel, i: '🛣️', t: 'Tracks', d: 'Pick where you race' }, { p: 'garage' as Panel, i: '🚘', t: 'My Garage', d: 'Choose your car' }, { p: 'customize' as Panel, i: '🔧', t: 'Customize', d: 'Make it yours' }, { p: 'career' as Panel, i: '🏆', t: 'Career', d: '60 race levels' }, { p: 'friends' as Panel, i: '👥', t: 'Play with Friends', d: 'Private rooms' }].map((x) => <Pressable key={x.p} onPress={() => { setPanel(x.p); setNotice(''); }} style={{ width: '48%', flexGrow: 1 }}><Card style={{ gap: 6, minHeight: 105, borderColor: x.p === 'friends' ? '#4e45a8' : colors.line }}><Text style={{ fontSize: 23 }}>{x.i}</Text><Text style={{ color: '#fff', fontWeight: '900' }}>{x.t}</Text><Dim style={{ fontSize: 11 }}>{x.d}</Dim></Card></Pressable>)}
+            {[{ p: 'tracks' as Panel, i: '🛣️', t: 'Tracks', d: 'Pick where you race' }, { p: 'garage' as Panel, i: '🚘', t: 'My Garage', d: 'Choose your car' }, { p: 'customize' as Panel, i: '🔧', t: 'Customize', d: 'Make it yours' }, { p: 'career' as Panel, i: '🏆', t: 'Career', d: '60 race levels' }, { p: 'story' as Panel, i: '📖', t: 'Story Mode', d: 'The Lagos origin chapter' }, { p: 'friends' as Panel, i: '👥', t: 'Play with Friends', d: 'Private rooms' }].map((x) => <Pressable key={x.p} onPress={() => { setPanel(x.p); setNotice(''); }} style={{ width: '48%', flexGrow: 1 }}><Card style={{ gap: 6, minHeight: 105, borderColor: x.p === 'friends' ? '#4e45a8' : colors.line }}><Text style={{ fontSize: 23 }}>{x.i}</Text><Text style={{ color: '#fff', fontWeight: '900' }}>{x.t}</Text><Dim style={{ fontSize: 11 }}>{x.d}</Dim></Card></Pressable>)}
           </View>
           <Card style={{ marginTop: 12, gap: 7 }}><Text style={{ color: '#fff', fontWeight: '900' }}>DAILY DRIVER BRIEFING</Text><Dim>Earn coins by finishing races. Place in the top three to unlock the next career level. Use your winnings to expand your garage.</Dim><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Dim>Next race</Dim><Text style={{ color: colors.x, fontWeight: '900' }}>LEVEL {level} · {time.toUpperCase()}</Text></View></Card>
         </> : null}
@@ -318,6 +340,70 @@ export default function Apex() {
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}><Button title="PREVIOUS" kind="ghost" disabled={level <= 1} onPress={() => setLevel((l) => Math.max(1, l - 1))} style={{ flex: 1 }} /><Button title="NEXT OPEN" disabled={level >= settings.unlocked} onPress={() => setLevel((l) => Math.min(settings.unlocked, l + 1))} style={{ flex: 1 }} /></View>
         </> : null}
 
+        {panel === 'story' ? (() => {
+          const completed = settings.storyCompleted ?? [];
+          const current = currentStoryMission(completed);
+          const lagosProgress = chapterProgress(completed, 'lagos');
+          const africaProgress = chapterProgress(completed, 'africa');
+          const africaDriveCompleted = (settings.africaRegionsCompleted ?? []).length;
+          const africaCampaignComplete = africaProgress.complete && africaDriveCompleted === 10;
+          const renderMission = (mission: (typeof STORY_MISSIONS)[number], index: number, chapterUnlocked: boolean) => {
+            const complete = completed.includes(mission.id);
+            const isCurrent = current?.id === mission.id;
+            const lockedByProgress = !complete && !isCurrent;
+            const lockedByChapter = !chapterUnlocked;
+            const lockedByLevel = isCurrent && mission.level > settings.unlocked;
+            const locked = lockedByChapter || lockedByLevel;
+            return <Card key={mission.id} style={{ gap: 8, borderColor: isCurrent ? '#5eaaff' : complete ? '#236b63' : colors.line, backgroundColor: isCurrent ? '#12254a' : colors.card, opacity: lockedByProgress || lockedByChapter ? 0.62 : 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#145044' : '#1b2a4a' }}><Text style={{ color: '#fff', fontWeight: '900' }}>{complete ? '✓' : String(index + 1).padStart(2, '0')}</Text></View>
+                <View style={{ flex: 1, gap: 3 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text></View>
+              </View>
+              {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => startStoryMission(mission.id)} /> : null}
+            </Card>;
+          };
+          return <>
+            <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>APEX RUN / CAREER STORY</Text>
+            <H1>From Lagos to Africa</H1>
+            <Dim>Build your name from local street races to the continent’s biggest championship. Story races use the existing race engine, career rewards, car upgrades and saved mission progress. The Africa Tour contains ten regional driving environments with sequential destination unlocks, distinct waypoint routes, regional bonus objectives, a Cup standings table, one-time first-clear rewards, and saved best times and points. These are compact procedural environments, not full-scale city reconstructions; bespoke cinematic scenes remain a later production task.</Dim>
+            <Card style={{ marginTop: 14, gap: 9, borderColor: '#28578b', backgroundColor: '#101b34' }}>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>NEW · LAGOS FREE DRIVE</Text>
+              <Dim>Explore the playable Lagos district prototype with connected roads, landmarks, touch driving controls and waypoint objectives.</Dim>
+              <Button title="ENTER LAGOS DISTRICT  →" onPress={() => { setNotice(''); setPhase('drive'); }} />
+            </Card>
+            <Card style={{ marginTop: 10, gap: 9, borderColor: lagosProgress.complete ? '#2e8a7d' : colors.line, backgroundColor: '#101b34' }}>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>AFRICA TOUR · 10 DESTINATIONS</Text>
+              <Dim>Drive through ten regional environments, earn one-time completion rewards, improve personal bests, and collect Africa Cup points: gold 3, silver 2, bronze 1. Each region has a bonus driving objective worth up to 100 extra coins on its first clear. Cup points and regional results are saved with your career; open the Cup Table in the scene to compare standings.</Dim>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Dim>Regional drive challenges</Dim><Text style={{ color: colors.good, fontWeight: '900', fontSize: 11 }}>{(settings.africaRegionsCompleted ?? []).length}/10 COMPLETE · {Object.values(settings.africaChampionshipPoints ?? {}).reduce((sum, n) => sum + n, 0)} CUP PTS</Text></View>
+              <View style={{ height: 5, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${((settings.africaRegionsCompleted ?? []).length / 10) * 100}%`, backgroundColor: '#3ddc97' }} /></View>
+              {lagosProgress.complete ? <Button title="ENTER AFRICA TOUR  →" onPress={() => { setNotice(''); setPhase('africa'); }} /> : <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '900' }}>LOCKED · COMPLETE ALL FIVE LAGOS MISSIONS</Text>}
+            </Card>
+            <Card style={{ marginTop: 14, gap: 9, borderColor: africaProgress.complete ? '#236b63' : '#28578b', backgroundColor: '#101b34' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900' }}>CAMPAIGN STATUS</Text><Text style={{ color: colors.x, fontWeight: '900' }}>{lagosProgress.completed + africaProgress.completed}/{lagosProgress.total + africaProgress.total}</Text></View>
+              <View style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 7, width: `${(lagosProgress.completed + africaProgress.completed) / (lagosProgress.total + africaProgress.total) * 100}%`, backgroundColor: '#3ddc97' }} /></View>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>{current ? current.title : africaCampaignComplete ? 'Africa Campaign Complete' : 'Africa Story Complete · Regional Tour Remaining'}</Text>
+              <Dim>{current ? current.briefing : africaCampaignComplete ? 'You have won the African Championship and completed all ten regional driving challenges. Your next story destination is Europe.' : `You have won the African Championship. Complete the remaining regional drive challenges (${africaDriveCompleted}/10) to finish the Africa milestone.`}</Dim>
+            </Card>
+            <View style={{ gap: 10, marginTop: 12 }}>
+              <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHAPTER 1 · NIGERIA</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>Born in Lagos</Text><Text style={{ color: lagosProgress.complete ? colors.good : colors.dim, fontWeight: '900', fontSize: 12 }}>{lagosProgress.completed}/{lagosProgress.total}</Text></View>
+              <View style={{ height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${lagosProgress.completed / lagosProgress.total * 100}%`, backgroundColor: '#3ddc97' }} /></View>
+              {LAGOS_STORY.map((mission, index) => renderMission(mission, index, true))}
+            </View>
+            <View style={{ gap: 10, marginTop: 18 }}>
+              <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHAPTER 2 · THE CONTINENTAL TOUR</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>The Road Across Africa</Text><Text style={{ color: africaProgress.complete ? colors.good : colors.dim, fontWeight: '900', fontSize: 12 }}>{africaProgress.completed}/{africaProgress.total}</Text></View>
+              <Dim>Ghana · Côte d’Ivoire · Senegal · Kenya · Egypt · Morocco · Namibia · South Africa · Zambia / Zimbabwe</Dim>
+              <View style={{ height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${africaProgress.completed / africaProgress.total * 100}%`, backgroundColor: '#3ddc97' }} /></View>
+              {!lagosProgress.complete ? <Card style={{ gap: 6, borderColor: colors.line }}><Text style={{ color: '#fff', fontWeight: '900' }}>AFRICA TOUR LOCKED</Text><Dim>Finish all five Lagos missions to earn your invitation to the continental tour.</Dim></Card> : null}
+              {AFRICA_STORY.map((mission, index) => renderMission(mission, index, lagosProgress.complete))}
+              {africaProgress.complete && !africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#b98237', backgroundColor: '#2b2115' }}><Text style={{ color: colors.gold, fontWeight: '900', fontSize: 16 }}>AFRICAN CHAMPIONSHIP WON</Text><Dim>All eleven story races are complete. Finish all ten regional driving challenges above to complete the full Africa milestone.</Dim></Card> : null}
+              {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All eleven African story events and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
+            </View>
+            <Button title="BACK HOME" kind="ghost" onPress={() => setPanel('home')} style={{ marginTop: 14 }} />
+          </>;
+        })() : null}
+
         {panel === 'friends' ? <>
           <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>MULTIPLAYER / INTEGRATION PENDING</Text><H1>Play with friends</H1><Dim>The project backend has general-purpose private game rooms, but Apex racing is not registered as a supported online game yet. The lobby and driving-state protocol must be added together before online races can be enabled.</Dim>
           <Card style={{ marginTop: 14, gap: 10, borderColor: '#4e45a8', backgroundColor: '#111833' }}><Text style={{ fontSize: 38 }}>👥</Text><Text style={{ color: '#fff', fontSize: 20, fontWeight: '900' }}>Private race rooms</Text><Dim>Planned: create a room, share a code, invite friends, ready up, race together, and view synchronized results.</Dim><Text style={{ color: colors.gold, fontWeight: '900' }}>SERVER REQUIRED</Text><Dim>The existing room endpoints currently support board/puzzle games only. This screen intentionally does not pretend local AI cars are online players.</Dim></Card>
@@ -326,7 +412,7 @@ export default function Apex() {
         </> : null}
 
         {notice ? <Pressable onPress={() => setNotice('')} style={{ marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: '#102a2a', borderWidth: 1, borderColor: '#236b63' }}><Text style={{ color: '#b7ffea', fontWeight: '800' }}>{notice}  ×</Text></Pressable> : null}
-        <View style={{ flexDirection: 'row', gap: 3, marginTop: 18, padding: 5, borderRadius: 16, backgroundColor: '#0e1529', borderWidth: 1, borderColor: colors.line }}>{nav('home', 'HOME', '⌂')}{nav('garage', 'GARAGE', '🚘')}{nav('customize', 'TUNE', '⚙')}{nav('career', 'CAREER', '🏆')}{nav('friends', 'FRIENDS', '♧')}</View>
+        <View style={{ flexDirection: 'row', gap: 3, marginTop: 18, padding: 5, borderRadius: 16, backgroundColor: '#0e1529', borderWidth: 1, borderColor: colors.line }}>{nav('home', 'HOME', '⌂')}{nav('garage', 'GARAGE', '🚘')}{nav('customize', 'TUNE', '⚙')}{nav('career', 'CAREER', '🏆')}{nav('story', 'STORY', '📖')}{nav('friends', 'FRIENDS', '♧')}</View>
         <Text style={{ color: '#56668d', textAlign: 'center', fontSize: 9, letterSpacing: 2, marginTop: 14 }}>APEX RUN · DRIVE YOUR VISION</Text>
       </ScrollView>
     </Screen>

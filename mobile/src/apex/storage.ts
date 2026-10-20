@@ -23,6 +23,11 @@ export interface ApexSettings {
   autoGas: boolean; // the throttle is held for you (on by default); off shows a GAS pedal
   quality: number; // 0 Low, 1 Medium, 2 High
   styles: Record<string, CarStyle>; // per car: how it looks (finish, colours, rims, tint, lights, ride height); saved under its own key
+  storyCompleted: string[]; // completed Chapter 1 story missions; defaults safely for existing saves
+  lagosDriveRewardClaimed: boolean; // the free-drive completion reward is a one-time claim
+  africaRegionsCompleted: string[]; // completed regional free-drive tours; rewards are one-time
+  africaBestTimes: Record<string, number>; // best elapsed seconds for each regional drive
+  africaChampionshipPoints: Record<string, number>; // best medal points earned per regional event, 1-3
 }
 const KEY = 'apex.settings';
 const STYLE_KEY = 'apex.styles'; // kept apart so a growing wardrobe never pushes the main settings over the secure store's size limit
@@ -31,7 +36,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {},
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {},
 };
 
 export async function loadApex(): Promise<ApexSettings> {
@@ -60,6 +65,11 @@ export async function loadApex(): Promise<ApexSettings> {
       cleanRaces: Number.isFinite(saved.cleanRaces) ? Math.max(0, Math.floor(saved.cleanRaces)) : DEFAULTS.cleanRaces,
       bestLaps: saved.bestLaps && typeof saved.bestLaps === 'object' && !Array.isArray(saved.bestLaps) ? saved.bestLaps : DEFAULTS.bestLaps,
       processedRaceKeys: Array.isArray(saved.processedRaceKeys) ? saved.processedRaceKeys.filter((x: unknown) => typeof x === 'string').slice(-250) : [],
+      storyCompleted: Array.isArray(saved.storyCompleted) ? Array.from(new Set(saved.storyCompleted.filter((x: unknown) => typeof x === 'string'))) : [],
+      lagosDriveRewardClaimed: typeof saved.lagosDriveRewardClaimed === 'boolean' ? saved.lagosDriveRewardClaimed : false,
+      africaRegionsCompleted: Array.isArray(saved.africaRegionsCompleted) ? Array.from(new Set(saved.africaRegionsCompleted.filter((x: unknown) => typeof x === 'string' && ['accra', 'abidjan', 'dakar', 'nairobi', 'cairo', 'atlas', 'namib', 'victoria', 'cape', 'johannesburg'].includes(x)))) : [],
+      africaBestTimes: saved.africaBestTimes && typeof saved.africaBestTimes === 'object' && !Array.isArray(saved.africaBestTimes) ? Object.fromEntries(Object.entries(saved.africaBestTimes).filter(([k, v]) => ['accra', 'abidjan', 'dakar', 'nairobi', 'cairo', 'atlas', 'namib', 'victoria', 'cape', 'johannesburg'].includes(k) && typeof v === 'number' && Number.isFinite(v) && v > 0)) : {},
+      africaChampionshipPoints: saved.africaChampionshipPoints && typeof saved.africaChampionshipPoints === 'object' && !Array.isArray(saved.africaChampionshipPoints) ? Object.fromEntries(Object.entries(saved.africaChampionshipPoints).filter(([k, v]) => ['accra', 'abidjan', 'dakar', 'nairobi', 'cairo', 'atlas', 'namib', 'victoria', 'cape', 'johannesburg'].includes(k) && typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 3).map(([k, v]) => [k, Math.floor(v as number)])) : {},
       styles: Object.fromEntries(KNOWN.filter((id) => savedStyles[id]).map((id) => [id, cleanStyle(savedStyles[id], Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint)])),
     };
   } catch { return DEFAULTS; }

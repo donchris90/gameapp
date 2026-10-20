@@ -117,7 +117,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     const id = await this.prisma.$transaction(async (tx) => {
       // Serialize solo starts per user; the old check-then-create sequence allowed
       // two simultaneous requests to create two active matches for one player.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'solo-match:' + userId}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'solo-match:' + userId}))`;
       const busy = await tx.matchPlayer.count({ where: { userId, leftAt: null, match: { status: 'ACTIVE' } } });
       if (busy > 0) throw appError(409, 'ALREADY_IN_MATCH', 'Finish your current game first');
       // Water Sort has levels: continue from the next unsolved one. A player may replay a lower level but not skip ahead.

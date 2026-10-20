@@ -57,4 +57,16 @@ write('nomoves', seq((0, tone(150, 0.18, 1, 6, 'square')), (0.22, tone(120, 0.3,
 write('capture', seq((0, tone(500, 0.1, 1, 14)), (0.07, tone(330, 0.22, 1, 9))))
 # new round banner
 write('round', seq((0, tone(523, 0.2, 1, 8)), (0.12, tone(659, 0.2, 1, 8)), (0.24, tone(784, 0.4, 1, 6))))
+# Apex Run: a crash (thud + crunch), countdown beep, go, nitro whoosh, and a looping engine hum
+write('crash', mix(tone(95, 0.35, 1, 9), noise(0.3, 0.9, 10), tone(220, 0.12, 0.5, 30, 'square')))
+write('beep', tone(660, 0.18, 1, 10))
+write('go', mix(tone(990, 0.45, 1, 5), tone(1320, 0.35, 0.5, 6)))
+whoosh = [(random.random() * 2 - 1) * (math.sin(math.pi * i / (R * 0.7)) ** 1.5) for i in range(int(R * 0.7))]
+write('nitro', whoosh)
+# engine: one second, whole number of cycles so it loops without a click
+eng = []
+for i in range(R):
+    t_ = i / R
+    eng.append(0.55 * math.sin(2 * math.pi * 55 * t_) + 0.3 * math.sin(2 * math.pi * 110 * t_) + 0.18 * math.sin(2 * math.pi * 165 * t_ + 0.7) + 0.08 * (random.random() * 2 - 1))
+write('engine', eng)
 print('done')

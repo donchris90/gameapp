@@ -204,3 +204,12 @@ All in `backend/src/social` (plus the friends list and the socket gateway).
 - **Ad frequency (admin):** the admin site has an **Ads** page where you set, per game, "show an ad after every Nth finished game" (1 = every game, 3 = every third, 0 = never; 0 to 20). Stored in the `AppSetting` table (`backend/src/settings`), changed with `GET/POST /admin/settings/ads` (audited as `SET_AD_POLICY`) and handed to the app in `GET /games` as `adEvery`. The app counts finished games per game kind on the phone and shows the ad when the count reaches the setting. Changes reach players within about 15 seconds of their next game ending. Needs the new migration `20261020000000_app_settings`.
 
 - **Banner:** a small AdMob banner sits at the bottom of the Play, Friends and Coins tabs (`mobile/src/AdBanner.tsx`), never on a game screen. Ids: `EXPO_PUBLIC_ADMOB_BANNER_ANDROID` and `EXPO_PUBLIC_ADMOB_BANNER_IOS`. In Expo Go, or when no ad loads, it takes no space.
+
+## Apex Run (racing game) – step 1: the race
+
+A 3D racing game (three.js on expo-gl). You race 5 computer drivers (random names) to a finish line through traffic: cars, motorbikes (level 3+), trucks (6+), buses (10+) and people crossing the road (2+). Crashes slow you down but never end the race. Steer by tilting the phone or with the ◀ ▶ buttons; ⚡ Nitro and ■ Brake. Finish in the top 3 to unlock the next level.
+
+- The rules live in `backend/src/games/apex/sim.ts` and `bot.ts` (deterministic, so the server can replay a race later to confirm a time). After editing them run `node scripts/sync-apex.mjs` to copy into `mobile/src/apex/`; a test fails if the copies differ.
+- Admin → Ads can set "ad after every Nth game" for Apex Run like the other games.
+- If tilt steers the wrong way on your phone, press **Flip tilt** on the Apex Run menu (it has a live test bar).
+- Coming next: online rooms and quick match (up to 6), stakes, garage/shop and boosts.

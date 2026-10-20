@@ -15,9 +15,9 @@ describe('Ad policy', () => {
 
   it('shows an ad after every game until an admin changes it, and the public games list carries the setting', async () => {
     const g = (await http().get('/games').expect(200)).body;
-    expect(g.adEvery).toEqual({ TICTACTOE: 1, WATER_SORT: 1, AYO: 1, LUDO: 1 });
+    expect(g.adEvery).toEqual({ TICTACTOE: 1, WATER_SORT: 1, AYO: 1, LUDO: 1, APEX_RUN: 1 });
     const set = (await http().post('/admin/settings/ads').set(bearer(admin)).send({ LUDO: 3, TICTACTOE: 0 }).expect(200)).body;
-    expect(set).toEqual({ TICTACTOE: 0, WATER_SORT: 1, AYO: 1, LUDO: 3 });
+    expect(set).toEqual({ TICTACTOE: 0, WATER_SORT: 1, AYO: 1, LUDO: 3, APEX_RUN: 1 });
     expect((await http().get('/admin/settings/ads').set(bearer(admin)).expect(200)).body).toEqual(set);
     expect((await http().get('/games').expect(200)).body.adEvery).toEqual(set);
     const audit = await prismaOf(app).auditLog.findFirst({ where: { action: 'SET_AD_POLICY' }, orderBy: { createdAt: 'desc' } });

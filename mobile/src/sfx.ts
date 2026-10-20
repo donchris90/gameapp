@@ -18,6 +18,11 @@ const FILES = {
   nomoves: require('../assets/sfx/nomoves.wav'),
   capture: require('../assets/sfx/capture.wav'),
   round: require('../assets/sfx/round.wav'),
+  crash: require('../assets/sfx/crash.wav'),
+  beep: require('../assets/sfx/beep.wav'),
+  go: require('../assets/sfx/go.wav'),
+  nitro: require('../assets/sfx/nitro.wav'),
+  engine: require('../assets/sfx/engine.wav'),
 };
 export type Sound = keyof typeof FILES;
 
@@ -39,7 +44,7 @@ export async function setSoundOn(on: boolean) {
 
 /** Play a short effect and buzz. Never throws: a missing audio device must not break a game. */
 /** Sounds that play many times a second must not buzz the phone each time. */
-const QUIET: Sound[] = ['drop', 'tap', 'pour', 'dice_roll'];
+const QUIET: Sound[] = ['drop', 'tap', 'pour', 'dice_roll', 'beep', 'go', 'nitro', 'engine'];
 
 export function sfx(name: Sound) {
   if (!enabled) return;
@@ -52,3 +57,18 @@ export function sfx(name: Sound) {
     else if (!QUIET.includes(name)) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   } catch { /* ignore */ }
 }
+
+/** The engine hum for Apex Run: loops, and pitch follows the speed. Safe to call in any state. */
+let engine: AudioPlayer | null = null;
+export function engineStart() {
+  if (!enabled) return;
+  try {
+    engine ??= createAudioPlayer(FILES.engine);
+    engine.loop = true; engine.volume = 0.5;
+    engine.play();
+  } catch { /* no audio */ }
+}
+export function engineSpeed(kmh: number) {
+  try { if (engine) (engine as any).playbackRate = 0.75 + Math.min(1.1, kmh / 220); } catch { /* not supported */ }
+}
+export function engineStop() { try { engine?.pause(); } catch { /* ignore */ } }

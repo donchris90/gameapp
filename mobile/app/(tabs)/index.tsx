@@ -111,6 +111,17 @@ export default function Home() {
           })}
         </View>
 
+        <Pressable onPress={() => router.push('/apex')} style={{ marginTop: 12 }}>
+          <View style={{ backgroundColor: '#B3202F', borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={{ fontSize: 34 }}>🏎️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900' }}>Apex Run</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.85)' }}>Race 5 rivals through traffic. Tilt to steer.</Text>
+            </View>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Race ›</Text>
+          </View>
+        </Pressable>
+
         <Body style={{ fontWeight: '800', marginTop: 22, marginBottom: 10 }}>Have a room code?</Body>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}><Field label="" value={code} onChangeText={(t) => setCode(t.toUpperCase())} maxLength={6} autoCapitalize="characters" placeholder="ABC123" /></View>

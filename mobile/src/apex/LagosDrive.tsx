@@ -32,6 +32,8 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const controls = useRef<Controls>({ left: false, right: false, gas: autoGas, brake: false, nitro: false });
   const motion = useRef({ x: 0, z: 0, heading: 0, speed: 0, distance: 0, checkpoints: 0 });
   const alive = useRef(true);
+  const glRef = useRef<any>(null);
+  const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const [hud, setHud] = useState({ speed: 0, checkpoints: 0, banner: 'DRIVE TO THE GLOWING WAYPOINTS', nearWorkshop: false, collision: false });
   const finished = hud.checkpoints >= CHECKPOINTS.length;
   const onContextCreate = useCallback((gl: ExpoWebGLRenderingContext) => {
@@ -43,7 +45,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
     renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8bb5d7); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(0x8bb5d7, 115 * qf, 310 * qf);
-    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500 * qf);
+    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500 * qf); glRef.current = gl; resizeRef.current = (nw, nh) => { if (nw < 1 || nh < 1) return; renderer.setSize(nw, nh, false); camera.aspect = nw / nh; camera.updateProjectionMatrix(); };
     scene.add(new THREE.HemisphereLight(0xdceeff, 0x48513d, 2.0));
     const sun = new THREE.DirectionalLight(0xffe0b0, 2.2); sun.position.set(-35, 70, 20); scene.add(sun);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshStandardMaterial({ color: 0x68784d, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08; scene.add(ground);
@@ -232,7 +234,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const btn = (key: keyof Controls, label: string, flex = 1, accent = false) => <Pressable key={key} {...hold(key)} style={({ pressed }) => [styles.btn, { flex }, accent && { borderColor: 'rgba(61,224,255,.6)' }, pressed && { backgroundColor: 'rgba(124,92,255,.8)' }]}><Text style={[styles.btnText, (key === 'left' || key === 'right') && { fontSize: 24 }]}>{label}</Text></Pressable>;
   const left = Math.max(insets.left, 14); const right = Math.max(insets.right, 14);
   return <View style={styles.root}>
-    <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+    <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} />
     <View pointerEvents="none" style={[styles.panel, { position: 'absolute', top: insets.top + 8, left, flexDirection: 'row', alignItems: 'flex-end', gap: 14, paddingHorizontal: 14, paddingVertical: 8 }]}>
       <View><Text style={styles.label}>SPEED</Text><Text style={styles.big}>{hud.speed}<Text style={styles.unit}> KM/H</Text></Text></View>
       <View><Text style={styles.label}>WAYPOINT</Text><Text style={styles.num}>{Math.min(hud.checkpoints + 1, 3)}/3</Text></View>

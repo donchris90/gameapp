@@ -157,6 +157,8 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
   const sceneRef = useRef<THREE.Scene | null>(null);
   const checkpointRingsRef = useRef<THREE.Mesh[]>([]);
   const alive = useRef(true);
+  const glRef = useRef<any>(null);
+  const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const modelToken = useRef(0);
   const controls = useRef<Controls>({ left: false, right: false, gas: false, brake: false, nitro: false });
   const motion = useRef({ x: 0, z: 4, heading: 0, speed: 0, checkpoints: 0, elapsed: 0 });
@@ -179,7 +181,7 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
     const renderer = makeRenderer(gl, canvas, { antialias: false });
     renderer.setPixelRatio(1); renderer.setSize(w, h, false); renderer.setClearColor(region.sky, 1); renderer.shadowMap.enabled = false; rendererRef.current = renderer;
     const scene = new THREE.Scene(); sceneRef.current = scene; scene.background = new THREE.Color(region.sky); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(region.sky, 125 * qf, 340 * qf);
-    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 650 * qf);
+    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 650 * qf); glRef.current = gl; resizeRef.current = (nw, nh) => { if (nw < 1 || nh < 1) return; renderer.setSize(nw, nh, false); camera.aspect = nw / nh; camera.updateProjectionMatrix(); };
     scene.add(new THREE.HemisphereLight(0xe6f3ff, region.ground, 2.0));
     const sun = new THREE.DirectionalLight(0xffe2bd, 2.15); sun.position.set(-35, 70, 25); scene.add(sun);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(650, 650), new THREE.MeshStandardMaterial({ color: region.ground, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.12; scene.add(ground);
@@ -381,7 +383,7 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
   const setControl = (key: keyof Controls, value: boolean) => { controls.current[key] = value; };
   const control = (label: string, key: keyof Controls, wide = false) => <Pressable key={key} onPressIn={() => setControl(key, true)} onPressOut={() => setControl(key, false)} style={[styles.control, wide && styles.wide]}><Text style={styles.controlText}>{label}</Text></Pressable>;
   return <View style={styles.root}>
-    <GLView key={regionId} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+    <GLView key={regionId} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} />
     <View style={styles.header}><View><Text style={styles.eyebrow}>APEX RUN · AFRICA TOUR</Text><Text style={styles.speed}>{hud.speed} <Text style={styles.unit}>KM/H</Text></Text><Text style={styles.timer}>TIME {hud.elapsed.toFixed(1)}s  ·  BEST {(bestTimes[regionId] ? bestTimes[regionId].toFixed(1) + 's' : '--')}</Text><Text style={styles.timer}>AFRICA CUP · {totalChampionshipPoints} PTS</Text>{hud.collision ? <Text style={styles.impact}>IMPACT · SPEED REDUCED</Text> : null}{missionStarted && !finished ? <Text style={styles.rival}>RIVAL DISTANCE · {hud.rivalGap}m</Text> : null}</View><View style={styles.location}><Text style={styles.city}>{region.city.toUpperCase()}</Text><Text style={styles.country}>{region.country.toUpperCase()}</Text><Text style={styles.mission}>{finished ? 'DESTINATION COMPLETE' : `WAYPOINT ${hud.checkpoint + 1}/3`}</Text><Text style={styles.checkpoint}>{finished ? 'Explore or choose another region' : region.checkpoints[hud.checkpoint]}</Text></View></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.regions} contentContainerStyle={styles.regionRow}>{AFRICA_REGIONS.map((r, i) => { const locked = i > 0 && !completedRegions.includes(AFRICA_REGIONS[i - 1].id) && !completedRegions.includes(r.id); const done = completedRegions.includes(r.id); return <Pressable key={r.id} disabled={locked || (missionStarted && !finished)} onPress={() => { if (r.id !== regionId) { controls.current = { left: false, right: false, gas: false, brake: false, nitro: false }; setHud({ speed: 0, checkpoint: 0, collision: false, nearWorkshop: false, elapsed: 0, rivalGap: 0 }); missionStartedRef.current = false; setMissionStarted(false); setRaceResult(null); setShowStandings(false); setRegionId(r.id); } }} style={[styles.regionChip, r.id === regionId && styles.regionActive, locked && styles.regionLocked]}><Text style={[styles.regionName, r.id === regionId && styles.regionNameActive]}>{locked ? '🔒 ' : done ? '✓ ' : ''}{r.city}</Text><Text style={styles.regionCountry}>{r.country}</Text></Pressable>; })}</ScrollView>
     <Pressable onPress={() => setShowStandings((visible) => !visible)} style={styles.standingsToggle}><Text style={styles.standingsToggleText}>{showStandings ? 'HIDE CUP TABLE' : 'CUP TABLE  ↗'}</Text></Pressable>

@@ -33,13 +33,14 @@ assert.equal(syntaxErrors.length, 0, syntaxErrors.join('\n'));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-campaign-'));
 try {
-  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts']) {
+  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts']) {
     const source = fs.readFileSync(path.join(root, 'src', 'apex', file), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);
   }
   const story = require(path.join(temp, 'story.js'));
   const jobs = require(path.join(temp, 'jobs.js'));
+  const extras = require(path.join(temp, 'storyExtras.js'));
   const missions = story.STORY_MISSIONS;
   const ids = new Set(missions.map((mission) => mission.id));
   assert.equal(missions.length, 56, 'Expected 56 ordered story missions');
@@ -73,6 +74,26 @@ try {
     assert.ok(job.points.length >= 2, `Job needs at least two playable points: ${job.missionId}`);
     assert.ok(job.reward >= 0 && job.maxHits >= 0, `Invalid job tuning: ${job.missionId}`);
   }
+  // Story upgrades and special parts must be charged once and never overdraw the wallet.
+  const needState = { coins: 1000, activeCar: 'tomi-classic', upgrades: { 'tomi-classic': [0, 0, 0, 0] }, storyNeedsDone: [] };
+  const engineNeed = extras.applyNeed(needState, 'n-engine-1');
+  assert.equal(engineNeed.ok, true, 'Engine story need should be purchasable with sufficient coins');
+  if (engineNeed.ok) {
+    assert.equal(engineNeed.patch.coins, 750, 'Engine story need should charge its price once');
+    assert.equal(engineNeed.patch.upgrades['tomi-classic'][0], 1, 'Engine story need should apply the upgrade');
+    const repeatEngine = extras.applyNeed({ ...needState, ...engineNeed.patch }, 'n-engine-1');
+    assert.equal(repeatEngine.ok, false, 'An already-satisfied story need must not be charged twice');
+    if (!repeatEngine.ok) assert.equal(repeatEngine.reason, 'done');
+  }
+  const coolingNeed = extras.applyNeed({ ...needState, coins: 1000 }, 'n-cooling');
+  assert.equal(coolingNeed.ok, true, 'Cooling part should be purchasable');
+  if (coolingNeed.ok) {
+    const repeatCooling = extras.applyNeed({ ...needState, ...coolingNeed.patch }, 'n-cooling');
+    assert.equal(repeatCooling.ok, false, 'Non-upgrade story parts must not be charged twice');
+  }
+  const poorNeed = extras.applyNeed({ ...needState, coins: 0 }, 'n-engine-1');
+  assert.equal(poorNeed.ok, false, 'Story need purchase must reject insufficient funds');
+  if (!poorNeed.ok) assert.equal(poorNeed.reason, 'funds');
   const allStory = missions.map((mission) => mission.id);
   const regions = story.AFRICA_CAMPAIGN_REGION_IDS;
   assert.equal(regions.length, 10, 'Expected ten Africa regional driving challenges');
@@ -81,6 +102,7 @@ try {
   console.log(`PASS: ${sourceFiles.length} TypeScript/TSX files syntax-checked.`);
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), unique IDs, dialogue, and campaign order.');
   console.log('PASS: clean licence condition, delivery damage limit, and ten-region Africa completion gate.');
+  console.log('PASS: story upgrade/part purchases are idempotent and reject insufficient funds.');
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

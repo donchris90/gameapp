@@ -13,7 +13,8 @@ import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_S
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
-import { AFRICA_STORY, africaCampaignDone, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, STORY_SKINS, STORY_NEEDS, STORY_TALK, needDone, needsFor, storyMissionComplete } from '../src/apex/story';
+import { AFRICA_STORY, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, storyMissionComplete } from '../src/apex/story';
+import { africaCampaignDone, needDone, needsFor, STORY_NEEDS, STORY_SKINS, STORY_TALK } from '../src/apex/storyExtras';
 import { EuropeInvitation, StoryNeeds, StoryScene } from '../src/apex/StoryScene';
 import { STORY_ART } from '../src/apex/storyArt';
 import { LagosDrive } from '../src/apex/LagosDrive';

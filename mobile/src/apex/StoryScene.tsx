@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ImageBackground, ScrollView, Text, View } from 'react-native';
 import { Button, Card, Dim, colors } from '../ui';
 import { Image } from 'react-native';
-import { StoryLine, StoryNeed } from './story';
+import { StoryLine, StoryNeed } from './storyExtras';
 import { NEED_ART } from './storyArt';
 
 const TINT: Record<string, string> = {

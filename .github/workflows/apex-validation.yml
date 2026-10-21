@@ -36,6 +36,6 @@ jobs:
         with:
           node-version: 22
       - name: Install mobile dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Validate Apex campaign and TypeScript syntax
         run: npm run validate:apex

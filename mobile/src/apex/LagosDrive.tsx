@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRenderer } from './glfix';
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useWindowDimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CarStyle, LAMPS } from './style';
 import { loadCarModel } from './model';
@@ -32,6 +32,10 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const controls = useRef<Controls>({ left: false, right: false, gas: autoGas, brake: false, nitro: false });
   const motion = useRef({ x: 0, z: 0, heading: 0, speed: 0, distance: 0, checkpoints: 0 });
   const alive = useRef(true);
+  const win = useWindowDimensions(); const wide = win.width > win.height;
+  const [glReady, setGlReady] = useState(false);
+  // Wait until the phone is really in landscape before creating the 3D view, or it keeps its portrait size.
+  useEffect(() => { if (!wide) return; const id = setTimeout(() => setGlReady(true), 200); return () => clearTimeout(id); }, [wide]);
   const glRef = useRef<any>(null);
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const [hud, setHud] = useState({ speed: 0, checkpoints: 0, banner: 'DRIVE TO THE GLOWING WAYPOINTS', nearWorkshop: false, collision: false });
@@ -234,7 +238,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const btn = (key: keyof Controls, label: string, flex = 1, accent = false) => <Pressable key={key} {...hold(key)} style={({ pressed }) => [styles.btn, { flex }, accent && { borderColor: 'rgba(61,224,255,.6)' }, pressed && { backgroundColor: 'rgba(124,92,255,.8)' }]}><Text style={[styles.btnText, (key === 'left' || key === 'right') && { fontSize: 24 }]}>{label}</Text></Pressable>;
   const left = Math.max(insets.left, 14); const right = Math.max(insets.right, 14);
   return <View style={styles.root}>
-    <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} />
+    {glReady ? <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} /> : null}
     <View pointerEvents="none" style={[styles.panel, { position: 'absolute', top: insets.top + 8, left, flexDirection: 'row', alignItems: 'flex-end', gap: 14, paddingHorizontal: 14, paddingVertical: 8 }]}>
       <View><Text style={styles.label}>SPEED</Text><Text style={styles.big}>{hud.speed}<Text style={styles.unit}> KM/H</Text></Text></View>
       <View><Text style={styles.label}>WAYPOINT</Text><Text style={styles.num}>{Math.min(hud.checkpoints + 1, 3)}/3</Text></View>

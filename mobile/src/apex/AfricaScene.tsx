@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRenderer } from './glfix';
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useWindowDimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CarStyle, LAMPS } from './style';
 import { loadCarModel } from './model';
 import './cars';
@@ -157,6 +157,10 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
   const sceneRef = useRef<THREE.Scene | null>(null);
   const checkpointRingsRef = useRef<THREE.Mesh[]>([]);
   const alive = useRef(true);
+  const win = useWindowDimensions(); const wide = win.width > win.height;
+  const [glReady, setGlReady] = useState(false);
+  // Wait until the phone is really in landscape before creating the 3D view, or it keeps its portrait size.
+  useEffect(() => { if (!wide) return; const id = setTimeout(() => setGlReady(true), 200); return () => clearTimeout(id); }, [wide]);
   const glRef = useRef<any>(null);
   const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const modelToken = useRef(0);
@@ -383,7 +387,7 @@ export function AfricaScene({ carId, paint = 0x2788ff, style, completedRegions =
   const setControl = (key: keyof Controls, value: boolean) => { controls.current[key] = value; };
   const control = (label: string, key: keyof Controls, wide = false) => <Pressable key={key} onPressIn={() => setControl(key, true)} onPressOut={() => setControl(key, false)} style={[styles.control, wide && styles.wide]}><Text style={styles.controlText}>{label}</Text></Pressable>;
   return <View style={styles.root}>
-    <GLView key={regionId} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} />
+    {glReady ? <GLView key={regionId} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} /> : null}
     <View style={styles.header}><View><Text style={styles.eyebrow}>APEX RUN · AFRICA TOUR</Text><Text style={styles.speed}>{hud.speed} <Text style={styles.unit}>KM/H</Text></Text><Text style={styles.timer}>TIME {hud.elapsed.toFixed(1)}s  ·  BEST {(bestTimes[regionId] ? bestTimes[regionId].toFixed(1) + 's' : '--')}</Text><Text style={styles.timer}>AFRICA CUP · {totalChampionshipPoints} PTS</Text>{hud.collision ? <Text style={styles.impact}>IMPACT · SPEED REDUCED</Text> : null}{missionStarted && !finished ? <Text style={styles.rival}>RIVAL DISTANCE · {hud.rivalGap}m</Text> : null}</View><View style={styles.location}><Text style={styles.city}>{region.city.toUpperCase()}</Text><Text style={styles.country}>{region.country.toUpperCase()}</Text><Text style={styles.mission}>{finished ? 'DESTINATION COMPLETE' : `WAYPOINT ${hud.checkpoint + 1}/3`}</Text><Text style={styles.checkpoint}>{finished ? 'Explore or choose another region' : region.checkpoints[hud.checkpoint]}</Text></View></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.regions} contentContainerStyle={styles.regionRow}>{AFRICA_REGIONS.map((r, i) => { const locked = i > 0 && !completedRegions.includes(AFRICA_REGIONS[i - 1].id) && !completedRegions.includes(r.id); const done = completedRegions.includes(r.id); return <Pressable key={r.id} disabled={locked || (missionStarted && !finished)} onPress={() => { if (r.id !== regionId) { controls.current = { left: false, right: false, gas: false, brake: false, nitro: false }; setHud({ speed: 0, checkpoint: 0, collision: false, nearWorkshop: false, elapsed: 0, rivalGap: 0 }); missionStartedRef.current = false; setMissionStarted(false); setRaceResult(null); setShowStandings(false); setRegionId(r.id); } }} style={[styles.regionChip, r.id === regionId && styles.regionActive, locked && styles.regionLocked]}><Text style={[styles.regionName, r.id === regionId && styles.regionNameActive]}>{locked ? '🔒 ' : done ? '✓ ' : ''}{r.city}</Text><Text style={styles.regionCountry}>{r.country}</Text></Pressable>; })}</ScrollView>
     <Pressable onPress={() => setShowStandings((visible) => !visible)} style={styles.standingsToggle}><Text style={styles.standingsToggleText}>{showStandings ? 'HIDE CUP TABLE' : 'CUP TABLE  ↗'}</Text></Pressable>

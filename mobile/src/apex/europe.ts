@@ -49,3 +49,19 @@ export const EUROPE_TALK: Record<string, { before: { who: string; line: string }
   'europe-prague-evidence': { before: [{ who: 'Elena Voss', line: 'The archive is wiping itself. We have one run to reach the extraction point.' }, { who: 'Rafael Costa', line: 'If those records survive, they connect Vanguard to the cover-up.' }, { who: 'Tomi', line: 'Then every corner counts. We leave with the truth.' }] },
   'europe-nurburgring-final': { before: [{ who: 'Victor Sloane', line: 'You have the records. You have the headlines. But nobody remembers the second-place driver.' }, { who: 'Tomi', line: 'This is not about your title. It is about what you buried and what my father paid for.' }, { who: 'Mara Okafor', line: 'The whole crew is here, Tomi. Bring it home.' }] },
 };
+
+/** European visual palettes for the existing 3D race renderer; no extra texture bundle is required. */
+export const EUROPE_SKINS: Record<string, { sky: number; horizon: number; fog: number; sun: number; sunPower: number; ambient: number; ground: number; night: boolean; lamps: boolean }> = {
+  'europe-london-arrival': { sky: 0x101b35, horizon: 0x304b70, fog: 0x1b2b47, sun: 0x9cb9e8, sunPower: 0.24, ambient: 0x617aa4, ground: 0x1b283b, night: true, lamps: true },
+  'europe-london-blackout': { sky: 0x090e21, horizon: 0x1b3158, fog: 0x131c35, sun: 0x759de2, sunPower: 0.12, ambient: 0x4e6b9b, ground: 0x121b2a, night: true, lamps: true },
+  'europe-paris-contact': { sky: 0x647b9c, horizon: 0xc5a78e, fog: 0x9a9eae, sun: 0xffd4a1, sunPower: 0.55, ambient: 0xb5bac6, ground: 0x3a3b45, night: false, lamps: false },
+  'europe-paris-double-cross': { sky: 0x14162d, horizon: 0x4a2e55, fog: 0x24213c, sun: 0xd39af8, sunPower: 0.16, ambient: 0x77729d, ground: 0x211c30, night: true, lamps: true },
+  'europe-amsterdam-slipstream': { sky: 0x536b84, horizon: 0x86a9b4, fog: 0x8099a7, sun: 0xe5e3d2, sunPower: 0.42, ambient: 0x9bb7bf, ground: 0x303b42, night: false, lamps: false },
+  'europe-berlin-underpass': { sky: 0x101323, horizon: 0x384257, fog: 0x222b3c, sun: 0x9eb9d8, sunPower: 0.18, ambient: 0x6d7e9d, ground: 0x1a202c, night: true, lamps: true },
+  'europe-alps-heat': { sky: 0x72a2d0, horizon: 0xd4e1e9, fog: 0xabc3d7, sun: 0xffe8b3, sunPower: 0.82, ambient: 0xc3d8e8, ground: 0x536b63, night: false, lamps: false },
+  'europe-milan-prototype': { sky: 0x687f9b, horizon: 0xb9a49b, fog: 0x9d9fa6, sun: 0xffd5a4, sunPower: 0.58, ambient: 0xb5b0ad, ground: 0x48434a, night: false, lamps: false },
+  'europe-barcelona-switch': { sky: 0x4d9dc4, horizon: 0xd5b78b, fog: 0x8bb8c5, sun: 0xffe1a1, sunPower: 0.74, ambient: 0xb8d5d7, ground: 0x4c5145, night: false, lamps: false },
+  'europe-monaco-pressure': { sky: 0x0d1831, horizon: 0x355b7b, fog: 0x1a2c48, sun: 0xffd0a1, sunPower: 0.34, ambient: 0x7392ad, ground: 0x1a2d3a, night: true, lamps: true },
+  'europe-prague-evidence': { sky: 0x11152b, horizon: 0x5a4b68, fog: 0x2a273e, sun: 0xb5a4d7, sunPower: 0.14, ambient: 0x817997, ground: 0x262333, night: true, lamps: true },
+  'europe-nurburgring-final': { sky: 0x344d69, horizon: 0x7d8e9c, fog: 0x657a8b, sun: 0xffd3a0, sunPower: 0.62, ambient: 0x9eacb6, ground: 0x394a3b, night: false, lamps: false },
+};

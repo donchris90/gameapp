@@ -157,7 +157,11 @@ export default function Apex() {
   const solveNeed = (needId: string) => {
     if (needLock.current) return;
     const r = applyNeed(settings, needId);
-    if (!r.ok) { if (r.reason === 'funds') setNotice(`You need ${(r.short ?? 0).toLocaleString()} more coins.`); return; }
+    if (!r.ok) {
+      if (r.reason === 'funds') setNotice(`You need ${(r.short ?? 0).toLocaleString()} more coins.`);
+      else if (r.reason === 'done') setNotice('That story upgrade or part is already installed. Your coins were not charged again.');
+      return;
+    }
     needLock.current = true; setTimeout(() => { needLock.current = false; }, 400);
     update(r.patch); sfx('complete');
   };

@@ -52,7 +52,7 @@ describe('Matches: Whot', () => {
         const bad = v.state.hand.findIndex((_: unknown, k: number) => !v.state.canPlay.includes(k));
         await http().post(`/matches/${m.id}/move`).set(bearer(me)).send({ version: v.version, move: { action: 'play', card: bad } }).expect(400);
       }
-      if (v.state.canPlay.length > 0 && v.state.pending === 0) await http().post(`/matches/${m.id}/move`).set(bearer(me)).send({ version: v.version, move: { action: 'draw' } }).expect(400);
+      expect(v.state.canDraw).toBe(true);
       const out = await http().post(`/matches/${m.id}/move`).set(bearer(me)).send({ version: v.version, move }).expect(200);
       m = out.body;
     }

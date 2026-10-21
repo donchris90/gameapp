@@ -78,7 +78,7 @@ const drawn = (before: WhotState, after: WhotState, seat: number) => after.hands
 
 /**
  * Whot for 2-4 players with the Nigerian rules we agreed: 49 cards (no Whot cards), 6 each, match the shape or the number,
- * draw one when you cannot play. Only three cards have a power: 1 Hold On (play again), 2 Pick Two (the next player picks 2
+ * go to market (draw one) whenever you like. Only three cards have a power: 1 Hold On (play again), 2 Pick Two (the next player picks 2
  * and misses their turn, unless they answer with a 2, and then it stacks) and 14 General Market (everyone else picks 1, and
  * you play again). The first to empty their hand wins, even on a power card; "last card" is called automatically.
  */
@@ -148,10 +148,9 @@ export class WhotEngine implements GameEngine<WhotState> {
     return { state: { ...next, turn }, turnSeat: turn };
   }
 
-  /** Pick up the stacked cards, or, with nothing to play, one card from the pile. Either way the turn passes. */
+  /** Pick up the stacked cards, or one card from the pile (go to market). Allowed at any time on your turn, even with a card you could play. The turn passes. */
   private takeCards(state: WhotState, seat: number, ctx: EngineContext): MoveResult<WhotState> {
     const facing = state.pending > 0;
-    if (!facing && playable(state, seat).length > 0) throw new IllegalMove('MUST_PLAY', 'You have a card you can play');
     const want = facing ? state.pending : 1;
     const after = deal(state, seat, want, ctx);
     const got = drawn(state, after, seat);
@@ -197,7 +196,7 @@ export class WhotEngine implements GameEngine<WhotState> {
     return {
       ...this.publicState(state), seat, hand: mine,
       canPlay: state.turn === seat ? playable(state, seat) : [],
-      canDraw: state.turn === seat && (state.pending > 0 || playable(state, seat).length === 0),
+      canDraw: state.turn === seat,
     };
   }
 }

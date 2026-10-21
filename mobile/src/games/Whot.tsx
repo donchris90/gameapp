@@ -119,7 +119,7 @@ export function Whot({ match, mySeat, onMove, busy, height }: { match: Match<Sta
 
   const facing = s.pending > 0 && s.turn === mySeat;
   const message = !active ? 'Game over'
-    : myTurn ? (facing ? `Pick Two! Play a 2 or tap the pile to pick up ${s.pending}` : s.canDraw ? 'Nothing to play: tap the pile to take a card' : 'Your turn: tap a glowing card')
+    : myTurn ? (facing ? `Pick Two! Play a 2 or tap the pile to pick up ${s.pending}` : 'Your turn: play a card or tap the pile')
       : `${nameOf(s.turn)}'s turn${s.pending > 0 ? ` (facing ${s.pending})` : ''}`;
   const event = describe(s.last, nameOf);
   const lastCardSeats = s.counts.map((n, i) => ({ n, i })).filter((x) => x.n === 1 && !s.left.includes(x.i));
@@ -246,7 +246,7 @@ export function WhotTable({ match, mySeat, onMove, busy, onResign }: { match: Ma
   const facing = s.pending > 0 && s.turn === mySeat;
   const last = s.last;
   const noteFor = (seat: number) => (last && last.seat === seat && (last.kind === 'draw' || last.kind === 'pick') ? 'Go market' : last && last.seat === seat && last.kind === 'market' ? 'General Market!' : undefined);
-  const centre = !active ? 'Game over' : myTurn ? (facing ? `Defend with a 2 or pick up ${s.pending}` : s.canDraw ? 'Go to market' : 'Your turn') : `${nameOf(s.turn)}'s turn`;
+  const centre = !active ? 'Game over' : myTurn ? (facing ? `Defend with a 2 or pick up ${s.pending}` : 'Your turn') : `${nameOf(s.turn)}'s turn`;
 
   const showHint = (text: string) => {
     setHint(text);
@@ -262,7 +262,6 @@ export function WhotTable({ match, mySeat, onMove, busy, onResign }: { match: Ma
   const pileTap = () => {
     if (!active || busy) return;
     if (s.turn !== mySeat) { showHint('It is not your turn yet.'); return; }
-    if (!s.canDraw) { showHint('You have a card you can play.'); return; }
     onMove({ action: 'draw' });
   };
 
@@ -280,7 +279,6 @@ export function WhotTable({ match, mySeat, onMove, busy, onResign }: { match: Ma
       <View pointerEvents="box-none" style={{ position: 'absolute', left: Math.max(insets.left, 70), right: Math.max(insets.right, 70), top: H * 0.36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Pressable onPress={pileTap} hitSlop={8}>
           <View>
-            {myTurn && s.canDraw ? <View pointerEvents="none" style={{ position: 'absolute', left: -5, top: -5, right: -5, bottom: -5, borderRadius: 10, borderWidth: 3, borderColor: '#FFE600' }} /> : null}
             <CardBack w={pileW} label={s.drawCount} />
           </View>
         </Pressable>
@@ -297,10 +295,9 @@ export function WhotTable({ match, mySeat, onMove, busy, onResign }: { match: Ma
       {/* my hand along the bottom */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ position: 'absolute', left: Math.max(insets.left, 70), right: Math.max(insets.right, 70), bottom: 4, height: handW * 1.45 + 18 }} contentContainerStyle={{ gap: handW * 0.06, alignItems: 'flex-end', justifyContent: 'center', minWidth: '100%', paddingTop: 14 }}>
         {hand.map((c, i) => {
-          const ok = myTurn && canPlay.includes(i);
           return (
             <Pressable key={`${c.s}-${c.n}`} onPress={() => tap(i)} hitSlop={3}>
-              {hidden ? <CardBack w={handW} /> : <CardFace card={c} w={handW} lit lift={ok ? 12 : 0} />}
+              {hidden ? <CardBack w={handW} /> : <CardFace card={c} w={handW} lit />}
             </Pressable>
           );
         })}
@@ -338,7 +335,7 @@ export function WhotTable({ match, mySeat, onMove, busy, onResign }: { match: Ma
         <Pressable onPress={() => setRules(false)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 10, padding: 16, maxWidth: 560, gap: 6 }}>
             <Text style={{ color: RED, fontWeight: '900', fontSize: 18 }}>How to play Whot</Text>
-            <Text style={{ color: '#222', fontSize: 14 }}>• Play a card with the same shape or number as the card showing. Cannot play? Tap the pile to take one.</Text>
+            <Text style={{ color: '#222', fontSize: 14 }}>• Play a card with the same shape or number as the card showing. You can tap the pile to take one card at any time.</Text>
             <Text style={{ color: '#222', fontSize: 14 }}>• 1 Hold On: play again. 2 Pick Two: the next player picks 2 and misses their turn, unless they defend with a 2 and it stacks. 14 General Market: everyone else picks 1 and you play again.</Text>
             <Text style={{ color: '#222', fontSize: 14 }}>• First to empty their hand wins. Tap anywhere to close.</Text>
           </View>

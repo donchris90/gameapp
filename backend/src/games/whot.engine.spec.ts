@@ -64,9 +64,12 @@ describe('Whot play', () => {
     expect(() => play(st, 0, 9)).toThrow(IllegalMove);
   });
 
-  it('drawing is only allowed with nothing to play, takes one card and passes', () => {
+  it('drawing is allowed any time on your turn, even with a playable card: it takes one card and passes', () => {
     const st = table([[c(0, 5), c(1, 7)], [c(2, 3), c(2, 5)]], c(0, 8));
-    expect(() => draw(st, 0)).toThrow(IllegalMove);
+    const early = draw(st, 0);
+    expect(early.state.hands[0]).toHaveLength(3);
+    expect(early.state.turn).toBe(1);
+    expect(() => draw(st, 1)).toThrow(IllegalMove); // still not your turn
     const stuck = table([[c(1, 7), c(2, 10)], [c(2, 3), c(2, 5)]], c(0, 8));
     const r = draw(stuck, 0);
     expect(r.state.hands[0]).toHaveLength(3);

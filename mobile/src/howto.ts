@@ -7,7 +7,7 @@ export const HOW_TO_PLAY: Record<GameType, string[]> = {
     'A full board with no line is a draw and everyone gets their stake back.',
   ],
   WHOT: [
-    'Everyone gets 6 cards. Play a card that matches the shape or the number of the one showing. If you cannot, tap the pile to take one card.',
+    'Everyone gets 6 cards. Play a card that matches the shape or the number of the one showing. You can tap the pile to take one card (go to market) at any time instead.',
     '1 Hold On: play again. 2 Pick Two: the next player picks 2 and misses their turn, unless they answer with a 2, and then it stacks. 14 General Market: everyone else picks 1 and you play again.',
     'Every other card is plain. The first player to empty their hand wins, even if the last card is a power card. Last card is called for you automatically.',
   ],

@@ -5,7 +5,7 @@ import { api, explain } from '../../src/api';
 import { adDue, preloadInterstitial, showInterstitial } from '../../src/ads';
 import { Ayo } from '../../src/games/Ayo';
 import { Ludo } from '../../src/games/Ludo';
-import { Whot } from '../../src/games/Whot';
+import { Whot, WhotTable } from '../../src/games/Whot';
 import { TicTacToe } from '../../src/games/TicTacToe';
 import { WaterSort } from '../../src/games/WaterSort';
 import { ApexRace, isRacing } from '../../src/games/ApexRace';
@@ -110,6 +110,8 @@ export default function MatchScreen() {
   const takeBack = () => api<Match>(`/matches/${match.id}/resume`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Take back control', explain(e)));
   const quitToHome = () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then((m) => { accept(m); goBack(); }).catch(() => goBack());
   const props = { match, mySeat, onMove: send, busy, height: gameH };
+  // Whot is played on a full-screen landscape table; the result uses the normal layout.
+  if (match.game === 'WHOT' && !over) return <WhotTable match={match} mySeat={mySeat} onMove={send} busy={busy} onResign={resign} />;
   // An Apex race gets the whole screen while you are driving; results use the normal layout.
   if (match.game === 'APEX' && isRacing(match, mySeat)) return <ApexRace full match={match} mySeat={mySeat} onMove={async (m) => { await send(m); }} onQuit={quitToHome} />;
 

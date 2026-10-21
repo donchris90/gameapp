@@ -55,9 +55,7 @@ export default function Apex() {
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
-  // A DriveMission result callback can fire twice during a React/GL transition.
-  // Key by mission + attempt so retries remain valid but one attempt can only settle once.
-  const processedJobAttemptsRef = useRef<Set<string>>(new Set());
+  const [jobMissionId, setJobMissionId] = useState<string | null>(null); // the job on screen, kept until the player leaves its result
 
   useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
   useEffect(() => {
@@ -169,11 +167,11 @@ export default function Apex() {
     setActiveStoryMissionId(mission.id);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1, storyChoices: { ...(settings.storyChoices ?? {}) } });
     setStoryPrepMissionId(null);
-    if (jobFor(mission.id)) { setJobRun((n) => n + 1); setNotice(''); setPhase('job'); return; }
+    if (jobFor(mission.id)) { setJobMissionId(mission.id); setJobRun((n) => n + 1); setNotice(''); setPhase('job'); return; }
     startRace(mission.level);
   };
   const finishJob = (o: JobOutcome) => {
-    const mission = STORY_MISSIONS.find((x) => x.id === activeStoryMissionId); const def = mission ? jobFor(mission.id) : undefined;
+    const mission = STORY_MISSIONS.find((x) => x.id === jobMissionId); const def = mission ? jobFor(mission.id) : undefined;
     if (!mission || !def) return;
     const attemptKey = `${mission.id}:${jobRun}`;
     if (processedJobAttemptsRef.current.has(attemptKey)) return;
@@ -188,10 +186,8 @@ export default function Apex() {
     // this story mission and consume story fuel or show the wrong retry screen.
     setActiveStoryMissionId(null);
     adAfterDrive();
-    // A settled job must not leak its story mission into the next free race.
-    setActiveStoryMissionId(null);
   };
-  const storyUpgrades = () => { const u = [...levelsOf(settings.activeCar)]; if (activeStoryMissionId) { const a = settings.storyApproach ?? 'balanced'; if (a === 'speed') u[0] = Math.min(MAX_UPGRADE, u[0] + 1); if (a === 'grip') u[2] = Math.min(MAX_UPGRADE, u[2] + 1); if ((settings.storyCondition ?? 100) < 30) u[0] = Math.max(0, u[0] - 1); } return u; };
+  const storyUpgrades = () => { const u = [...levelsOf(settings.activeCar)]; if (activeStoryMissionId || (phase === 'job' && jobMissionId)) { const a = settings.storyApproach ?? 'balanced'; if (a === 'speed') u[0] = Math.min(MAX_UPGRADE, u[0] + 1); if (a === 'grip') u[2] = Math.min(MAX_UPGRADE, u[2] + 1); if ((settings.storyCondition ?? 100) < 30) u[0] = Math.max(0, u[0] - 1); } return u; };
   const needLock = useRef(false);
   const solveNeed = (needId: string) => {
     if (needLock.current) return;
@@ -255,8 +251,8 @@ export default function Apex() {
   }
   if (phase === 'drive') return <LagosDrive upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} autoGas={settings.autoGas} quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); adAfterDrive(); }} />;
   if (phase === 'job') {
-    const jm = STORY_MISSIONS.find((x) => x.id === activeStoryMissionId); const jd = jm ? jobFor(jm.id) : undefined;
-    if (jm && jd) return <DriveMission key={jobRun} job={jd} title={jm.title} region={regionOf(jm.id)} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} quality={settings.quality} autoGas={settings.autoGas} upgrades={storyUpgrades()} bodyTier={settings.bodyTier} parts={partsOf(settings.storyNeedsDone)} onFinish={finishJob} onExit={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onContinue={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onRetry={() => { if ((settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) { setNotice('Your car needs fuel or repairs first.'); setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); } else setJobRun((n) => n + 1); }} />;
+    const jm = STORY_MISSIONS.find((x) => x.id === jobMissionId); const jd = jm ? jobFor(jm.id) : undefined;
+    if (jm && jd) return <DriveMission key={jobRun} job={jd} title={jm.title} region={regionOf(jm.id)} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} quality={settings.quality} autoGas={settings.autoGas} upgrades={storyUpgrades()} bodyTier={settings.bodyTier} parts={partsOf(settings.storyNeedsDone)} onFinish={finishJob} onExit={() => { setJobMissionId(null); setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onContinue={() => { setJobMissionId(null); setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onRetry={() => { if ((settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) { setNotice('Your car needs fuel or repairs first.'); setJobMissionId(null); setPhase('menu'); setPanel('story'); } else setJobRun((n) => n + 1); }} />;
   }
   if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); adAfterDrive(); }} />;
 

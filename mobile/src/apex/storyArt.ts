@@ -17,3 +17,14 @@ export const STORY_ART: Record<string, number> = {
   'africa-johannesburg-qualifier': require('../../assets/story/betrayal.png'),
   'africa-grand-championship': require('../../assets/story/mission-complete.png'),
 };
+
+/** Cartoon comic panels for the story needs. */
+export const NEED_ART: Record<string, number> = {
+  engine: require('../../assets/story/need_engine.png'),
+  tyres: require('../../assets/story/need_tyres.png'),
+  licence: require('../../assets/story/need_licence.png'),
+  fuel: require('../../assets/story/need_fuel.png'),
+  border: require('../../assets/story/need_border.png'),
+  heat: require('../../assets/story/need_heat.png'),
+  boost: require('../../assets/story/need_boost.png'),
+};

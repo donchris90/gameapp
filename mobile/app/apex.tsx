@@ -13,8 +13,8 @@ import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_S
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
-import { AFRICA_STORY, africaCampaignDone, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, STORY_SKINS, STORY_TALK, storyMissionComplete } from '../src/apex/story';
-import { EuropeInvitation, StoryScene } from '../src/apex/StoryScene';
+import { AFRICA_STORY, africaCampaignDone, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, STORY_SKINS, STORY_NEEDS, STORY_TALK, needDone, needsFor, storyMissionComplete } from '../src/apex/story';
+import { EuropeInvitation, StoryNeeds, StoryScene } from '../src/apex/StoryScene';
 import { STORY_ART } from '../src/apex/storyArt';
 import { LagosDrive } from '../src/apex/LagosDrive';
 import { AfricaScene } from '../src/apex/AfricaScene';
@@ -30,14 +30,14 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [notice, setNotice] = useState('');
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
-  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe' } | null>(null);
+  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
 
@@ -107,10 +107,18 @@ export default function Apex() {
     const mission = STORY_MISSIONS.find((item) => item.id === missionId);
     if (!mission || settings.storyCompleted.includes(mission.id)) return;
     if (mission.level > settings.unlocked) { setNotice(mission.lockedHint ?? `Reach career level ${mission.level} first.`); return; }
+    if (needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) { setStoryScene({ kind: 'needs', id: mission.id }); return; }
     setActiveStoryMissionId(mission.id);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
     setNotice('');
     startRace(mission.level);
+  };
+  const solveNeed = (needId: string) => {
+    const need = Object.values(STORY_NEEDS).flat().find((n) => n.id === needId); if (!need) return;
+    if (settings.coins < need.price) { setNotice(`You need ${(need.price - settings.coins).toLocaleString()} more coins.`); return; }
+    const patch: Partial<ApexSettings> = { coins: settings.coins - need.price, storyNeedsDone: [...(settings.storyNeedsDone ?? []), need.id] };
+    if (need.upgrade) { const id = settings.activeCar; const nl = [...levelsOf(id)]; nl[need.upgrade.kind] = Math.max(nl[need.upgrade.kind] ?? 0, need.upgrade.level); patch.upgrades = { ...settings.upgrades, [id]: nl }; }
+    update(patch); sfx('complete');
   };
   const unlockCar = (id: string) => {
     const car = catalogCar(id);
@@ -141,8 +149,12 @@ export default function Apex() {
   </View>;
   if (phase === 'menu' && storyScene) {
     if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
+    if (storyScene.kind === 'needs') {
+      const nm = STORY_MISSIONS.find((x) => x.id === storyScene.id); const list = needsFor(storyScene.id);
+      if (nm) return <StoryNeeds title={nm.title} needs={list} done={list.map((n) => needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))} coins={settings.coins} onSolve={solveNeed} onGo={() => { setStoryScene(null); startStoryMission(nm.id); }} onBack={() => setStoryScene(null)} />;
+    }
     const m = STORY_MISSIONS.find((x) => x.id === storyScene.id); const talk = m ? STORY_TALK[m.id] : undefined;
-    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} art={STORY_ART[m.id]} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { setStoryScene(null); startStoryMission(m.id); }} onSkip={() => setStoryScene(null)} />;
+    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} art={STORY_ART[m.id]} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { if (needsFor(m.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) setStoryScene({ kind: 'needs', id: m.id }); else { setStoryScene(null); startStoryMission(m.id); } }} onSkip={() => setStoryScene(null)} />;
   }
   if (phase === 'drive') return <LagosDrive autoGas={settings.autoGas} quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); adAfterDrive(); }} />;
   if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); adAfterDrive(); }} />;
@@ -376,6 +388,7 @@ export default function Apex() {
                   <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text>
                 </View>
               </View>
+              {isCurrent && needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar))) ? <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800' }}>BEFORE YOU RACE: {needsFor(mission.id).filter((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar))).map((n) => n.title).join(' · ')}</Text> : null}
               {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => (STORY_TALK[mission.id] && mission.level <= settings.unlocked ? setStoryScene({ kind: 'mission', id: mission.id }) : startStoryMission(mission.id))} /> : null}
             </Card>;
           };

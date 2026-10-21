@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { ImageBackground, ScrollView, Text, View } from 'react-native';
 import { Button, Card, Dim, colors } from '../ui';
-import { StoryLine } from './story';
+import { Image } from 'react-native';
+import { StoryLine, StoryNeed } from './story';
+import { NEED_ART } from './storyArt';
 
 const TINT: Record<string, string> = {
   You: '#5eaaff', Tomi: '#f4c542', 'Mara Okafor': '#3ddc97', 'Darius Cole': '#ff6a6a', 'Amara Diallo': '#b58cff',
@@ -61,6 +63,36 @@ export function EuropeInvitation({ coins, onClose }: { coins: number; onClose: (
           <Text style={{ color: colors.dim, fontWeight: '800', fontSize: 11 }}>🔒 EUROPE TOUR · COMING SOON</Text>
         </Card>
         <Button title="CONTINUE" onPress={onClose} />
+      </ScrollView>
+    </View>
+  );
+}
+
+/** Before a mission: what the car or the driver still needs, drawn as comic panels. Each can be settled on the spot. */
+export function StoryNeeds({ title, needs, done, coins, onSolve, onGo, onBack }: { title: string; needs: StoryNeed[]; done: boolean[]; coins: number; onSolve: (id: string) => void; onGo: () => void; onBack: () => void }) {
+  const all = done.every(Boolean);
+  return (
+    <View style={{ flex: 1, backgroundColor: '#070b1c' }}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 36, gap: 14 }}>
+        <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>BEFORE YOU RACE</Text>
+        <Text style={{ color: '#fff', fontSize: 26, fontWeight: '900' }}>{title}</Text>
+        <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '900' }}>YOUR COINS · {coins.toLocaleString()}</Text>
+        {needs.map((n, i) => (
+          <View key={n.id} style={{ borderRadius: 14, borderWidth: 3, borderColor: done[i] ? '#2fb36b' : '#1b1226', backgroundColor: '#fff6e0', overflow: 'hidden' }}>
+            <Image source={NEED_ART[n.art]} resizeMode="cover" style={{ width: '100%', height: 170 }} />
+            <View style={{ padding: 12, gap: 6 }}>
+              <Text style={{ color: '#1b1226', fontSize: 17, fontWeight: '900' }}>{n.title}</Text>
+              <View style={{ backgroundColor: '#fff', borderWidth: 2, borderColor: '#1b1226', borderRadius: 12, padding: 10 }}>
+                <Text style={{ color: '#7a4a00', fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>{n.who.toUpperCase()}</Text>
+                <Text style={{ color: '#1b1226', fontSize: 14, lineHeight: 20 }}>“{n.line}”</Text>
+              </View>
+              {done[i] ? <Text style={{ color: '#1c8a52', fontWeight: '900' }}>✓ DONE</Text> : <Button title={`${n.button}  ·  ${n.price.toLocaleString()} COINS`} disabled={coins < n.price} onPress={() => onSolve(n.id)} />}
+              {!done[i] && coins < n.price ? <Text style={{ color: '#a33', fontSize: 11, fontWeight: '800' }}>You need {(n.price - coins).toLocaleString()} more coins. Race a little more to earn them.</Text> : null}
+            </View>
+          </View>
+        ))}
+        <Button title={all ? 'TO THE GRID  →' : 'FINISH THESE FIRST'} disabled={!all} onPress={onGo} />
+        <Button title="BACK" kind="ghost" onPress={onBack} />
       </ScrollView>
     </View>
   );

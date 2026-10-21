@@ -39,6 +39,7 @@ try {
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);
   }
   const story = require(path.join(temp, 'story.js'));
+  const jobs = require(path.join(temp, 'jobs.js'));
   const missions = story.STORY_MISSIONS;
   const ids = new Set(missions.map((mission) => mission.id));
   assert.equal(missions.length, 56, 'Expected 56 ordered story missions');
@@ -55,6 +56,23 @@ try {
   assert.equal(story.storyMissionComplete(licence, { ...result, hits: 1 }, 1), false, 'Licence must fail on a collision');
   assert.equal(story.storyMissionComplete(delivery, { ...result, track: delivery.track, hits: 2 }, 1), true, 'Delivery should tolerate two impacts');
   assert.equal(story.storyMissionComplete(delivery, { ...result, track: delivery.track, hits: 3 }, 1), false, 'Delivery should fail above two impacts');
+  // Every story objective must reject a result from another track, even when the
+  // rank/tick count would otherwise satisfy the objective.
+  for (const mission of missions) {
+    const wrongTrack = mission.track === 'city' ? 'coast' : 'city';
+    assert.equal(story.storyMissionComplete(mission, { ...result, track: wrongTrack }, 3), false, `Wrong-track result must not complete ${mission.id}`);
+  }
+  // Non-race jobs must be real, unique job definitions connected to campaign missions.
+  const jobIds = new Set(jobs.JOBS.map((job) => job.missionId));
+  assert.equal(jobIds.size, jobs.JOBS.length, 'Job mission IDs must be unique');
+  const jobMissions = missions.filter((mission) => mission.jobKind);
+  assert.ok(jobMissions.length >= 10, 'Expected at least ten story missions with dedicated job gameplay');
+  for (const mission of jobMissions) assert.ok(jobIds.has(mission.id), `Missing job definition for ${mission.id}`);
+  for (const job of jobs.JOBS) {
+    assert.ok(ids.has(job.missionId), `Job references unknown story mission ${job.missionId}`);
+    assert.ok(job.points.length >= 2, `Job needs at least two playable points: ${job.missionId}`);
+    assert.ok(job.reward >= 0 && job.maxHits >= 0, `Invalid job tuning: ${job.missionId}`);
+  }
   const allStory = missions.map((mission) => mission.id);
   const regions = story.AFRICA_CAMPAIGN_REGION_IDS;
   assert.equal(regions.length, 10, 'Expected ten Africa regional driving challenges');

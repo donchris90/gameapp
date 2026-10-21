@@ -1,0 +1,41 @@
+name: Apex Africa Campaign Validation
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/src/apex/**'
+      - 'mobile/app/apex.tsx'
+      - 'mobile/scripts/validate-africa-campaign.cjs'
+      - 'mobile/package.json'
+      - '.github/workflows/apex-validation.yml'
+  push:
+    branches:
+      - main
+      - apex-africa-final-pass
+    paths:
+      - 'mobile/src/apex/**'
+      - 'mobile/app/apex.tsx'
+      - 'mobile/scripts/validate-africa-campaign.cjs'
+      - 'mobile/package.json'
+      - '.github/workflows/apex-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-apex-campaign:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install mobile dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Apex campaign and TypeScript syntax
+        run: npm run validate:apex

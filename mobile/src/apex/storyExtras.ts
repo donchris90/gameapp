@@ -39,8 +39,8 @@ export const needsFor = (missionId: string): StoryNeed[] => STORY_NEEDS[missionI
 export const needDone = (need: StoryNeed, done: string[], levels: number[]) =>
   done.includes(need.id) || (!!need.upgrade && (levels[need.upgrade.kind] ?? 0) >= need.upgrade.level);
 
-export interface NeedState { coins: number; activeCar: string; upgrades: Record<string, number[]>; storyNeedsDone?: string[] }
-export type NeedResult = { ok: true; patch: { coins: number; storyNeedsDone: string[]; upgrades: Record<string, number[]> } } | { ok: false; reason: 'unknown' | 'done' | 'funds'; short?: number };
+export interface NeedState { coins: number; activeCar: string; upgrades: Record<string, number[]>; storyNeedsDone?: string[]; storyFuel?: number }
+export type NeedResult = { ok: true; patch: { coins: number; storyNeedsDone: string[]; upgrades: Record<string, number[]>; storyFuel?: number } } | { ok: false; reason: 'unknown' | 'done' | 'funds'; short?: number };
 /** Pure purchase rule: charges exactly once, never for something already done, never below zero. */
 export function applyNeed(s: NeedState, needId: string): NeedResult {
   const need = Object.values(STORY_NEEDS).flat().find((n) => n.id === needId);
@@ -50,7 +50,7 @@ export function applyNeed(s: NeedState, needId: string): NeedResult {
   if (s.coins < need.price) return { ok: false, reason: 'funds', short: need.price - s.coins };
   const upgrades = { ...s.upgrades };
   if (need.upgrade) { const nl = [...levels]; nl[need.upgrade.kind] = Math.max(nl[need.upgrade.kind] ?? 0, need.upgrade.level); upgrades[s.activeCar] = nl; }
-  return { ok: true, patch: { coins: s.coins - need.price, storyNeedsDone: [...(s.storyNeedsDone ?? []), need.id], upgrades } };
+  return { ok: true, patch: { coins: s.coins - need.price, storyNeedsDone: [...(s.storyNeedsDone ?? []), need.id], upgrades, ...(need.art === 'fuel' ? { storyFuel: 100 } : {}) } };
 }
 
 /** Story parts that are not part of the garage's four upgrades. Each one has a real effect in jobs and on wear. */

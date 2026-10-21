@@ -14,7 +14,7 @@ import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
 import { africaCampaignDone, chapterProgress, currentStoryMission, STORY_MISSIONS, STORY_SKINS, STORY_TALK, storyMissionComplete } from '../src/apex/story';
-import { needDone, needsFor, STORY_NEEDS } from '../src/apex/storyExtras';
+import { applyNeed, needDone, needsFor } from '../src/apex/storyExtras';
 import { EuropeInvitation, StoryNeeds, StoryScene } from '../src/apex/StoryScene';
 import { STORY_ART } from '../src/apex/storyArt';
 import { StoryApproach, StoryWorkshop } from '../src/apex/StoryWorkshop';
@@ -89,7 +89,8 @@ export default function Apex() {
     const storyTrust = isStoryRace ? Math.max(0, Math.min(100, (settings.storyTrust ?? 50) + (r.rank === 1 ? 3 : r.rank <= 3 ? 1 : -2))) : (settings.storyTrust ?? 50);
     const evidenceId = activeMission && storyWon && /clue|notebook|signal|evidence|recording|witness|project|files|black.box|telemetry|broker|father|control.room/i.test(`${activeMission.title} ${activeMission.briefing}`) ? activeMission.id : null;
     const storyEvidence = evidenceId ? Array.from(new Set([...(settings.storyEvidence ?? []), evidenceId])) : (settings.storyEvidence ?? []);
-    const nextUnlocked = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
+    const careerStep = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
+    const nextUnlocked = storyWon ? Math.max(careerStep, Math.min(MAX_LEVEL, activeMission!.level + 1)) : careerStep;
     const bestLaps = { ...(settings.bestLaps ?? {}) };
     if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
     setLastReward({ base: rewards.base, placement: rewards.placement, clean: rewards.clean, record: rewards.record, xp: rewards.xp, isRecord: rewards.isRecord });
@@ -135,12 +136,13 @@ export default function Apex() {
     setStoryPrepMissionId(null);
     startRace(mission.level);
   };
+  const needLock = useRef(false);
   const solveNeed = (needId: string) => {
-    const need = Object.values(STORY_NEEDS).flat().find((n) => n.id === needId); if (!need) return;
-    if (settings.coins < need.price) { setNotice(`You need ${(need.price - settings.coins).toLocaleString()} more coins.`); return; }
-    const patch: Partial<ApexSettings> = { coins: settings.coins - need.price, storyNeedsDone: [...(settings.storyNeedsDone ?? []), need.id] };
-    if (need.upgrade) { const id = settings.activeCar; const nl = [...levelsOf(id)]; nl[need.upgrade.kind] = Math.max(nl[need.upgrade.kind] ?? 0, need.upgrade.level); patch.upgrades = { ...settings.upgrades, [id]: nl }; }
-    update(patch); sfx('complete');
+    if (needLock.current) return;
+    const r = applyNeed(settings, needId);
+    if (!r.ok) { if (r.reason === 'funds') setNotice(`You need ${(r.short ?? 0).toLocaleString()} more coins.`); return; }
+    needLock.current = true; setTimeout(() => { needLock.current = false; }, 400);
+    update(r.patch); sfx('complete');
   };
   const storyRefuel = () => { if (settings.coins < 100 || (settings.storyFuel ?? 100) >= 100) return; update({ coins: settings.coins - 100, storyFuel: Math.min(100, (settings.storyFuel ?? 100) + 25) }); setNotice('FUEL ADDED · +25%'); };
   const storyRepair = () => { if (settings.coins < 150 || (settings.storyCondition ?? 100) >= 100) return; update({ coins: settings.coins - 150, storyCondition: Math.min(100, (settings.storyCondition ?? 100) + 25) }); setNotice('REPAIRS COMPLETE · +25% CONDITION'); };

@@ -192,9 +192,9 @@ export function storyMissionComplete(
   if (result.ticks <= 0) return false;
   let baseObjective = false;
   switch (mission.requirement) {
-    case 'finish': baseObjective = true; break;
+    case 'finish': baseObjective = result.track === mission.track; break;
     case 'podium': baseObjective = result.rank >= 1 && result.rank <= 3 && result.track === mission.track; break;
-    case 'three-races': baseObjective = totalRacesAfterResult >= 3; break;
+    case 'three-races': baseObjective = result.track === mission.track && totalRacesAfterResult >= 3; break;
     case 'win': baseObjective = result.rank === 1 && result.track === mission.track; break;
     default: baseObjective = false;
   }

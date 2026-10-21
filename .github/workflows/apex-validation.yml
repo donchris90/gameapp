@@ -41,3 +41,5 @@ jobs:
         run: npm run validate:apex
       - name: Type-check mobile project
         run: npx tsc --noEmit
+      - name: Bundle Android JavaScript with Expo
+        run: npx expo export --platform android

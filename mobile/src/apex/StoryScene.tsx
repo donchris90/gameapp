@@ -41,7 +41,7 @@ export function StoryScene({ kicker, title, place, lines, goLabel, onDone, onSki
 }
 
 /** The Europe invitation: shown once when the Africa campaign is complete, and again from the story page. */
-export function EuropeInvitation({ coins, onClose }: { coins: number; onClose: () => void }) {
+export function EuropeInvitation({ coins, trust = 50, evidenceCount = 0, endingChoice, onClose }: { coins: number; trust?: number; evidenceCount?: number; endingChoice?: string; onClose: () => void }) {
   return (
     <View style={{ flex: 1, backgroundColor: '#070b1c' }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 44, gap: 14 }}>
@@ -51,7 +51,7 @@ export function EuropeInvitation({ coins, onClose }: { coins: number; onClose: (
             <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900' }}>King of the Continent</Text>
           </View>
         </ImageBackground>
-        <Dim>From a cracked workshop in Lagos to the champion’s grid in Johannesburg. The notebook, the broker and the trail of stolen telemetry all lead to one name.</Dim>
+        <Dim>From a cracked workshop in Lagos to the champion’s grid in Johannesburg. The notebook, the broker and the trail of stolen telemetry all lead to one name. Your choices and the crew’s trust shape how the team carries the evidence forward.</Dim>
         <Card style={{ gap: 8, borderColor: '#ff3d9a', backgroundColor: '#1a1030' }}>
           <Text style={{ color: '#ff3d9a', fontSize: 12, fontWeight: '900', letterSpacing: 1.5 }}>VICTOR SLOANE · VANGUARD</Text>
           <Text style={{ color: '#fff', fontSize: 17, lineHeight: 25 }}>“You beat my best drivers on your own continent. Come to Europe and prove it was not luck. The invitation is open.”</Text>
@@ -59,7 +59,7 @@ export function EuropeInvitation({ coins, onClose }: { coins: number; onClose: (
         <Card style={{ gap: 8, borderColor: '#28578b', backgroundColor: '#101b34' }}>
           <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>CHAPTER 3 · EUROPE</Text>
           <Dim>Your invitation is saved. The Europe tour opens in a coming update with new cities, new rivals and the first meeting with Vanguard’s works team.</Dim>
-          <Text style={{ color: colors.good, fontWeight: '900', fontSize: 12 }}>✓ INVITATION EARNED  ·  {coins} COINS BANKED</Text>
+          <Text style={{ color: colors.good, fontWeight: '900', fontSize: 12 }}>✓ INVITATION EARNED  ·  {coins.toLocaleString()} COINS BANKED</Text><Text style={{ color: colors.x, fontWeight: '800', fontSize: 12 }}>CREW TRUST {trust}/100 · CLUES RECOVERED {evidenceCount}</Text><Dim>{endingChoice === 'publish-evidence' ? 'ENDING PATH · The evidence was released publicly. Vanguard is exposed, but its European leadership knows Tomi is coming.' : endingChoice === 'keep-evidence' ? 'ENDING PATH · The evidence was preserved privately. The crew has a stronger lead, but Vanguard has not yet been forced into the open.' : 'ENDING PATH · The crew leaves Africa with the evidence secured and the next lead still ahead.'}</Dim>
           <Text style={{ color: colors.dim, fontWeight: '800', fontSize: 11 }}>🔒 EUROPE TOUR · COMING SOON</Text>
         </Card>
         <Button title="CONTINUE" onPress={onClose} />

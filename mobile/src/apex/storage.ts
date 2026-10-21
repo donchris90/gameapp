@@ -30,6 +30,12 @@ export interface ApexSettings {
   africaRegionsCompleted: string[]; // completed regional free-drive tours; rewards are one-time
   africaBestTimes: Record<string, number>; // best elapsed seconds for each regional drive
   africaChampionshipPoints: Record<string, number>; // best medal points earned per regional event, 1-3
+  storyFuel: number; // persistent story-car fuel, 0-100
+  storyCondition: number; // persistent story-car condition, 0-100
+  storyTrust: number; // crew trust, 0-100
+  storyEvidence: string[]; // clues recovered during the campaign
+  storyChoices: Record<string, string>; // saved decisions keyed by mission/scene
+  storyApproach: 'balanced' | 'speed' | 'grip' | 'reliability';
 }
 const KEY = 'apex.settings';
 const STYLE_KEY = 'apex.styles'; // kept apart so a growing wardrobe never pushes the main settings over the secure store's size limit
@@ -38,7 +44,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {},
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced',
 };
 
 export async function loadApex(): Promise<ApexSettings> {

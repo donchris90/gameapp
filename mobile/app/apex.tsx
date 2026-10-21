@@ -26,7 +26,7 @@ import { DriveMission } from '../src/apex/DriveMission';
 import { jobFor } from '../src/apex/jobs';
 import { applyJobResult, storyUsage } from '../src/apex/storyEconomy';
 import { AfricaScene } from '../src/apex/AfricaScene';
-import { EUROPE_MISSIONS, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
+import { EUROPE_MISSIONS, EUROPE_TALK, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
@@ -49,7 +49,7 @@ export default function Apex() {
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
   const [activeEuropeMissionId, setActiveEuropeMissionId] = useState<string | null>(null);
   const [resultStoryMissionId, setResultStoryMissionId] = useState<string | null>(null);
-  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'evidence' } | null>(null);
+  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe-mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'evidence' } | null>(null);
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
@@ -136,7 +136,13 @@ export default function Apex() {
     if (!africaCampaignDone(settings.storyCompleted ?? [], settings.africaRegionsCompleted ?? [])) { setNotice('Complete every Africa story mission and all ten regional drives first.'); return; }
     const mission = EUROPE_MISSIONS.find((item) => item.id === missionId);
     if (!mission || (settings.europeCompleted ?? []).includes(mission.id) || currentEuropeMission(settings.europeCompleted ?? [])?.id !== mission.id) return;
-    setActiveStoryMissionId(null); setActiveEuropeMissionId(mission.id); setLevel(mission.level);
+    setStoryScene({ kind: 'europe-mission', id: mission.id });
+  };
+
+  const launchEuropeRace = (missionId: string) => {
+    const mission = EUROPE_MISSIONS.find((item) => item.id === missionId);
+    if (!mission || (settings.europeCompleted ?? []).includes(mission.id) || currentEuropeMission(settings.europeCompleted ?? [])?.id !== mission.id) return;
+    setStoryScene(null); setActiveStoryMissionId(null); setActiveEuropeMissionId(mission.id); setLevel(mission.level);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
     setNotice(''); startRace(mission.level);
   };
@@ -215,6 +221,12 @@ export default function Apex() {
   }
   if (phase === 'menu' && storyScene) {
     if (storyScene.kind === 'evidence') return <EvidenceBoard ids={settings.storyEvidence ?? []} trust={settings.storyTrust ?? 50} onClose={() => setStoryScene(null)} />;
+    if (storyScene.kind === 'europe-mission') {
+      const mission = EUROPE_MISSIONS.find((item) => item.id === storyScene.id);
+      const talk = mission ? EUROPE_TALK[mission.id] : undefined;
+      if (mission && talk) return <StoryScene kicker="CHAPTER 3 · EUROPE" title={mission.title} place={mission.subtitle} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => launchEuropeRace(mission.id)} onSkip={() => setStoryScene(null)} />;
+      if (mission) return <StoryScene kicker="CHAPTER 3 · EUROPE" title={mission.title} place={mission.subtitle} lines={[{ who: 'Tomi', line: mission.briefing }]} goLabel="TO THE GRID  →" onDone={() => launchEuropeRace(mission.id)} onSkip={() => setStoryScene(null)} />;
+    }
     if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} trust={settings.storyTrust ?? 50} evidenceCount={(settings.storyEvidence ?? []).length} endingChoice={settings.storyChoices?.['johannesburg-road-home']} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
     if (storyScene.kind === 'needs') {
       const nm = STORY_MISSIONS.find((x) => x.id === storyScene.id); const list = needsFor(storyScene.id);
@@ -516,7 +528,7 @@ export default function Apex() {
                  const locked = !africaCampaignComplete || (!complete && !isCurrent);
                  return <Card key={mission.id} style={{ gap: 8, borderColor: isCurrent && africaCampaignComplete ? '#ff3d9a' : complete ? '#236b63' : colors.line, backgroundColor: isCurrent && africaCampaignComplete ? '#21142f' : colors.card, opacity: locked ? 0.65 : 1 }}>
                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}><View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#145044' : '#1b2a4a' }}><Text style={{ color: '#fff', fontWeight: '900' }}>{complete ? '✓' : String(index + 1).padStart(2, '0')}</Text></View><View style={{ flex: 1, gap: 6 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: '#ff8ad1', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : !africaCampaignComplete ? 'COMPLETE AFRICA FIRST' : !isCurrent ? 'COMPLETE THE PREVIOUS MISSION FIRST' : mission.objective}</Text><Text style={{ color: colors.x, fontSize: 11, fontWeight: '900' }}>MISSION BONUS · {mission.reward.toLocaleString()} COINS</Text></View></View>
-                   {isCurrent && africaCampaignComplete ? <Button title="START EUROPE MISSION  →" onPress={() => startEuropeMission(mission.id)} /> : null}
+                   {isCurrent && africaCampaignComplete ? <Button title="OPEN STORY SCENE  →" onPress={() => startEuropeMission(mission.id)} /> : null}
                  </Card>;
                })}
              </View>

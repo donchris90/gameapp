@@ -1,4 +1,5 @@
 import { CareerRaceResult } from './career';
+import { JOB_BY_MISSION, jobKindLabel } from './jobs';
 
 export type StoryChapter = 'lagos' | 'africa';
 export interface StoryMission {
@@ -15,6 +16,8 @@ export interface StoryMission {
   /** Optional extra gameplay condition enforced from the race result. */
   specialRule?: 'clean-finish' | 'low-damage';
   lockedHint?: string;
+  /** Set when the mission is played as a job (see jobs.ts) instead of a race. */
+  jobKind?: string;
 }
 
 /** Chapter 1: Lagos origin. These missions reuse the tested race engine. */
@@ -181,7 +184,9 @@ const STORY_ORDER = [
 ];
 const ALL_MISSION_DATA = [...LAGOS_STORY, ...AFRICA_STORY, ...AFRICA_EXPANSION];
 const MISSION_BY_ID = new Map(ALL_MISSION_DATA.map((mission) => [mission.id, mission]));
-export const STORY_MISSIONS: StoryMission[] = STORY_ORDER.map((id) => MISSION_BY_ID.get(id)).filter((mission): mission is StoryMission => Boolean(mission));
+/** Missions with a job (chase, delivery, investigation...) are played as that job, so they show the job's goal. */
+const withJob = (m: StoryMission): StoryMission => { const j = JOB_BY_MISSION[m.id]; return j ? { ...m, objective: `${jobKindLabel(j.kind)} · ${j.goal}`, jobKind: j.kind, specialRule: undefined } : m; };
+export const STORY_MISSIONS: StoryMission[] = STORY_ORDER.map((id) => MISSION_BY_ID.get(id)).filter((mission): mission is StoryMission => Boolean(mission)).map(withJob);
 
 
 export function storyMissionComplete(

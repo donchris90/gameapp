@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildBus, buildTrafficCar, speckleTexture, THEMES, towerTexture, windowTexture } from './scene';
+import { buildBus, buildTrafficCar, speckleTexture, Theme, THEMES, towerTexture, windowTexture } from './scene';
 
 export interface Collider { x: number; z: number; halfW: number; halfD: number }
 
@@ -11,9 +11,9 @@ const repeatTex = (t: THREE.DataTexture, rx: number, ry: number) => { const c = 
  * lit windows, lamp posts, palms and a far skyline. It uses the race's own textures and traffic models.
  * The street layout and building footprints are unchanged, so driving and collisions behave as before.
  */
-export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; quality: number }) {
+export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; quality: number; skin?: Partial<Theme> }) {
   const { road: ROAD, quality } = opts;
-  const t = THEMES[1]; // the sunset look
+  const t: Theme = { ...THEMES[1], ...(opts.skin ?? {}) }; // the sunset look, or the region's own sky
   scene.background = new THREE.Color(t.horizon);
   scene.fog = new THREE.Fog(t.fog, 90, [210, 270, 320][Math.max(0, Math.min(2, quality))]);
   const hemi = new THREE.HemisphereLight(t.ambient, 0x556070, 1.15); scene.add(hemi);

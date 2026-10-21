@@ -160,6 +160,11 @@ try {
     assert.ok(validRequirements.has(mission.requirement), 'Unknown Europe requirement ' + mission.requirement + ': ' + mission.id);
     assert.ok(Number.isFinite(mission.reward) && mission.reward > 0, 'Europe mission reward must be positive: ' + mission.id);
   }
+  const europeTalk = europe.EUROPE_TALK;
+  for (const mission of europeMissions) {
+    assert.ok(europeTalk[mission.id]?.before?.length >= 2, 'Europe mission needs a dialogue scene: ' + mission.id);
+    for (const line of europeTalk[mission.id].before) assert.ok(line.who?.trim() && line.line?.trim(), 'Invalid Europe dialogue line: ' + mission.id);
+  }
   const firstEurope = europeMissions[0];
   assert.equal(europe.currentEuropeMission([]).id, firstEurope.id, 'Europe should begin at its first mission');
   assert.equal(europe.currentEuropeMission([firstEurope.id]).id, europeMissions[1].id, 'Europe should advance in order');

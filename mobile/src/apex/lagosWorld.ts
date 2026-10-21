@@ -11,7 +11,7 @@ const repeatTex = (t: THREE.DataTexture, rx: number, ry: number) => { const c = 
  * lit windows, lamp posts, palms and a far skyline. It uses the race's own textures and traffic models.
  * The street layout and building footprints are unchanged, so driving and collisions behave as before.
  */
-export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; quality: number; skin?: Partial<Theme> }) {
+export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; quality: number; skin?: Partial<Theme>; look?: { facade?: number[]; palm?: number; ground?: number } }) {
   const { road: ROAD, quality } = opts;
   const t: Theme = { ...THEMES[1], ...(opts.skin ?? {}) }; // the sunset look, or the region's own sky
   scene.background = new THREE.Color(t.horizon);
@@ -34,7 +34,7 @@ export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; qualit
 
   // ground
   const gTex = repeatTex(speckleTexture(215, 60), 160, 160);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), std(0x7b8a50, { map: gTex, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08; scene.add(ground);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), std(opts.look?.ground ?? 0x7b8a50, { map: gTex, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08; scene.add(ground);
 
   // roads: speckled asphalt, white edge lines, dashed yellow centre lines
   const aTex = repeatTex(speckleTexture(200, 50), 30, 30);
@@ -55,7 +55,7 @@ export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; qualit
   for (const x of [-8, 8, 34, 50, 76, 92, -34, -50, -76, -92]) { const s = new THREE.Mesh(new THREE.BoxGeometry(2, 0.25, 310), pave); s.position.set(x, 0.08, -105); scene.add(s); }
 
   // buildings with lit windows (same footprints as before)
-  const facade = [0xc56b45, 0xd6b26c, 0x879c9e, 0xc4c7b9, 0x9c705a, 0xe0a15a, 0x788c76];
+  const facade = opts.look?.facade ?? [0xc56b45, 0xd6b26c, 0x879c9e, 0xc4c7b9, 0x9c705a, 0xe0a15a, 0x788c76];
   const colliders: Collider[] = [];
   const baseWin = windowTexture();
   const tanks = std(0x25333a);
@@ -86,7 +86,7 @@ export function buildLagosWorld(scene: THREE.Scene, opts: { road: number; qualit
   const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.13, 7, 6), std(0x555a66, { metalness: 0.7 }), lampCount);
   const bulbs = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.14, 0.4), new THREE.MeshBasicMaterial({ color: 0xfff2c0 }), lampCount);
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.3, 6, 6), std(0x7a5a3a, { roughness: 1 }), lampCount);
-  const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(2.4, 2.6, 7), std(0x2e8b3d, { roughness: 1 }), lampCount);
+  const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(2.4, 2.6, 7), std(opts.look?.palm ?? 0x2e8b3d, { roughness: 1 }), lampCount);
   let li = 0, ti = 0;
   for (const x of XS) for (const sx of [-1, 1]) for (let k = 0; k < 10; k++) {
     const z = -240 + k * 27;

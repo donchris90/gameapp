@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CarStyle } from './style';
 import { loadCarModel, MODELS } from './model';
 import { lookFor } from './cars';
-import { makeHeroCar, Theme } from './scene';
+import { makeHeroCar } from './scene';
+import { RegionLook } from './regionLook';
 import { buildLagosWorld } from './lagosWorld';
 import { CATCH_SECONDS, collected, jobCoins, JobDef, jobKindLabel, jobOutcome, JobOutcome, JobState, newJob, nextPoint, START, stepJob, timeLeft } from './jobs';
 import './cars';
@@ -24,8 +25,8 @@ function addBox(scene: THREE.Scene, x: number, y: number, z: number, w: number, 
  * The rules are in jobs.ts; this file only draws them and feeds in the player's position and collisions.
  * `onFinish` is called exactly once, the moment the job is won or lost.
  */
-export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quality = 2, autoGas = true, upgrades = [], bodyTier = 0, skin, onFinish, onExit, onContinue, onRetry }: {
-  job: JobDef; title: string; carId: string; paint?: number; style?: CarStyle; quality?: number; autoGas?: boolean; upgrades?: number[]; bodyTier?: number; skin?: Partial<Theme>;
+export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quality = 2, autoGas = true, upgrades = [], bodyTier = 0, region, onFinish, onExit, onContinue, onRetry }: {
+  job: JobDef; title: string; carId: string; paint?: number; style?: CarStyle; quality?: number; autoGas?: boolean; upgrades?: number[]; bodyTier?: number; region?: RegionLook;
   onFinish: (o: JobOutcome) => void; onExit: () => void; onContinue: () => void; onRetry: () => void;
 }) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -52,7 +53,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500); glRef.current = gl;
     resizeRef.current = (nw, nh) => { if (nw < 1 || nh < 1) return; renderer.setSize(nw, nh, false); camera.aspect = nw / nh; camera.updateProjectionMatrix(); };
-    const world = buildLagosWorld(scene, { road: ROAD, quality, skin });
+    const world = buildLagosWorld(scene, { road: ROAD, quality, skin: region?.skin, look: region });
     const colliders = world.colliders;
 
     // player car: same model and look as in the race
@@ -93,7 +94,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
       const color = p.clue ? 0xffd23f : 0x3dffbd;
       const ring = new THREE.Mesh(new THREE.TorusGeometry(4.3, 0.3, 8, 28), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6, roughness: 0.3 }));
       ring.position.set(p.x, 2.1, p.z); ring.rotation.x = Math.PI / 2; scene.add(ring);
-      const beam = addBox(scene, p.x, 7, p.z, 0.5, 14, 0.5, color); (beam.material as THREE.MeshStandardMaterial).emissive.setHex(color); (beam.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.5; (beam.material as THREE.MeshStandardMaterial).transparent = true; (beam.material as THREE.MeshStandardMaterial).opacity = 0.55;
+      const beam = addBox(scene, p.x, 7, p.z, 0.3, 14, 0.3, color); (beam.material as THREE.MeshStandardMaterial).emissive.setHex(color); (beam.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.5; (beam.material as THREE.MeshStandardMaterial).transparent = true; (beam.material as THREE.MeshStandardMaterial).opacity = 0.4;
       void i; return { ring, beam };
     });
 
@@ -144,7 +145,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
       const next = job.ordered ? nextPoint(job, state) : -1;
       rings.forEach((r, i) => {
         const done = state.got[i]; r.ring.visible = !done; r.beam.visible = !done;
-        const live = job.ordered ? i === next : !done; r.ring.rotation.z += dt * (live ? 0.9 : 0.2); r.ring.scale.setScalar(live ? 1 : 0.55); (r.beam.material as THREE.Material).opacity = live ? 0.55 : 0.18;
+        const live = job.ordered ? i === next : !done; r.ring.rotation.z += dt * (live ? 0.9 : 0.2); r.ring.scale.setScalar(live ? 1 : 0.55); (r.beam.material as THREE.Material).opacity = live ? 0.4 : 0.15;
       });
 
       const target = new THREE.Vector3(m.x + Math.sin(m.heading) * 10, 5.8, m.z + Math.cos(m.heading) * 10);
@@ -167,7 +168,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
     camera.position.set(0, 6, 16); camera.lookAt(0, 1, -5); animate();
     return () => { cancelAnimationFrame(raf); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carId, paint, style, job]);
+  }, [carId, paint, style, job, region]);
 
   const onFinishRef = useRef(onFinish); onFinishRef.current = onFinish;
   useEffect(() => () => { alive.current = false; carModelLoadRef.current++; rendererRef.current?.dispose(); rendererRef.current = null; }, []);
@@ -187,7 +188,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
     </View>
     <View style={{ position: 'absolute', top: insets.top + 8, right, alignItems: 'flex-end', gap: 6, maxWidth: '44%' }}>
       <View pointerEvents="none" style={[styles.panel, { padding: 8 }]}>
-        <Text style={styles.missionTitle}>{jobKindLabel(job.kind)} · {title.toUpperCase()}</Text>
+        <Text style={styles.missionTitle}>{jobKindLabel(job.kind)} · {title.toUpperCase()}</Text>{region ? <Text style={[styles.missionSub, { color: '#9aa3b8', marginTop: 1 }]}>{region.name}</Text> : null}
         <Text style={styles.missionSub} numberOfLines={2}>{job.goal}</Text>
         <Text style={[styles.missionSub, { color: '#ffd23f', marginTop: 3 }]}>{objective}</Text>
         {hud.caught > 0.02 ? <View style={styles.bar}><View style={[styles.barFill, { width: `${Math.min(100, hud.caught * 100)}%`, backgroundColor: '#ff5d5d' }]} /></View> : null}

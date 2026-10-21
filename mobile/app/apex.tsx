@@ -30,6 +30,8 @@ import { canStartEuropeMission, canStartStoryMission, europeEndingLines, europeF
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { EUROPE_MISSIONS, EUROPE_SKINS, EUROPE_TALK, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
 import { sfx } from '../src/sfx';
+import { useSession } from '../src/session';
+import { displayCoins, flushOps, legacyOp, opsForDelta } from '../src/apex/coinSync';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
 type Panel = 'home' | 'tracks' | 'garage' | 'customize' | 'career' | 'friends' | 'story';
@@ -41,7 +43,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa' | 'job'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeEndingSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced', europeCompleted: [] });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, coinOps: [], walletImported: false, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeEndingSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced', europeCompleted: [] });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -59,16 +61,61 @@ export default function Apex() {
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
   const [jobMissionId, setJobMissionId] = useState<string | null>(null); // the job on screen, kept until the player leaves its result
 
-  useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
+  const { refreshCoins } = useSession();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const flushing = useRef(false);
+  /** Sends pending coin movements to the shared wallet, then shows the wallet balance. */
+  const syncCoins = async () => {
+    if (flushing.current) return;
+    flushing.current = true;
+    try {
+      for (let round = 0; round < 5; round++) {
+        const queue = settingsRef.current.coinOps ?? [];
+        const r = await flushOps(queue);
+        const cur = settingsRef.current;
+        const left = (cur.coinOps ?? []).filter((o) => !r.done.includes(o.key));
+        const next = { ...cur, coinOps: left, coins: r.coins === null ? cur.coins : displayCoins(r.coins, left) };
+        settingsRef.current = next;
+        setSettings(next);
+        void saveApex(next);
+        if (r.coins !== null) void refreshCoins();
+        if (r.done.length === 0 || left.length === 0) break;
+      }
+    } finally { flushing.current = false; }
+  };
+  useEffect(() => {
+    loadApex().then((s) => {
+      let start = s;
+      if (!s.walletImported) {
+        // Older saves kept their coins only on this phone. Move them into the wallet once.
+        const op = legacyOp(s.coins);
+        start = { ...s, walletImported: true, coinOps: op ? [...(s.coinOps ?? []), op] : s.coinOps ?? [] };
+        void saveApex(start);
+      }
+      settingsRef.current = start;
+      setSettings(start); setBrowse(start.activeCar); setLevel(Math.min(start.unlocked, MAX_LEVEL));
+      void syncCoins();
+    });
+    preloadInterstitial();
+  }, []);
   useEffect(() => {
     void ScreenOrientation.lockAsync((phase === 'race' || phase === 'drive' || phase === 'africa' || phase === 'job') ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
   }, [phase]);
   useEffect(() => () => { void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined); }, []);
 
   const update = (p: Partial<ApexSettings>) => {
-    const s = { ...settings, ...p };
+    const base = settingsRef.current;
+    const s = { ...base, ...p };
+    // Any change to the coin count is a wallet movement: the general balance is the only balance.
+    const delta = p.coins !== undefined ? p.coins - settings.coins : 0;
+    const ops = opsForDelta(delta);
+    if (p.coins !== undefined) s.coins = Math.max(0, base.coins + delta);
+    if (ops.length) s.coinOps = [...(base.coinOps ?? []), ...ops];
+    settingsRef.current = s;
     setSettings(s);
     void saveApex(s);
+    if (ops.length) void syncCoins();
   };
   const selectedCar = useMemo(() => catalogCar(settings.activeCar), [settings.activeCar]);
   const levelsOf = (id: string) => settings.upgrades[id] ?? [0, 0, 0, 0];

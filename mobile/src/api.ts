@@ -72,6 +72,7 @@ export function explain(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.code) {
       case 'INSUFFICIENT_COINS': return 'You do not have enough coins for that stake.';
+      case 'VOICE_NOT_CONFIGURED': return 'Voice calls are not switched on yet. Chat still works, and voice is coming soon.';
       case 'ALREADY_IN_ROOM': return 'Leave your current room first.';
       case 'ALREADY_QUEUED': return 'You are already searching for a match.';
       case 'ROOM_NOT_FOUND': return 'No room with that code.';

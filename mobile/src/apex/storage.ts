@@ -8,6 +8,10 @@ export interface ApexSettings {
   invert: boolean;
   unlocked: number;
   coins: number;
+  /** Coin movements not yet delivered to the shared wallet. */
+  coinOps: { key: string; kind: 'earn' | 'spend'; amount: number }[];
+  /** True once an older local balance has been moved into the wallet. */
+  walletImported: boolean;
   activeCar: string;
   unlockedCars: string[];
   paint: number;
@@ -46,7 +50,7 @@ const STYLE_KEY = 'apex.styles'; // kept apart so a growing wardrobe never pushe
 const TRACK_IDS = ['circuit', 'coast', 'dunes', 'city', 'pass'];
 const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
-  tilt: true, invert: false, unlocked: 1, coins: 0,
+  tilt: true, invert: false, unlocked: 1, coins: 0, coinOps: [], walletImported: false,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
   bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeEndingSeen: false, europeCompleted: [], storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced',
 };
@@ -70,6 +74,8 @@ export async function loadApex(): Promise<ApexSettings> {
       quality: [0, 1, 2].includes(saved.quality) ? saved.quality : DEFAULTS.quality,
       upgrades: saved.upgrades && typeof saved.upgrades === 'object' ? saved.upgrades : {},
       coins: Number.isFinite(saved.coins) ? Math.max(0, saved.coins) : DEFAULTS.coins,
+      walletImported: saved.walletImported === true,
+      coinOps: Array.isArray(saved.coinOps) ? saved.coinOps.filter((o: any) => o && typeof o.key === 'string' && /^[A-Za-z0-9:_.-]{6,80}$/.test(o.key) && (o.kind === 'earn' || o.kind === 'spend') && Number.isInteger(o.amount) && o.amount > 0 && o.amount <= 1_000_000).slice(0, 200) : [],
       paint: Number.isFinite(saved.paint) ? saved.paint : DEFAULTS.paint,
       bodyTier: Number.isFinite(saved.bodyTier) ? Math.max(0, Math.min(3, saved.bodyTier)) : DEFAULTS.bodyTier,
       completedRaces: Number.isFinite(saved.completedRaces) ? Math.max(0, saved.completedRaces) : DEFAULTS.completedRaces,

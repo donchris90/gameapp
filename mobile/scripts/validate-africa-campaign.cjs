@@ -33,7 +33,7 @@ assert.equal(syntaxErrors.length, 0, syntaxErrors.join('\n'));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-campaign-'));
 try {
-  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts']) {
+  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts', 'storyEconomy.ts']) {
     const source = fs.readFileSync(path.join(root, 'src', 'apex', file), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);
@@ -41,6 +41,7 @@ try {
   const story = require(path.join(temp, 'story.js'));
   const jobs = require(path.join(temp, 'jobs.js'));
   const extras = require(path.join(temp, 'storyExtras.js'));
+  const economy = require(path.join(temp, 'storyEconomy.js'));
   const missions = story.STORY_MISSIONS;
   const ids = new Set(missions.map((mission) => mission.id));
   assert.equal(missions.length, 56, 'Expected 56 ordered story missions');
@@ -94,6 +95,28 @@ try {
   const poorNeed = extras.applyNeed({ ...needState, coins: 0 }, 'n-engine-1');
   assert.equal(poorNeed.ok, false, 'Story need purchase must reject insufficient funds');
   if (!poorNeed.ok) assert.equal(poorNeed.reason, 'funds');
+  // Job results have clear success/failure rewards, resource costs, and idempotency.
+  const sampleJob = jobs.JOBS[0];
+  const sampleMission = missions.find((mission) => mission.id === sampleJob.missionId);
+  assert.ok(sampleMission, 'Sample job must belong to a story mission');
+  const jobSave = { coins: 500, careerXP: 20, unlocked: sampleMission.level, storyCompleted: [], storyFuel: 80, storyCondition: 90, storyTrust: 50, storyEvidence: [], storyApproach: 'balanced', storyNeedsDone: [] };
+  const successOutcome = { success: true, reason: 'complete', hits: 0, seconds: 10, timeBonus: 20, clues: ['blueprint-proof'] };
+  const successfulJob = economy.applyJobResult(jobSave, sampleMission, sampleJob, successOutcome, 60);
+  assert.equal(successfulJob.coins, 500 + sampleJob.reward + 70, 'Successful clean job should award base, time, and clean bonuses');
+  assert.ok(successfulJob.storyCompleted.includes(sampleMission.id), 'Successful job should complete its mission');
+  assert.equal(successfulJob.careerXP, 80, 'Successful job should award career XP');
+  assert.ok(successfulJob.storyEvidence.includes('blueprint-proof'), 'Successful job should save recovered clues');
+  assert.ok(successfulJob.storyFuel < jobSave.storyFuel, 'Story jobs should consume fuel');
+  assert.ok(successfulJob.storyCondition < jobSave.storyCondition, 'Story jobs should wear the car');
+  const failedJob = economy.applyJobResult(jobSave, sampleMission, sampleJob, { ...successOutcome, success: false, reason: 'failed', timeBonus: 0, clues: [] }, 60);
+  assert.equal(failedJob.coins, jobSave.coins + jobs.FAIL_FEE, 'Failed job should award only the small recovery fee');
+  assert.ok(!failedJob.storyCompleted, 'Failed job must not complete the story mission');
+  assert.equal(failedJob.careerXP, undefined, 'Failed job must not award career XP');
+  assert.ok(failedJob.storyFuel < jobSave.storyFuel, 'Failed job still consumes fuel');
+  const repeatedJob = economy.applyJobResult({ ...jobSave, storyCompleted: [sampleMission.id] }, sampleMission, sampleJob, successOutcome, 60);
+  assert.equal(repeatedJob.coins, jobSave.coins, 'Replayed completed job must not pay twice');
+  assert.equal(repeatedJob.coinsGained, 0, 'Replayed completed job should report zero coins gained');
+  assert.equal(repeatedJob.storyFuel, undefined, 'Replayed completed job must not spend fuel twice');
   const allStory = missions.map((mission) => mission.id);
   const regions = story.AFRICA_CAMPAIGN_REGION_IDS;
   assert.equal(regions.length, 10, 'Expected ten Africa regional driving challenges');
@@ -103,6 +126,7 @@ try {
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), unique IDs, dialogue, and campaign order.');
   console.log('PASS: clean licence condition, delivery damage limit, and ten-region Africa completion gate.');
   console.log('PASS: story upgrade/part purchases are idempotent and reject insufficient funds.');
+  console.log('PASS: story jobs reward success/failure correctly, consume resources, and cannot pay twice.');
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

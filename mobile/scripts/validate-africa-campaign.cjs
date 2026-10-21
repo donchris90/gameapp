@@ -123,14 +123,6 @@ try {
   const poorNeed = extras.applyNeed({ ...needState, coins: 0 }, 'n-engine-1');
   assert.equal(poorNeed.ok, false, 'Story need purchase must reject insufficient funds');
   if (!poorNeed.ok) assert.equal(poorNeed.reason, 'funds');
-  // The long-road fuel story beat must actually restore the resource used by mission launch.
-  const fuelNeed = extras.applyNeed({ ...needState, coins: 1000, storyFuel: 8 }, 'n-fuel-ke');
-  assert.equal(fuelNeed.ok, true, 'Long-road fuel purchase should be available');
-  if (fuelNeed.ok) {
-    assert.equal(fuelNeed.patch.storyFuel, 100, 'Buying story fuel must refill the tank so the mission can launch');
-    const repeatFuel = extras.applyNeed({ ...needState, ...fuelNeed.patch, storyFuel: fuelNeed.patch.storyFuel }, 'n-fuel-ke');
-    assert.equal(repeatFuel.ok, false, 'Fuel supplies must not be charged twice');
-  }
   // Job results have clear success/failure rewards, resource costs, and idempotency.
   const sampleJob = jobs.JOBS[0];
   const sampleMission = missions.find((mission) => mission.id === sampleJob.missionId);

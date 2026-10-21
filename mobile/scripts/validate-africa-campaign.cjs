@@ -33,7 +33,7 @@ assert.equal(syntaxErrors.length, 0, syntaxErrors.join('\n'));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-campaign-'));
 try {
-  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts', 'storyEconomy.ts']) {
+  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts', 'storyEconomy.ts', 'europe.ts']) {
     const source = fs.readFileSync(path.join(root, 'src', 'apex', file), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);
@@ -42,6 +42,7 @@ try {
   const jobs = require(path.join(temp, 'jobs.js'));
   const extras = require(path.join(temp, 'storyExtras.js'));
   const economy = require(path.join(temp, 'storyEconomy.js'));
+  const europe = require(path.join(temp, 'europe.js'));
   const missions = story.STORY_MISSIONS;
   const ids = new Set(missions.map((mission) => mission.id));
   assert.equal(missions.length, 56, 'Expected 56 ordered story missions');
@@ -148,6 +149,34 @@ try {
   for (const id of regions) assert.ok(new RegExp('^\\s*' + id + ': L\\(', 'm').test(regionLookSource), 'Missing regional job visual theme: ' + id);
   assert.equal(story.africaCampaignDone(allStory, [...regions]), true, 'All story missions and regions should finish Africa');
   assert.equal(story.africaCampaignDone(allStory, regions.slice(1)), false, 'Missing a regional challenge must keep Africa incomplete');
+  const europeMissions = europe.EUROPE_MISSIONS;
+  const europeIds = new Set(europeMissions.map((mission) => mission.id));
+  assert.equal(europeMissions.length, 12, 'Europe chapter should contain twelve missions');
+  assert.equal(europeIds.size, europeMissions.length, 'Europe mission IDs must be unique');
+  for (const mission of europeMissions) {
+    assert.ok(mission.title?.trim() && mission.city?.trim() && mission.subtitle?.trim(), 'Europe mission metadata is incomplete: ' + mission.id);
+    assert.ok(mission.briefing?.trim() && mission.objective?.trim(), 'Europe mission briefing/objective is missing: ' + mission.id);
+    assert.ok(validTracks.has(mission.track), 'Unknown Europe track ' + mission.track + ': ' + mission.id);
+    assert.ok(validRequirements.has(mission.requirement), 'Unknown Europe requirement ' + mission.requirement + ': ' + mission.id);
+    assert.ok(Number.isFinite(mission.reward) && mission.reward > 0, 'Europe mission reward must be positive: ' + mission.id);
+  }
+  const europeSkins = europe.EUROPE_SKINS;
+  for (const mission of europeMissions) assert.ok(europeSkins[mission.id], 'Europe mission is missing its regional race palette: ' + mission.id);
+  const europeTalk = europe.EUROPE_TALK;
+  for (const mission of europeMissions) {
+    assert.ok(europeTalk[mission.id]?.before?.length >= 2, 'Europe mission needs a dialogue scene: ' + mission.id);
+    for (const line of europeTalk[mission.id].before) assert.ok(line.who?.trim() && line.line?.trim(), 'Invalid Europe dialogue line: ' + mission.id);
+  }
+  const firstEurope = europeMissions[0];
+  assert.equal(europe.currentEuropeMission([]).id, firstEurope.id, 'Europe should begin at its first mission');
+  assert.equal(europe.currentEuropeMission([firstEurope.id]).id, europeMissions[1].id, 'Europe should advance in order');
+  assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 100, rank: 2, track: firstEurope.track }), true, 'A valid podium mission should complete');
+  assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 0, rank: 1, track: firstEurope.track }), false, 'DNF must not complete a Europe mission');
+  assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 100, rank: 1, track: 'wrong-track' }), false, 'Wrong-track results must not complete a Europe mission');
+  const apexScreen = fs.readFileSync(path.join(root, 'app', 'apex.tsx'), 'utf8');
+  assert.ok(apexScreen.includes('africaCampaignDone(settings.storyCompleted'), 'Europe start must be gated by the full Africa milestone');
+  assert.ok(apexScreen.includes('europeCompleted: europeWon ?'), 'Europe completion must be persisted only on a valid win/result');
+  console.log('PASS: Europe chapter has 12 unique, fully specified missions, sequential progress, result validation, and the Africa completion gate.');
   console.log(`PASS: ${sourceFiles.length} TypeScript/TSX files syntax-checked.`);
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), metadata, unique IDs, dialogue, and campaign order.');
   console.log('PASS: race-result rules, clean/low-damage conditions, delivery damage limit, and ten-region Africa completion gate.');

@@ -58,9 +58,9 @@ export function EuropeInvitation({ coins, trust = 50, evidenceCount = 0, endingC
         </Card>
         <Card style={{ gap: 8, borderColor: '#28578b', backgroundColor: '#101b34' }}>
           <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>CHAPTER 3 · EUROPE</Text>
-          <Dim>Your invitation is saved. The Europe tour opens in a coming update with new cities, new rivals and the first meeting with Vanguard’s works team.</Dim>
+          <Dim>Your invitation is saved. Chapter 3 is now playable: race through European cities, uncover Vanguard’s works-team records, protect the evidence and challenge Sloane’s prototype.</Dim>
           <Text style={{ color: colors.good, fontWeight: '900', fontSize: 12 }}>✓ INVITATION EARNED  ·  {coins.toLocaleString()} COINS BANKED</Text><Text style={{ color: colors.x, fontWeight: '800', fontSize: 12 }}>CREW TRUST {trust}/100 · CLUES RECOVERED {evidenceCount}</Text><Dim>{endingChoice === 'publish-evidence' ? 'ENDING PATH · The evidence was released publicly. Vanguard is exposed, but its European leadership knows Tomi is coming.' : endingChoice === 'keep-evidence' ? 'ENDING PATH · The evidence was preserved privately. The crew has a stronger lead, but Vanguard has not yet been forced into the open.' : 'ENDING PATH · The crew leaves Africa with the evidence secured and the next lead still ahead.'}</Dim>
-          <Text style={{ color: colors.dim, fontWeight: '800', fontSize: 11 }}>🔒 EUROPE TOUR · COMING SOON</Text>
+          <Text style={{ color: colors.dim, fontWeight: '800', fontSize: 11 }}>CHAPTER 3 · EUROPE TOUR UNLOCKED</Text>
         </Card>
         <Button title="CONTINUE" onPress={onClose} />
       </ScrollView>

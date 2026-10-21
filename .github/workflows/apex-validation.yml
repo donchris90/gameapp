@@ -1,4 +1,4 @@
-name: Apex Africa Campaign Validation
+name: Apex Africa + Europe Campaign Validation
 
 on:
   pull_request:
@@ -12,6 +12,7 @@ on:
     branches:
       - main
       - apex-africa-final-pass
+      - apex-europe-campaign
     paths:
       - 'mobile/src/apex/**'
       - 'mobile/app/apex.tsx'

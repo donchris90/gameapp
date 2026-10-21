@@ -26,6 +26,7 @@ import { DriveMission } from '../src/apex/DriveMission';
 import { jobFor } from '../src/apex/jobs';
 import { applyJobResult, storyUsage } from '../src/apex/storyEconomy';
 import { AfricaScene } from '../src/apex/AfricaScene';
+import { EUROPE_MISSIONS, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
 import { sfx } from '../src/sfx';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
 
@@ -38,7 +39,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa' | 'job'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced' });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced', europeCompleted: [] });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -46,6 +47,7 @@ export default function Apex() {
   const [notice, setNotice] = useState('');
   const [jobRun, setJobRun] = useState(0);
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
+  const [activeEuropeMissionId, setActiveEuropeMissionId] = useState<string | null>(null);
   const [resultStoryMissionId, setResultStoryMissionId] = useState<string | null>(null);
   const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'evidence' } | null>(null);
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
@@ -81,11 +83,12 @@ export default function Apex() {
     const recordKey = `${r.track}:${r.laps}`;
     const rewards = calculateCareerRewards(r, Number(settings.bestLaps?.[recordKey] ?? 0));
     const reward = rewards.base + rewards.placement + rewards.clean + rewards.record;
+    const activeEuropeMission = EUROPE_MISSIONS.find((mission) => mission.id === activeEuropeMissionId);
     const activeMission = STORY_MISSIONS.find((mission) => mission.id === activeStoryMissionId);
-    setResultStoryMissionId(activeMission?.id ?? null);
+    setResultStoryMissionId(activeMission?.id ?? activeEuropeMission?.id ?? null);
     const storyWon = Boolean(activeMission && !settings.storyCompleted.includes(activeMission.id) && storyMissionComplete(activeMission, r, settings.completedRaces + 1));
     const storyCompleted = storyWon ? [...settings.storyCompleted, activeMission!.id] : settings.storyCompleted;
-    const isStoryRace = Boolean(activeMission);
+    const isStoryRace = Boolean(activeMission || activeEuropeMission);
     const approach = settings.storyApproach ?? 'balanced';
     const trust = settings.storyTrust ?? 50;
     const usage = storyUsage(approach, trust, r.hits ?? 0, partsOf(settings.storyNeedsDone).cooling);
@@ -99,8 +102,9 @@ export default function Apex() {
     const bestLaps = { ...(settings.bestLaps ?? {}) };
     if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
     setLastReward({ base: rewards.base, placement: rewards.placement, clean: rewards.clean, record: rewards.record, xp: rewards.xp, isRecord: rewards.isRecord });
+    const europeWon = Boolean(activeEuropeMission && !((settings.europeCompleted ?? []).includes(activeEuropeMission.id)) && europeMissionComplete(activeEuropeMission, r));
     update({
-      coins: settings.coins + reward,
+      coins: settings.coins + reward + (europeWon ? activeEuropeMission!.reward : 0),
       careerXP: (settings.careerXP ?? 0) + rewards.xp,
       completedRaces: settings.completedRaces + 1,
       podiums: (settings.podiums ?? 0) + (r.rank <= 3 ? 1 : 0),
@@ -109,8 +113,11 @@ export default function Apex() {
       processedRaceKeys: [...(settings.processedRaceKeys ?? []), raceKey].slice(-250),
       unlocked: nextUnlocked,
       storyCompleted, storyFuel, storyCondition, storyTrust, storyEvidence,
+      europeCompleted: europeWon ? [...(settings.europeCompleted ?? []), activeEuropeMission!.id] : (settings.europeCompleted ?? []),
     });
-    if (storyWon) { const talk = STORY_TALK[activeMission!.id]; const ending = activeMission!.id === 'johannesburg-road-home' ? (settings.storyChoices?.[activeMission!.id] === 'publish-evidence' ? (storyEvidence.length >= 5 ? ' · ENDING: EVIDENCE RELEASED PUBLICLY WITH A STRONG CASE' : ' · ENDING: EVIDENCE RELEASED, BUT SOME PROOF IS STILL MISSING') : settings.storyChoices?.[activeMission!.id] === 'keep-evidence' ? ' · ENDING: EVIDENCE PRESERVED FOR THE NEXT INVESTIGATION' : '') : ''; const support = storyTrust >= 75 ? ' · CREW SUPPORT: HIGH' : storyTrust < 30 ? ' · CREW SUPPORT: LOW — NEXT RUNS COST MORE FUEL' : ''; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}${ending}${support} · FUEL ${storyFuel}% · CONDITION ${storyCondition}%`); setActiveStoryMissionId(null); }
+    if (europeWon) { setNotice(`EUROPE MISSION COMPLETE: ${activeEuropeMission!.title} · +${activeEuropeMission!.reward} BONUS COINS`); setActiveEuropeMissionId(null); setActiveStoryMissionId(null); }
+    else if (activeEuropeMission) { setNotice(`Mission not complete yet: ${activeEuropeMission.objective}`); setActiveEuropeMissionId(null); setActiveStoryMissionId(null); }
+    else if (storyWon) { const talk = STORY_TALK[activeMission!.id]; const ending = activeMission!.id === 'johannesburg-road-home' ? (settings.storyChoices?.[activeMission!.id] === 'publish-evidence' ? (storyEvidence.length >= 5 ? ' · ENDING: EVIDENCE RELEASED PUBLICLY WITH A STRONG CASE' : ' · ENDING: EVIDENCE RELEASED, BUT SOME PROOF IS STILL MISSING') : settings.storyChoices?.[activeMission!.id] === 'keep-evidence' ? ' · ENDING: EVIDENCE PRESERVED FOR THE NEXT INVESTIGATION' : '') : ''; const support = storyTrust >= 75 ? ' · CREW SUPPORT: HIGH' : storyTrust < 30 ? ' · CREW SUPPORT: LOW — NEXT RUNS COST MORE FUEL' : ''; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}${ending}${support} · FUEL ${storyFuel}% · CONDITION ${storyCondition}%`); setActiveStoryMissionId(null); }
     else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) { setNotice(`Mission not complete yet: ${activeMission.objective}`); setActiveStoryMissionId(null); }
     else if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
     setPhase('result');
@@ -125,6 +132,14 @@ export default function Apex() {
   const adAfterDrive = () => { void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); }); };
 
   const startRace = (nextLevel = level) => { setResultStoryMissionId(null); setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
+  const startEuropeMission = (missionId: string) => {
+    if (!africaCampaignDone(settings.storyCompleted ?? [], settings.africaRegionsCompleted ?? [])) { setNotice('Complete every Africa story mission and all ten regional drives first.'); return; }
+    const mission = EUROPE_MISSIONS.find((item) => item.id === missionId);
+    if (!mission || (settings.europeCompleted ?? []).includes(mission.id) || currentEuropeMission(settings.europeCompleted ?? [])?.id !== mission.id) return;
+    setActiveStoryMissionId(null); setActiveEuropeMissionId(mission.id); setLevel(mission.level);
+    update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
+    setNotice(''); startRace(mission.level);
+  };
   const startStoryMission = (missionId: string) => {
     const mission = STORY_MISSIONS.find((item) => item.id === missionId);
     if (!mission || settings.storyCompleted.includes(mission.id)) return;
@@ -239,11 +254,11 @@ export default function Apex() {
           </Card>
           {notice ? <Text style={{ color: colors.good, marginTop: 12, fontWeight: '800' }}>{notice}</Text> : null}
           <View style={{ gap: 10, marginTop: 18 }}>
-            {resultStoryMissionId ? (settings.storyCompleted.includes(resultStoryMissionId) ? <Button title="CONTINUE STORY  →" onPress={() => { setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); }} /> : <Button title="RETRY STORY MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); setStoryScene({ kind: 'mission', id }); }} />) : null}
+            {resultStoryMissionId ? (((settings.storyCompleted ?? []).includes(resultStoryMissionId) || (settings.europeCompleted ?? []).includes(resultStoryMissionId)) ? <Button title="CONTINUE STORY  →" onPress={() => { setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); }} /> : (EUROPE_MISSIONS.some((m) => m.id === resultStoryMissionId) ? <Button title="RETRY EUROPE MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); startEuropeMission(id); }} /> : <Button title="RETRY STORY MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); setStoryScene({ kind: 'mission', id }); }} />)) : null}
             {!resultStoryMissionId && next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { setActiveStoryMissionId(null); startRace(level + 1); }} /> : null}
             {!resultStoryMissionId ? <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startRace(level)} /> : null}
-            <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('garage'); }} />
-            <Button title="HOME" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('home'); }} />
+            <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setActiveEuropeMissionId(null); setPhase('menu'); setPanel('garage'); }} />
+            <Button title="HOME" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setActiveEuropeMissionId(null); setPhase('menu'); setPanel('home'); }} />
           </View>
         </ScrollView>
       </Screen>
@@ -489,6 +504,22 @@ export default function Apex() {
               {africaProgress.complete && !africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#b98237', backgroundColor: '#2b2115' }}><Text style={{ color: colors.gold, fontWeight: '900', fontSize: 16 }}>AFRICAN CHAMPIONSHIP WON</Text><Dim>All {africaProgress.total} African story missions are complete. Finish all ten regional driving challenges above to complete the full Africa milestone.</Dim></Card> : null}
               {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Button title="VIEW EUROPE INVITATION  →" onPress={() => setStoryScene({ kind: 'europe' })} /><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All {africaProgress.total} African story missions and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
             </View>
+             <View style={{ gap: 10, marginTop: 22 }}>
+               <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHAPTER 3 · EUROPE</Text>
+               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>The Works Team</Text><Text style={{ color: africaCampaignComplete ? colors.good : colors.dim, fontWeight: '900', fontSize: 12 }}>{(settings.europeCompleted ?? []).length}/{EUROPE_MISSIONS.length}</Text></View>
+               <Dim>France · Netherlands · Germany · Switzerland · Italy · Spain · Monaco · Czechia · United Kingdom. Missions use the existing race engine, saved sequential progress and one-time completion bonuses.</Dim>
+               {!africaCampaignComplete ? <Card style={{ gap: 6, borderColor: colors.line }}><Text style={{ color: '#fff', fontWeight: '900' }}>EUROPE LOCKED</Text><Dim>Complete every Africa story mission and all ten regional driving challenges to unlock Chapter 3.</Dim></Card> : null}
+               {EUROPE_MISSIONS.map((mission, index) => {
+                 const completedEurope = settings.europeCompleted ?? [];
+                 const complete = completedEurope.includes(mission.id);
+                 const isCurrent = currentEuropeMission(completedEurope)?.id === mission.id;
+                 const locked = !africaCampaignComplete || (!complete && !isCurrent);
+                 return <Card key={mission.id} style={{ gap: 8, borderColor: isCurrent && africaCampaignComplete ? '#ff3d9a' : complete ? '#236b63' : colors.line, backgroundColor: isCurrent && africaCampaignComplete ? '#21142f' : colors.card, opacity: locked ? 0.65 : 1 }}>
+                   <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}><View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#145044' : '#1b2a4a' }}><Text style={{ color: '#fff', fontWeight: '900' }}>{complete ? '✓' : String(index + 1).padStart(2, '0')}</Text></View><View style={{ flex: 1, gap: 6 }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: '#ff8ad1', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : !africaCampaignComplete ? 'COMPLETE AFRICA FIRST' : !isCurrent ? 'COMPLETE THE PREVIOUS MISSION FIRST' : mission.objective}</Text><Text style={{ color: colors.x, fontSize: 11, fontWeight: '900' }}>MISSION BONUS · {mission.reward.toLocaleString()} COINS</Text></View></View>
+                   {isCurrent && africaCampaignComplete ? <Button title="START EUROPE MISSION  →" onPress={() => startEuropeMission(mission.id)} /> : null}
+                 </Card>;
+               })}
+             </View>
             <Button title="BACK HOME" kind="ghost" onPress={() => setPanel('home')} style={{ marginTop: 14 }} />
           </>;
         })() : null}

@@ -51,6 +51,9 @@ export default function Apex() {
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
+  // A DriveMission result callback can fire twice during a React/GL transition.
+  // Key by mission + attempt so retries remain valid but one attempt can only settle once.
+  const processedJobAttemptsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
   useEffect(() => {
@@ -135,7 +138,15 @@ export default function Apex() {
   };
   const launchPreparedStoryMission = () => {
     const mission = STORY_MISSIONS.find((item) => item.id === storyPrepMissionId);
-    if (!mission || (settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) return;
+    if (!mission) return;
+    if ((settings.storyFuel ?? 100) < 15) {
+      setNotice('NOT ENOUGH FUEL · Refuel in the story workshop before starting this mission.');
+      return;
+    }
+    if ((settings.storyCondition ?? 100) < 15) {
+      setNotice('CAR TOO DAMAGED · Repair the car in the story workshop before starting this mission.');
+      return;
+    }
     setActiveStoryMissionId(mission.id);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1, storyChoices: { ...(settings.storyChoices ?? {}) } });
     setStoryPrepMissionId(null);
@@ -145,6 +156,13 @@ export default function Apex() {
   const finishJob = (o: JobOutcome) => {
     const mission = STORY_MISSIONS.find((x) => x.id === activeStoryMissionId); const def = mission ? jobFor(mission.id) : undefined;
     if (!mission || !def) return;
+    const attemptKey = `${mission.id}:${jobRun}`;
+    if (processedJobAttemptsRef.current.has(attemptKey)) return;
+    processedJobAttemptsRef.current.add(attemptKey);
+    if (processedJobAttemptsRef.current.size > 200) {
+      const oldest = processedJobAttemptsRef.current.values().next().value;
+      if (oldest) processedJobAttemptsRef.current.delete(oldest);
+    }
     const patch = applyJobResult(settings, mission, def, o, MAX_LEVEL);
     const { coinsGained, ...save } = patch; void coinsGained;
     update(save as Partial<ApexSettings>);

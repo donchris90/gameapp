@@ -72,7 +72,8 @@ try {
   for (const mission of jobMissions) assert.ok(jobIds.has(mission.id), `Missing job definition for ${mission.id}`);
   for (const job of jobs.JOBS) {
     assert.ok(ids.has(job.missionId), `Job references unknown story mission ${job.missionId}`);
-    assert.ok(job.points.length >= 2, `Job needs at least two playable points: ${job.missionId}`);
+    if (job.kind === 'chase') assert.ok((job.target?.path?.length ?? 0) >= 2, `Chase job needs a target route: ${job.missionId}`);
+    else assert.ok(job.points.length >= 2, `Job needs at least two playable points: ${job.missionId}`);
     assert.ok(job.reward >= 0 && job.maxHits >= 0, `Invalid job tuning: ${job.missionId}`);
   }
   // Story upgrades and special parts must be charged once and never overdraw the wallet.

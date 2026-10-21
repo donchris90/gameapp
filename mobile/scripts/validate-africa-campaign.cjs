@@ -160,6 +160,8 @@ try {
     assert.ok(validRequirements.has(mission.requirement), 'Unknown Europe requirement ' + mission.requirement + ': ' + mission.id);
     assert.ok(Number.isFinite(mission.reward) && mission.reward > 0, 'Europe mission reward must be positive: ' + mission.id);
   }
+  const europeSkins = europe.EUROPE_SKINS;
+  for (const mission of europeMissions) assert.ok(europeSkins[mission.id], 'Europe mission is missing its regional race palette: ' + mission.id);
   const europeTalk = europe.EUROPE_TALK;
   for (const mission of europeMissions) {
     assert.ok(europeTalk[mission.id]?.before?.length >= 2, 'Europe mission needs a dialogue scene: ' + mission.id);

@@ -49,6 +49,17 @@ try {
   assert.equal(missions.filter((mission) => mission.chapter === 'lagos').length, 7, 'Expected 7 Lagos missions');
   assert.equal(missions.filter((mission) => mission.chapter === 'africa').length, 49, 'Expected 49 Africa missions');
   for (const mission of missions) assert.ok(story.STORY_TALK[mission.id], `Missing story dialogue: ${mission.id}`);
+  const validTracks = new Set(['circuit', 'coast', 'dunes', 'city', 'pass']);
+  const validRequirements = new Set(['finish', 'podium', 'three-races', 'win']);
+  for (const mission of missions) {
+    assert.ok(mission.title?.trim(), 'Mission title is missing: ' + mission.id);
+    assert.ok(mission.briefing?.trim(), 'Mission briefing is missing: ' + mission.id);
+    assert.ok(mission.objective?.trim(), 'Mission objective is missing: ' + mission.id);
+    assert.ok(validTracks.has(mission.track), 'Unknown track ' + mission.track + ': ' + mission.id);
+    assert.ok(validRequirements.has(mission.requirement), 'Unknown completion requirement ' + mission.requirement + ': ' + mission.id);
+    assert.ok(Number.isFinite(mission.level) && mission.level >= 1, 'Invalid mission level: ' + mission.id);
+    assert.ok(['lagos', 'africa'].includes(mission.chapter), 'Unknown story chapter: ' + mission.id);
+  }
   assert.equal(story.currentStoryMission([]).id, 'one-more-start', 'Fresh campaign must begin in Lagos');
   assert.equal(story.currentStoryMission(missions.map((mission) => mission.id)), null, 'Completed campaign should have no current mission');
   const licence = missions.find((mission) => mission.id === 'no-licence-no-respect');
@@ -56,6 +67,14 @@ try {
   const result = { track: 'city', laps: 1, ticks: 100, rank: 1, hits: 0, pedHits: 0, bestLap: 10 };
   assert.equal(story.storyMissionComplete(licence, result, 1), true, 'Clean licence attempt should pass');
   assert.equal(story.storyMissionComplete(licence, { ...result, hits: 1 }, 1), false, 'Licence must fail on a collision');
+  assert.equal(story.storyMissionComplete(licence, { ...result, ticks: 0 }, 1), false, 'A DNF/zero-time result must not complete a story mission');
+  const cleanRuleMission = missions.find((mission) => mission.specialRule === 'clean-finish');
+  assert.ok(cleanRuleMission, 'Campaign should contain a clean-finish mission');
+  assert.equal(story.storyMissionComplete(cleanRuleMission, { ...result, track: cleanRuleMission.track }, 1), true, 'Clean-finish objective should pass without impacts');
+  assert.equal(story.storyMissionComplete(cleanRuleMission, { ...result, track: cleanRuleMission.track, pedHits: 1 }, 1), false, 'Clean-finish objective must reject pedestrian impacts');
+  const lowDamageMission = missions.find((mission) => mission.specialRule === 'low-damage');
+  assert.ok(lowDamageMission, 'Campaign should contain a low-damage mission');
+  assert.equal(story.storyMissionComplete(lowDamageMission, { ...result, track: lowDamageMission.track, hits: 3 }, 1), false, 'Low-damage objective must reject excessive collisions');
   assert.equal(story.storyMissionComplete(delivery, { ...result, track: delivery.track, hits: 2 }, 1), true, 'Delivery should tolerate two impacts');
   assert.equal(story.storyMissionComplete(delivery, { ...result, track: delivery.track, hits: 3 }, 1), false, 'Delivery should fail above two impacts');
   // Every story objective must reject a result from another track, even when the
@@ -124,8 +143,8 @@ try {
   assert.equal(story.africaCampaignDone(allStory, [...regions]), true, 'All story missions and regions should finish Africa');
   assert.equal(story.africaCampaignDone(allStory, regions.slice(1)), false, 'Missing a regional challenge must keep Africa incomplete');
   console.log(`PASS: ${sourceFiles.length} TypeScript/TSX files syntax-checked.`);
-  console.log('PASS: 56 missions (7 Lagos + 49 Africa), unique IDs, dialogue, and campaign order.');
-  console.log('PASS: clean licence condition, delivery damage limit, and ten-region Africa completion gate.');
+  console.log('PASS: 56 missions (7 Lagos + 49 Africa), metadata, unique IDs, dialogue, and campaign order.');
+  console.log('PASS: race-result rules, clean/low-damage conditions, delivery damage limit, and ten-region Africa completion gate.');
   console.log('PASS: story upgrade/part purchases are idempotent and reject insufficient funds.');
   console.log('PASS: story jobs reward success/failure correctly, consume resources, and cannot pay twice.');
 } finally {

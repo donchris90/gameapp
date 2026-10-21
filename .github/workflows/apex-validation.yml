@@ -39,3 +39,5 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Validate Apex campaign and TypeScript syntax
         run: npm run validate:apex
+      - name: Type-check mobile project
+        run: npx tsc --noEmit

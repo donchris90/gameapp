@@ -140,11 +140,18 @@ try {
   const allStory = missions.map((mission) => mission.id);
   const regions = story.AFRICA_CAMPAIGN_REGION_IDS;
   assert.equal(regions.length, 10, 'Expected ten Africa regional driving challenges');
+  assert.equal(new Set(regions).size, regions.length, 'Canonical Africa region IDs must be unique');
+  const africaSceneSource = fs.readFileSync(path.join(root, 'src', 'apex', 'AfricaScene.tsx'), 'utf8');
+  const renderedRegionIds = [...africaSceneSource.matchAll(/\{ id: '([^']+)', city:/g)].map((match) => match[1]);
+  assert.deepEqual(renderedRegionIds, [...regions], 'Africa Tour region IDs and order must match campaign save IDs');
+  const regionLookSource = fs.readFileSync(path.join(root, 'src', 'apex', 'regionLook.ts'), 'utf8');
+  for (const id of regions) assert.ok(new RegExp('^\\s*' + id + ': L\\(', 'm').test(regionLookSource), 'Missing regional job visual theme: ' + id);
   assert.equal(story.africaCampaignDone(allStory, [...regions]), true, 'All story missions and regions should finish Africa');
   assert.equal(story.africaCampaignDone(allStory, regions.slice(1)), false, 'Missing a regional challenge must keep Africa incomplete');
   console.log(`PASS: ${sourceFiles.length} TypeScript/TSX files syntax-checked.`);
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), metadata, unique IDs, dialogue, and campaign order.');
   console.log('PASS: race-result rules, clean/low-damage conditions, delivery damage limit, and ten-region Africa completion gate.');
+  console.log('PASS: Africa Tour region IDs match save-data IDs and every region has a job visual theme.');
   console.log('PASS: story upgrade/part purchases are idempotent and reject insufficient funds.');
   console.log('PASS: story jobs reward success/failure correctly, consume resources, and cannot pay twice.');
 } finally {

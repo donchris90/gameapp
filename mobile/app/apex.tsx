@@ -55,6 +55,9 @@ export default function Apex() {
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
+  // A DriveMission result callback can fire twice during a React/GL transition.
+  // Key by mission + attempt so retries remain valid but one attempt can only settle once.
+  const processedJobAttemptsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { loadApex().then((s) => { setSettings(s); setBrowse(s.activeCar); setLevel(Math.min(s.unlocked, MAX_LEVEL)); }); preloadInterstitial(); }, []);
   useEffect(() => {
@@ -181,6 +184,9 @@ export default function Apex() {
     update(save as Partial<ApexSettings>);
     if (o.success && !settings.storyCompleted.includes(mission.id)) { sfx('complete'); setNotice(`STORY MISSION COMPLETE: ${mission.title} · +${patch.coinsGained} coins`); } else if (!o.success) sfx('lose');
     setResultStoryMissionId(mission.id);
+    // A completed/failed job has settled. Do not let a later free race inherit
+    // this story mission and consume story fuel or show the wrong retry screen.
+    setActiveStoryMissionId(null);
     adAfterDrive();
     // A settled job must not leak its story mission into the next free race.
     setActiveStoryMissionId(null);

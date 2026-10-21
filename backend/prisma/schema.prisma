@@ -32,6 +32,7 @@ enum GameType {
   WATER_SORT
   AYO
   LUDO
+  APEX
 }
 
 enum FriendshipStatus {

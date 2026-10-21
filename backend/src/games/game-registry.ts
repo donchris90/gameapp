@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GameType } from '../generated/prisma/client';
+import { ApexRaceEngine } from './apexrace.engine';
 import { AyoEngine } from './ayo.engine';
 import { LudoEngine } from './ludo.engine';
 import { GameEngine } from './engine';
@@ -16,6 +17,7 @@ export class GameRegistry {
     this.register(new WaterSortEngine());
     this.register(new AyoEngine());
     this.register(new LudoEngine());
+    this.register(new ApexRaceEngine());
   }
 
   register(engine: GameEngine<any>) {

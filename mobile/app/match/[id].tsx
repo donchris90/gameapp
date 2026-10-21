@@ -7,6 +7,7 @@ import { Ayo } from '../../src/games/Ayo';
 import { Ludo } from '../../src/games/Ludo';
 import { TicTacToe } from '../../src/games/TicTacToe';
 import { WaterSort } from '../../src/games/WaterSort';
+import { ApexRace, isRacing } from '../../src/games/ApexRace';
 import { GAME_INFO } from '../../src/games';
 import { useSession, useSocketEvent } from '../../src/session';
 import { Match } from '../../src/types';
@@ -44,7 +45,7 @@ export default function MatchScreen() {
         const r = m.players.find((p) => p.userId === user.id)?.result;
         sfx(r === 'WON' ? 'win' : r === 'LOST' ? 'lose' : 'draw');
         // A finished game is followed by a full-screen ad as often as the admin has set for that game. Coins were already paid by the server, so this never delays a payout.
-        if (prev && !adShown.current) { adShown.current = true; void adDue(m.game).then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 2200); }); }
+        if (prev && !adShown.current) { adShown.current = true; void adDue(m.game === 'APEX' ? 'APEX_RUN' : m.game).then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 2200); }); }
       } else if (prev && m.status === 'ACTIVE') {
         sfx(m.turnSeat === seat && prev.turnSeat !== seat ? 'turn' : 'move');
       }
@@ -103,11 +104,13 @@ export default function MatchScreen() {
   const solo = match.players.length === 1; // a puzzle played alone (Water Sort)
   const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? `Level ${match.state.level ?? ''} solved! 🎉` : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
   const status = over ? resultText : solo ? '' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : '';
-  const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111' } as Record<string, string>)[match.game];
+  const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111', APEX: '#0A0D16' } as Record<string, string>)[match.game];
   const onAuto = !over && !!match.autoPlay?.includes(user.id);
   const takeBack = () => api<Match>(`/matches/${match.id}/resume`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Take back control', explain(e)));
   const quitToHome = () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then((m) => { accept(m); goBack(); }).catch(() => goBack());
   const props = { match, mySeat, onMove: send, busy, height: gameH };
+  // An Apex race gets the whole screen while you are driving; results use the normal layout.
+  if (match.game === 'APEX' && isRacing(match, mySeat)) return <ApexRace full match={match} mySeat={mySeat} onMove={async (m) => { await send(m); }} onQuit={quitToHome} />;
 
   return (
     <Screen style={{ backgroundColor: bg }}>
@@ -133,6 +136,7 @@ export default function MatchScreen() {
           match.game === 'TICTACTOE' ? <TicTacToe {...props} />
             : match.game === 'AYO' ? <Ayo {...props} />
             : match.game === 'LUDO' ? <Ludo {...props} />
+            : match.game === 'APEX' ? <ApexRace match={match} mySeat={mySeat} onMove={async (m) => { await send(m); }} onQuit={quitToHome} />
             : <WaterSort {...props} onQuit={quitToHome} />
         ) : null}
       </View>

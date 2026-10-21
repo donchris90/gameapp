@@ -19,6 +19,14 @@ import { trackPath, TrackPath } from './trackpath';
 import { carStats, DT, driftAt, collideRacers, MAX_RACE_TICKS, Racer, clampSteer, makeWorld, newRacer, packInput, rng, step } from './sim';
 
 export interface Standing { name: string; ticks: number; you: boolean }
+/** A race against friends: the same seeded road for everyone, the others shown as live ghost cars (no contact). */
+export interface OnlineRace {
+  seed: number;
+  others: Array<{ seat: number; name: string }>;
+  ghosts: { current: Record<number, { z: number; x: number; v: number; fin: number; at: number }> };
+  /** Called about ten times a second, and once more at the line, with where this car is. */
+  onTick: (p: { z: number; x: number; v: number; tick: number; fin: number }) => void;
+}
 export interface RaceResult { level: number; track: string; laps: number; bestLap: number; seed: number; standings: Standing[]; rank: number; ticks: number; hits: number; pedHits: number; inputs: number[] }
 
 const hudLabel = { color: '#9aa3b8', fontSize: 10, fontWeight: '700' as const, letterSpacing: 1.6 };
@@ -33,7 +41,7 @@ interface Rival { id: number; name: string; r: Racer; prev: { x: number; z: numb
  * The race: a 3D view, the rules from sim.ts running 30 times a second (drawing is smoothed in between),
  * tilt and button steering, the countdown, the HUD and the finish.
  */
-export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, autoGas = true, quality = 2, skin, onDone, onFlip }: { skin?: Partial<Theme>; autoGas?: boolean; quality?: number; level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
+export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId = 'cts', paint = 0x2788ff, upgrades = [], bodyTier = 0, style, autoGas = true, quality = 2, skin, online, onDone, onFlip }: { online?: OnlineRace; skin?: Partial<Theme>; autoGas?: boolean; quality?: number; level: number; track?: string; laps?: number; tilt: boolean; invert: boolean; carId?: string; paint?: number; upgrades?: number[]; bodyTier?: number; style?: CarStyle; onDone: (r: RaceResult) => void; onFlip?: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: sw, height: sh } = useWindowDimensions();
   const wide = sw > sh;
@@ -63,6 +71,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
   const finished = useRef(false);
   const [hud, setHud] = useState({ dots: [] as Array<{ z: number; color: string; r: number }>, banner: '', lap: 1, laps: 1, lapLen: 0, best: 0, count: 3, speed: 0, rank: 1, ahead: '', gap: 0, progress: 0, nitro: 1, time: 0, hits: 0, rivals: [] as number[], over: false });
   const onDoneRef = useRef(onDone); onDoneRef.current = onDone;
+  const fieldN = online ? online.others.length + 1 : FIELD;
 
   // A GL context can be recreated after navigation or a device/context reset. Release the old
   // scene and renderer first, and release them again when the race screen unmounts.
@@ -110,7 +119,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     renderer.setSize(w, h, false);
     if (quality > 0) { renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; } // a richer, more filmic picture (skipped on Low)
 
-    const seed = Math.floor(Math.random() * 2_000_000_000);
+    const seed = online ? online.seed : Math.floor(Math.random() * 2_000_000_000);
     const world = makeWorld(seed, level, track, laps);
     pathRef.current = trackPath(world);
     setHud((s) => ({ ...s, laps: world.laps, lapLen: world.lapLength }));
@@ -129,11 +138,11 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
     const inputs: number[] = [];
     const nameRng = rng(seed ^ 0x5bd1e995);
     const base = Math.max(0.1, Math.min(0.92, 0.12 + level * 0.022));
-    const rivals: Rival[] = Array.from({ length: FIELD - 1 }, (_, i) => {
+    const rivals: Rival[] = Array.from({ length: online ? online.others.length : FIELD - 1 }, (_, i) => {
       const r = newRacer(world, car);
       const slot = [[-3.2, 0], [3.2, 0], [-1.6, -6], [1.6, -6], [0, -12]][i]; // a staggered grid: no two cars start on top of each other
       r.x = slot[0]; r.z = slot[1];
-      return { id: i + 1, name: randomName(nameRng), r, prev: snap(r), d: newDriver(seed + 77 * (i + 1), base + (i - 2) * 0.06) };
+      return { id: i + 1, name: online ? online.others[i].name : randomName(nameRng), r, prev: snap(r), d: newDriver(seed + 77 * (i + 1), base + (i - 2) * 0.06) };
     });
 
     let phase: 'count' | 'go' | 'done' = 'count';
@@ -155,7 +164,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       finished.current = true; phase = 'done';
       engineStop();
       // let the others finish at full speed so the table has real times
-      for (let i = me.tick; i < MAX_RACE_TICKS; i++) {
+      for (let i = me.tick; !online && i < MAX_RACE_TICKS; i++) {
         let open = false;
         for (const x of rivals) if (x.r.finishedAt === 0) { step(world, car, x.r, drive(world, car, x.r, x.d, [...rivals.filter((other) => other !== x).map((other) => other.r), me])); open = true; }
         if (!open) break;
@@ -176,8 +185,19 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       inputs.push(packInput(input));
       mePrev = snap(me);
       step(world, car, me, input);
-      for (const x of rivals) { x.prev = snap(x.r); step(world, car, x.r, drive(world, car, x.r, x.d, [...rivals.filter((other) => other !== x).map((other) => other.r), me])); }
-      collideRacers([me, ...rivals.map((x) => x.r)]);
+      for (const x of rivals) {
+        x.prev = snap(x.r);
+        if (!online) { step(world, car, x.r, drive(world, car, x.r, x.d, [...rivals.filter((other) => other !== x).map((other) => other.r), me])); continue; }
+        // a friend's car: follow the last position they sent, carried forward by their speed since it arrived
+        const g = online.ghosts.current[online.others[x.id - 1].seat];
+        if (g) {
+          const target = g.z + g.v * Math.min(0.6, (Date.now() - g.at) / 1000);
+          x.r.z += (target - x.r.z) * 0.35; x.r.x += (g.x - x.r.x) * 0.35; x.r.v = g.v;
+          if (g.fin) x.r.finishedAt = g.fin;
+        }
+      }
+      if (!online) collideRacers([me, ...rivals.map((x) => x.r)]);
+      if (online && (me.tick % 3 === 0 || me.finishedAt > 0)) online.onTick({ z: me.z, x: me.x, v: me.v, tick: me.tick, fin: me.finishedAt });
       if (world.lapLength && me.finishedAt === 0) { // lap by lap
         const lap = Math.floor(me.z / world.lapLength);
         if (lap > lapNow) { bestLap = Math.min(bestLap, (me.tick - lapStartTick) * DT); lapStartTick = me.tick; lapNow = lap; if (lap < world.laps) { banner(lap + 1 === world.laps ? 'FINAL LAP' : `LAP ${lap + 1}`); sfx('beep'); } setHud((s) => ({ ...s, best: bestLap })); }
@@ -266,7 +286,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       {/* top left: position, lap and time (like the circuit page) */}
       <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 8, left: Math.max(insets.left, 14) }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16, backgroundColor: 'rgba(10,13,22,.76)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.14)', paddingHorizontal: 14, paddingVertical: 8 }}>
-          <Text style={{ color: '#ff5a1f', fontSize: wide ? 40 : 34, fontWeight: '900', fontStyle: 'italic', lineHeight: wide ? 42 : 36 }}>{hud.rank}<Text style={{ fontSize: 16, color: '#9aa3b8', fontStyle: 'normal' }}>/{FIELD}</Text></Text>
+          <Text style={{ color: '#ff5a1f', fontSize: wide ? 40 : 34, fontWeight: '900', fontStyle: 'italic', lineHeight: wide ? 42 : 36 }}>{hud.rank}<Text style={{ fontSize: 16, color: '#9aa3b8', fontStyle: 'normal' }}>/{fieldN}</Text></Text>
           <View><Text style={hudLabel}>{hud.lapLen ? 'LAP' : 'ROAD'}</Text><Text style={hudNum}>{hud.lapLen ? `${hud.lap}/${hud.laps}` : `${Math.round(hud.progress * 100)}%`}</Text></View>
           <View><Text style={hudLabel}>TIME</Text><Text style={hudNum}>{m}:{s}</Text>{hud.lapLen ? <Text style={[hudLabel, { marginTop: 1 }]}>BEST {hud.best > 0 ? `${Math.floor(hud.best / 60)}:${(hud.best % 60).toFixed(2).padStart(5, '0')}` : '—'}</Text> : null}</View>
         </View>

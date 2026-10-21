@@ -120,8 +120,9 @@ export default function PlayScreen() {
             </Card>
           ) : (
             <>
-              <Button title="Quick match" onPress={quick} busy={busy} />
-              <Button title="Play with friends" kind="ghost" onPress={withFriends} busy={busy} />
+              {game === 'APEX' ? null : <Button title="Quick match" onPress={quick} busy={busy} />}
+              <Button title={game === 'APEX' ? 'Create race room' : 'Play with friends'} kind={game === 'APEX' ? 'primary' : 'ghost'} onPress={withFriends} busy={busy} />
+              {game === 'APEX' ? <Dim style={{ textAlign: 'center' }}>Races are for friends: share the room code or invite them from the lobby.</Dim> : null}
             </>
           )}
         </View>

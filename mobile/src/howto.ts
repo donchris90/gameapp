@@ -6,6 +6,11 @@ export const HOW_TO_PLAY: Record<GameType, string[]> = {
     'Get three of your marks in a row, across, down or diagonal, to win.',
     'A full board with no line is a draw and everyone gets their stake back.',
   ],
+  APEX: [
+    'Create a room, invite friends and set a stake. Everyone drives the same stock car on the same track, so skill decides.',
+    'You all start together and see each other as ghost cars. Cars pass through each other, so nobody can wreck your race.',
+    'Finish both laps. The server replays your recorded controls to check your time, and the fastest driver takes the pot.',
+  ],
   WATER_SORT: [
     'Tap a tube, then tap another to pour. You can only pour onto the same colour or onto an empty tube, and only if there is room.',
     'Fill every tube with a single colour to finish the level. Levels start easy and get harder, with more colours.',

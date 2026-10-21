@@ -66,6 +66,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     const cfg = GAME_CONFIG[dto.game];
     if (!this.games.isAvailable(dto.game)) throw appError(400, 'GAME_NOT_AVAILABLE', 'That game is not available yet');
     if (isSolo(dto.game)) throw appError(400, 'SOLO_GAME', 'This game is played alone: start it from the game screen');
+    if (dto.game === 'APEX') throw appError(400, 'PRIVATE_ONLY', 'Apex races are for friends: create a room and invite them');
     const size = dto.size ?? cfg.max;
     if (!STAKE_OPTIONS.includes(dto.stake)) throw appError(400, 'BAD_STAKE', `Stake must be one of ${STAKE_OPTIONS.join(', ')}`);
     if (size < cfg.min || size > cfg.max) throw appError(400, 'BAD_PLAYER_COUNT', `${dto.game} supports ${cfg.min} to ${cfg.max} players`);

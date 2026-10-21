@@ -25,7 +25,7 @@ const CHAT_WINDOW_MS = 5_000;
  * Events sent to a player: friend:request, friend:accepted, friend:online, friend:offline,
  * room:update, room:started, room:aborted, room:kicked, room:invite, room:chat,
  * match:found, match:failed, match:timeout, match:emote, match:rematch, call:incoming, call:answered, call:declined, call:ended.
- * From the client: room:chat, match:emote.
+ * From the client: room:chat, match:emote, apex:pos (a driver's live position in an Apex race).
  */
 @WebSocketGateway({
   // Never reflect arbitrary browser origins. Native clients generally omit Origin; browser clients must be listed in CORS_ORIGINS.
@@ -94,6 +94,36 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!userId) return { ok: false, error: 'UNAUTHORIZED' };
     if (typeof body?.matchId !== 'string' || !isEmote(body.emote)) return { ok: false, error: 'BAD_EMOTE' };
     return this.social.emote(userId, body.matchId, body.emote);
+  }
+
+  /**
+   * Live position of a driver in an Apex race: `{ matchId, z, x, v, tick, fin }`. Passed on to the other drivers
+   * of that race so they can see a ghost car. It never decides anything: the result comes from the server
+   * re-driving the recorded controls.
+   */
+  @SubscribeMessage('apex:pos')
+  async apexPos(@ConnectedSocket() socket: Socket, @MessageBody() body: { matchId?: unknown; z?: unknown; x?: unknown; v?: unknown; tick?: unknown; fin?: unknown }) {
+    const userId: string | undefined = socket.data.userId;
+    if (!userId || typeof body?.matchId !== 'string') return { ok: false };
+    const now = Date.now();
+    if (now - ((socket.data.apexAt as number | undefined) ?? 0) < 40) return { ok: false }; // at most about 25 a second
+    socket.data.apexAt = now;
+    const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null);
+    const z = num(body.z, -50, 100_000), x = num(body.x, -60, 60), v = num(body.v, 0, 200), tick = num(body.tick, 0, 100_000), fin = num(body.fin, 0, 100_000);
+    if (z === null || x === null || v === null || tick === null) return { ok: false };
+
+    let ctx = socket.data.apex as { matchId: string; seat: number; others: string[]; at: number } | undefined;
+    if (!ctx || ctx.matchId !== body.matchId || now - ctx.at > 30_000) {
+      const rows = await this.prisma.matchPlayer.findMany({
+        where: { matchId: body.matchId, match: { status: 'ACTIVE', game: 'APEX' } }, select: { userId: true, seat: true, leftAt: true },
+      });
+      const me = rows.find((r) => r.userId === userId && !r.leftAt);
+      if (!me) return { ok: false };
+      ctx = { matchId: body.matchId, seat: me.seat, others: rows.filter((r) => r.userId !== userId && !r.leftAt).map((r) => r.userId), at: now };
+      socket.data.apex = ctx;
+    }
+    for (const id of ctx.others) this.realtime.emitToUser(id, 'apex:pos', { matchId: ctx.matchId, seat: ctx.seat, z, x, v, tick, fin: fin ?? 0 });
+    return { ok: true };
   }
 
   @SubscribeMessage('room:chat')

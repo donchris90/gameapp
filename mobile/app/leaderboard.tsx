@@ -8,7 +8,7 @@ import { useSession } from '../src/session';
 import { GameType, LeaderRow, Leaderboard } from '../src/types';
 import { Avatar, Body, Card, Chip, Dim, Empty, H1, Screen, colors } from '../src/ui';
 
-const GAMES: GameType[] = ['TICTACTOE', 'AYO', 'LUDO', 'WATER_SORT'];
+const GAMES: GameType[] = ['TICTACTOE', 'AYO', 'LUDO', 'APEX', 'WATER_SORT'];
 const medal = (r: number) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : String(r));
 
 export default function LeaderboardScreen() {

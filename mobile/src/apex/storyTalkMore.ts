@@ -39,9 +39,9 @@ const R: Record<string, T> = {
   'cape-qualifier': ['Rafael Costa', 'The best drivers on the continent, one final grid. Finish high and you are in.', 'You', 'Top of the order, then.', 'Rafael Costa', 'You qualified. Johannesburg is waiting.'],
   'cape-garage-raid': ['Mara Okafor', 'Vanguard agents broke into the garage. They took the evidence box and sabotaged the car.', 'Tomi', 'Recover the parts, then back to the workshop. Quickly, before they leave the city.', 'Mara Okafor', 'The evidence is back, and so is the car. They cannot stop us now.'],
   'johannesburg-last-tune': ['Tomi', 'One last budget. Speed, grip or reliability. The final is the hardest race yet.', 'You', 'Let me think. Everything has a cost.', 'Tomi', 'The car is ready. Whatever happens, we built this together.'],
-  'johannesburg-championship': ['Mara Okafor', 'Telemetry is acting strangely. Watch for a route change. That is how Vanguard cheats.', 'Tomi', 'Race for the title, but watch the road.', 'Mara Okafor', 'Champion. And that route change was real. We have it on record.'],
+  'johannesburg-championship': ['Mara Okafor', 'Telemetry is acting strangely. Watch for a route change. That is how Vanguard cheats.', 'Tomi', 'Race for the title, but watch the road.', 'Mara Okafor', 'Champion of Africa. And that route change was real. We have it on record.'],
   'johannesburg-control-room': ['Mara Okafor', 'Amara and I found the control system that manipulates race data. Sloane is erasing the logs right now.', 'You', 'Reach the facility first, copy everything, then get out.', 'Amara Diallo', 'Every log copied. Sloane cannot hide anymore.'],
-  'johannesburg-road-home': ['Mara Okafor', 'You have the complete recording. The truth about your father is clear. We choose how it comes out.', 'Tomi', 'Whatever we do next, we do it together.', 'Tomi', 'It is finished. Your father would be proud.'],
+  'johannesburg-road-home': ['Mara Okafor', 'You have the complete recording. The truth about your father is clear. We choose how it comes out.', 'Tomi', 'Whatever we do next, we do it together.', 'Mara Okafor', 'Africa is done. And look: an invitation to race in Europe just arrived. Vanguard’s works team is waiting there.'],
 };
 
 export const MORE_TALK: Record<string, { before: StoryLine[]; after: StoryLine }> = Object.fromEntries(

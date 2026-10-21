@@ -36,3 +36,16 @@ export function applyJobResult(s: JobSave, mission: { id: string; level: number 
   }
   return patch;
 }
+
+export const FUEL_PRICE = 100, FUEL_STEP = 25, REPAIR_PRICE = 150, REPAIR_STEP = 25;
+/** Workshop purchases. Return null (nothing changes) when the tank/car is already full or the player cannot pay. */
+export function buyFuel(s: { coins: number; storyFuel?: number }) {
+  const fuel = s.storyFuel ?? 100;
+  if (fuel >= 100 || s.coins < FUEL_PRICE) return null;
+  return { coins: s.coins - FUEL_PRICE, storyFuel: Math.min(100, fuel + FUEL_STEP) };
+}
+export function buyRepair(s: { coins: number; storyCondition?: number }) {
+  const c = s.storyCondition ?? 100;
+  if (c >= 100 || s.coins < REPAIR_PRICE) return null;
+  return { coins: s.coins - REPAIR_PRICE, storyCondition: Math.min(100, c + REPAIR_STEP) };
+}

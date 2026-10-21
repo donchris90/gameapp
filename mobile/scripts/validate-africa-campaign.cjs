@@ -33,7 +33,7 @@ assert.equal(syntaxErrors.length, 0, syntaxErrors.join('\n'));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-campaign-'));
 try {
-  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts', 'storyEconomy.ts', 'europe.ts']) {
+  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts', 'storyExtras.ts', 'storyEconomy.ts', 'europe.ts', 'storySettle.ts', 'storyFlow.ts']) {
     const source = fs.readFileSync(path.join(root, 'src', 'apex', file), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);
@@ -43,6 +43,8 @@ try {
   const extras = require(path.join(temp, 'storyExtras.js'));
   const economy = require(path.join(temp, 'storyEconomy.js'));
   const europe = require(path.join(temp, 'europe.js'));
+  const settle = require(path.join(temp, 'storySettle.js'));
+  const flow = require(path.join(temp, 'storyFlow.js'));
   const missions = story.STORY_MISSIONS;
   const ids = new Set(missions.map((mission) => mission.id));
   assert.equal(missions.length, 56, 'Expected 56 ordered story missions');
@@ -180,9 +182,20 @@ try {
   assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 100, rank: 2, track: firstEurope.track }), true, 'A valid podium mission should complete');
   assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 0, rank: 1, track: firstEurope.track }), false, 'DNF must not complete a Europe mission');
   assert.equal(europe.europeMissionComplete(firstEurope, { ticks: 100, rank: 1, track: 'wrong-track' }), false, 'Wrong-track results must not complete a Europe mission');
-  const apexScreen = fs.readFileSync(path.join(root, 'app', 'apex.tsx'), 'utf8');
-  assert.ok(apexScreen.includes('africaCampaignDone(settings.storyCompleted'), 'Europe start must be gated by the full Africa milestone');
-  assert.ok(apexScreen.includes('europeCompleted: europeWon ?'), 'Europe completion must be persisted only on a valid win/result');
+  // Behaviour, not source text: the real gate and the real settlement rules.
+  const allAfrica = missions.map((m) => m.id), allRegions = [...story.AFRICA_CAMPAIGN_REGION_IDS];
+  const euState = { storyCompleted: allAfrica, africaRegionsCompleted: allRegions, unlocked: 20, europeCompleted: [] };
+  assert.equal(flow.canStartEuropeMission(euState, firstEurope.id).ok, true, 'Europe should open after the full Africa milestone');
+  assert.equal(flow.canStartEuropeMission({ ...euState, africaRegionsCompleted: allRegions.slice(1) }, firstEurope.id).ok, false, 'Europe must stay locked without all ten regional drives');
+  assert.equal(flow.canStartEuropeMission({ ...euState, storyCompleted: allAfrica.slice(0, -1) }, firstEurope.id).ok, false, 'Europe must stay locked without the Africa finale');
+  assert.equal(flow.canStartEuropeMission(euState, europeMissions[1].id).ok, false, 'Europe missions must not be skipped');
+  const rewards = { base: 120, placement: 300, clean: 0, record: 0, xp: 10, isRecord: false, recordKey: 'k', bestLap: 0 };
+  const win = settle.settleRace({ state: { coins: 0, completedRaces: 0, unlocked: 20, storyCompleted: allAfrica, europeCompleted: [], processedRaceKeys: [] }, europe: firstEurope, result: { track: firstEurope.track, laps: 2, ticks: 900, rank: 1, hits: 0, pedHits: 0, bestLap: 30, seed: 7 }, level: firstEurope.level, rewards, maxLevel: 60 });
+  assert.equal(win.europeWon && win.patch.europeCompleted.includes(firstEurope.id), true, 'A valid win must persist Europe completion');
+  const wrongTrack = settle.settleRace({ state: { coins: 0, completedRaces: 0, unlocked: 20, storyCompleted: allAfrica, europeCompleted: [], processedRaceKeys: [] }, europe: firstEurope, result: { track: 'wrong-track', laps: 2, ticks: 900, rank: 1, hits: 0, pedHits: 0, bestLap: 30, seed: 8 }, level: 1, rewards, maxLevel: 60 });
+  assert.equal(wrongTrack.europeWon, false, 'A wrong-track result must not complete Europe');
+  const dup = settle.settleRace({ state: { coins: 0, completedRaces: 0, unlocked: 20, storyCompleted: allAfrica, europeCompleted: [], processedRaceKeys: ['' + firstEurope.track + ':7'] }, europe: firstEurope, result: { track: firstEurope.track, laps: 2, ticks: 900, rank: 1, hits: 0, pedHits: 0, bestLap: 30, seed: 7 }, level: 1, rewards, maxLevel: 60 });
+  assert.equal(dup.duplicate, true, 'The same race must never settle twice');
   console.log('PASS: Europe chapter has 12 unique, fully specified missions, sequential progress, result validation, and the Africa completion gate.');
   console.log(`PASS: ${sourceFiles.length} TypeScript/TSX files syntax-checked.`);
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), metadata, unique IDs, dialogue, and campaign order.');

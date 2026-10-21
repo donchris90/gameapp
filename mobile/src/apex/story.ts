@@ -121,9 +121,9 @@ export const AFRICA_STORY: StoryMission[] = [
     track: 'city', level: 18, objective: 'Win the Johannesburg Elite Qualifier.', reward: 'Championship grid position + major race earnings', requirement: 'win',
   },
   {
-    id: 'africa-grand-championship', chapter: 'africa', title: 'King of the Continent', subtitle: 'AFRICA GRAND CHAMPIONSHIP · JOHANNESBURG',
-    briefing: 'Every race across the continent has led to this grid. Darius’s crew arrives, Vanguard’s scouts are watching, and your team finally has a car worthy of the challenge. Win the African Championship and earn the right to take the fight to Europe.',
-    track: 'circuit', level: 20, objective: 'Win the Africa Grand Championship.', reward: 'African Championship won · Europe invitation earned', requirement: 'win',
+    id: 'africa-grand-championship', chapter: 'africa', title: 'King of the Continent', subtitle: 'AFRICA GRAND CHAMPIONSHIP · ROUND ONE · JOHANNESBURG',
+    briefing: 'Every race across the continent has led to this grid. Darius’s crew arrives, Vanguard’s scouts are watching, and your team finally has a car worthy of the challenge. Round one decides the front row of the African Championship final.',
+    track: 'circuit', level: 20, objective: 'Round one: finish on the podium to take a front-row place for the final.', reward: 'Front row for the Championship final', requirement: 'podium',
   },
 ];
 
@@ -165,7 +165,7 @@ const AFRICA_EXPANSION: StoryMission[] = [
   { id: 'cape-qualifier', chapter: 'africa', title: 'The Qualifier', subtitle: 'CONTINENTAL GRID · CAPE TOWN', briefing: 'The strongest drivers on the continent compete for the final grid. Finish high enough to secure Tomi’s place in the championship.', track: 'circuit', level: 14, objective: 'Win the qualifier.', reward: 'Championship grid position', requirement: 'win' },
   { id: 'cape-garage-raid', chapter: 'africa', title: 'The Garage Raid', subtitle: 'TEAM WORKSHOP · CAPE TOWN', briefing: 'Vanguard agents attempt to steal the evidence and disable Tomi’s car before the final. Escape, recover the stolen parts and get back to the workshop without taking too much damage.', track: 'coast', level: 14, objective: 'Finish the garage escape with no more than two collisions.', specialRule: 'low-damage', reward: 'Emergency repairs before the final', requirement: 'finish' },
   { id: 'johannesburg-last-tune', chapter: 'africa', title: 'The Last Tune', subtitle: 'CHAMPIONSHIP GARAGE · JOHANNESBURG', briefing: 'The crew prepares the old car for the final. Choose whether to spend the last budget on speed, grip or reliability before the hardest race yet.', track: 'pass', level: 18, objective: 'Finish the final test drive.', reward: 'Final race preparation', requirement: 'finish' },
-  { id: 'johannesburg-championship', chapter: 'africa', title: 'The Championship', subtitle: 'AFRICA GRAND CHAMPIONSHIP · JOHANNESBURG', briefing: 'The race begins, but the telemetry behaves strangely. Race for the title while watching for a suspicious route change that could reveal Vanguard’s interference.', track: 'circuit', level: 20, objective: 'Win the Africa Grand Championship.', reward: 'Continental title + evidence trail', requirement: 'win' },
+  { id: 'johannesburg-championship', chapter: 'africa', title: 'The Championship', subtitle: 'AFRICA GRAND CHAMPIONSHIP · JOHANNESBURG', briefing: 'The final of the African Championship. The race begins, but the telemetry behaves strangely. Race for the title while watching for a suspicious route change that could reveal Vanguard’s interference.', track: 'circuit', level: 20, objective: 'Win the Africa Grand Championship.', reward: 'Continental title + evidence trail', requirement: 'win' },
   { id: 'johannesburg-control-room', chapter: 'africa', title: 'The Control Room', subtitle: 'VANGUARD FACILITY · JOHANNESBURG', briefing: 'Mara and Amara locate the control system manipulating race data. Reach the facility before Sloane erases the logs.', track: 'city', level: 20, objective: 'Win the final pursuit.', reward: 'Vanguard’s race manipulation exposed', requirement: 'win' },
   { id: 'johannesburg-road-home', chapter: 'africa', title: 'The Road Home', subtitle: 'SUNRISE · JOHANNESBURG', briefing: 'Tomi receives the complete recording. The truth about the father’s disappearance is finally clear, but the crew must choose how to release the evidence.', track: 'coast', level: 20, objective: 'Finish the final drive.', reward: 'Africa story ending + Europe invitation', requirement: 'finish' },
 ];
@@ -256,7 +256,7 @@ const STORY_TALK_BASE: Record<string, { before: StoryLine[]; after: StoryLine }>
   'africa-cape-storm': { before: [{ who: 'Rafael Costa', line: 'Beat my time on these roads and I will drive with your team.' }], after: { who: 'Rafael Costa', line: 'Fair enough. You earned a teammate.' } },
   'africa-victoria-falls': { before: [{ who: 'Amara Diallo', line: 'Vanguard has been buying race telemetry to build an unbeatable car. I need proof.' }], after: { who: 'Amara Diallo', line: 'Got it. Every file. They cannot hide this now.' } },
   'africa-johannesburg-qualifier': { before: [{ who: 'Victor Sloane', line: 'Win the qualifier and I will see you on the world stage. Lose, and the evidence goes away.' }], after: { who: 'Victor Sloane', line: 'You are on the grid. I will enjoy watching you try.' } },
-  'africa-grand-championship': { before: [{ who: 'Darius Cole', line: 'Same grid at last. No tricks this time.' }, { who: 'Mara Okafor', line: 'From Lagos to here. Win it for all of us.' }], after: { who: 'Mara Okafor', line: 'King of the Continent. And Europe just called.' } },
+  'africa-grand-championship': { before: [{ who: 'Darius Cole', line: 'Same grid at last. No tricks this time.' }, { who: 'Mara Okafor', line: 'From Lagos to here. Win it for all of us.' }], after: { who: 'Mara Okafor', line: 'Front row for the final. But look at the timing screens: something is already wrong with the telemetry.' } },
 };
 
 

@@ -28,6 +28,7 @@ export interface ApexSettings {
   storyCompleted: string[]; // completed Chapter 1 story missions; defaults safely for existing saves
   storyNeedsDone: string[]; // story needs already paid for (licence, fuel, papers, installed parts)
   europeInvitationSeen: boolean; // the Europe invitation scene has been shown once
+  europeEndingSeen: boolean; // the Europe ending scene has been shown once
   europeCompleted: string[]; // Europe story missions completed in order
   lagosDriveRewardClaimed: boolean; // the free-drive completion reward is a one-time claim
   africaRegionsCompleted: string[]; // completed regional free-drive tours; rewards are one-time
@@ -47,7 +48,7 @@ const KNOWN = ['cts', 'gt3', 'one1', 'chiron', 'mansory', 'senna'];
 const DEFAULTS: ApexSettings = {
   tilt: true, invert: false, unlocked: 1, coins: 0,
   activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff,
-  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeCompleted: [], storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced',
+  bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeEndingSeen: false, europeCompleted: [], storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced',
 };
 
 const pct = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : d);
@@ -84,6 +85,7 @@ export async function loadApex(): Promise<ApexSettings> {
       storyApproach: ['balanced', 'speed', 'grip', 'reliability'].includes(saved.storyApproach) ? saved.storyApproach : 'balanced',
       storyNeedsDone: Array.isArray(saved.storyNeedsDone) ? saved.storyNeedsDone.filter((x: unknown) => typeof x === 'string').slice(0, 100) : [],
       europeInvitationSeen: typeof saved.europeInvitationSeen === 'boolean' ? saved.europeInvitationSeen : false,
+      europeEndingSeen: typeof saved.europeEndingSeen === 'boolean' ? saved.europeEndingSeen : false,
       europeCompleted: Array.isArray(saved.europeCompleted) ? Array.from(new Set(saved.europeCompleted.filter((x: unknown) => typeof x === 'string' && EUROPE_MISSIONS.some((m) => m.id === x)))) as string[] : [],
       lagosDriveRewardClaimed: typeof saved.lagosDriveRewardClaimed === 'boolean' ? saved.lagosDriveRewardClaimed : false,
       africaRegionsCompleted: Array.isArray(saved.africaRegionsCompleted) ? Array.from(new Set(saved.africaRegionsCompleted.filter((x: unknown) => typeof x === 'string' && ['accra', 'abidjan', 'dakar', 'nairobi', 'cairo', 'atlas', 'namib', 'victoria', 'cape', 'johannesburg'].includes(x)))) : [],

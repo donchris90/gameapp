@@ -24,7 +24,9 @@ import { regionOf } from '../src/apex/regionLook';
 import { EvidenceBoard } from '../src/apex/EvidenceBoard';
 import { DriveMission } from '../src/apex/DriveMission';
 import { jobFor } from '../src/apex/jobs';
-import { applyJobResult, storyUsage } from '../src/apex/storyEconomy';
+import { applyJobResult, buyFuel, buyRepair } from '../src/apex/storyEconomy';
+import { settleRace } from '../src/apex/storySettle';
+import { canStartEuropeMission, canStartStoryMission, europeEndingLines, europeFinished, europeUnlocked, settleRegion } from '../src/apex/storyFlow';
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { EUROPE_MISSIONS, EUROPE_SKINS, EUROPE_TALK, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
 import { sfx } from '../src/sfx';
@@ -39,7 +41,7 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa' | 'job'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced', europeCompleted: [] });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, europeEndingSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced', europeCompleted: [] });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
@@ -51,7 +53,7 @@ export default function Apex() {
   const processedJobAttemptsRef = useRef<Set<string>>(new Set());
   const [activeEuropeMissionId, setActiveEuropeMissionId] = useState<string | null>(null);
   const [resultStoryMissionId, setResultStoryMissionId] = useState<string | null>(null);
-  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe-mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'evidence' } | null>(null);
+  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe-mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'europe-ending' } | { kind: 'evidence' } | null>(null);
   const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
@@ -85,40 +87,17 @@ export default function Apex() {
     setResult(r);
     const recordKey = `${r.track}:${r.laps}`;
     const rewards = calculateCareerRewards(r, Number(settings.bestLaps?.[recordKey] ?? 0));
-    const reward = rewards.base + rewards.placement + rewards.clean + rewards.record;
     const activeEuropeMission = EUROPE_MISSIONS.find((mission) => mission.id === activeEuropeMissionId);
     const activeMission = STORY_MISSIONS.find((mission) => mission.id === activeStoryMissionId);
     setResultStoryMissionId(activeMission?.id ?? activeEuropeMission?.id ?? null);
-    const storyWon = Boolean(activeMission && !settings.storyCompleted.includes(activeMission.id) && storyMissionComplete(activeMission, r, settings.completedRaces + 1));
-    const storyCompleted = storyWon ? [...settings.storyCompleted, activeMission!.id] : settings.storyCompleted;
-    const isStoryRace = Boolean(activeMission || activeEuropeMission);
-    const approach = settings.storyApproach ?? 'balanced';
-    const trust = settings.storyTrust ?? 50;
-    const usage = storyUsage(approach, trust, r.hits ?? 0, partsOf(settings.storyNeedsDone).cooling);
-    const storyFuel = isStoryRace ? Math.max(0, (settings.storyFuel ?? 100) - usage.fuel) : (settings.storyFuel ?? 100);
-    const storyCondition = isStoryRace ? Math.max(0, (settings.storyCondition ?? 100) - usage.wear) : (settings.storyCondition ?? 100);
-    const storyTrust = isStoryRace ? Math.max(0, Math.min(100, (settings.storyTrust ?? 50) + (r.rank === 1 ? 3 : r.rank <= 3 ? 1 : -2))) : (settings.storyTrust ?? 50);
-    const evidenceId = activeMission && storyWon && /clue|notebook|signal|evidence|recording|witness|project|files|black.box|telemetry|broker|father|control.room/i.test(`${activeMission.title} ${activeMission.briefing}`) ? activeMission.id : null;
-    const storyEvidence = evidenceId ? Array.from(new Set([...(settings.storyEvidence ?? []), evidenceId])) : (settings.storyEvidence ?? []);
-    const careerStep = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
-    const nextUnlocked = storyWon ? Math.max(careerStep, Math.min(MAX_LEVEL, activeMission!.level + 1)) : careerStep;
-    const bestLaps = { ...(settings.bestLaps ?? {}) };
-    if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
+    const settled = settleRace({ state: settings, mission: activeMission, europe: activeEuropeMission, result: r, level, rewards, maxLevel: MAX_LEVEL });
+    if (settled.duplicate) return;
+    const { storyWon, europeWon } = settled;
+    const { storyFuel, storyCondition, storyTrust, storyEvidence } = settled.patch as { storyFuel: number; storyCondition: number; storyTrust: number; storyEvidence: string[] };
+    const nextUnlocked = settled.patch.unlocked ?? settings.unlocked;
     setLastReward({ base: rewards.base, placement: rewards.placement, clean: rewards.clean, record: rewards.record, xp: rewards.xp, isRecord: rewards.isRecord });
-    const europeWon = Boolean(activeEuropeMission && !((settings.europeCompleted ?? []).includes(activeEuropeMission.id)) && europeMissionComplete(activeEuropeMission, r));
-    update({
-      coins: settings.coins + reward + (europeWon ? activeEuropeMission!.reward : 0),
-      careerXP: (settings.careerXP ?? 0) + rewards.xp,
-      completedRaces: settings.completedRaces + 1,
-      podiums: (settings.podiums ?? 0) + (r.rank <= 3 ? 1 : 0),
-      cleanRaces: (settings.cleanRaces ?? 0) + (rewards.clean ? 1 : 0),
-      bestLaps,
-      processedRaceKeys: [...(settings.processedRaceKeys ?? []), raceKey].slice(-250),
-      unlocked: nextUnlocked,
-      storyCompleted, storyFuel, storyCondition, storyTrust, storyEvidence,
-      europeCompleted: europeWon ? [...(settings.europeCompleted ?? []), activeEuropeMission!.id] : (settings.europeCompleted ?? []),
-    });
-    if (europeWon) { const finalEuropeWin = (settings.europeCompleted ?? []).length + 1 >= EUROPE_MISSIONS.length; setNotice(finalEuropeWin ? `EUROPE CAMPAIGN COMPLETE: TOMI WINS THE WORKS CHAMPIONSHIP · +${activeEuropeMission!.reward} BONUS COINS` : `EUROPE MISSION COMPLETE: ${activeEuropeMission!.title} · +${activeEuropeMission!.reward} BONUS COINS`); setActiveEuropeMissionId(null); setActiveStoryMissionId(null); }
+    update(settled.patch as Partial<ApexSettings>);
+    if (europeWon) { const finalEuropeWin = settled.finalEurope; setNotice(finalEuropeWin ? `EUROPE CAMPAIGN COMPLETE: TOMI WINS THE WORKS CHAMPIONSHIP · +${activeEuropeMission!.reward} BONUS COINS` : `EUROPE MISSION COMPLETE: ${activeEuropeMission!.title} · +${activeEuropeMission!.reward} BONUS COINS`); setActiveEuropeMissionId(null); setActiveStoryMissionId(null); }
     else if (activeEuropeMission) { setNotice(`Mission not complete yet: ${activeEuropeMission.objective}`); setActiveEuropeMissionId(null); setActiveStoryMissionId(null); }
     else if (storyWon) { const talk = STORY_TALK[activeMission!.id]; const ending = activeMission!.id === 'johannesburg-road-home' ? (settings.storyChoices?.[activeMission!.id] === 'publish-evidence' ? (storyEvidence.length >= 5 ? ' · ENDING: EVIDENCE RELEASED PUBLICLY WITH A STRONG CASE' : ' · ENDING: EVIDENCE RELEASED, BUT SOME PROOF IS STILL MISSING') : settings.storyChoices?.[activeMission!.id] === 'keep-evidence' ? ' · ENDING: EVIDENCE PRESERVED FOR THE NEXT INVESTIGATION' : '') : ''; const support = storyTrust >= 75 ? ' · CREW SUPPORT: HIGH' : storyTrust < 30 ? ' · CREW SUPPORT: LOW — NEXT RUNS COST MORE FUEL' : ''; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}${ending}${support} · FUEL ${storyFuel}% · CONDITION ${storyCondition}%`); setActiveStoryMissionId(null); }
     else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) { setNotice(`Mission not complete yet: ${activeMission.objective}`); setActiveStoryMissionId(null); }
@@ -131,30 +110,34 @@ export default function Apex() {
   useEffect(() => {
     if (phase === 'menu' && !storyScene && settings.storyCompleted && !settings.europeInvitationSeen && africaCampaignDone(settings.storyCompleted, settings.africaRegionsCompleted ?? [])) setStoryScene({ kind: 'europe' });
   }, [phase, storyScene, settings.storyCompleted, settings.africaRegionsCompleted, settings.europeInvitationSeen]);
+  // The Europe ending plays once, the first time the player is back on the menu after the last mission.
+  useEffect(() => {
+    if (phase === 'menu' && !storyScene && !settings.europeEndingSeen && europeFinished(settings.europeCompleted ?? [])) setStoryScene({ kind: 'europe-ending' });
+  }, [phase, storyScene, settings.europeCompleted, settings.europeEndingSeen]);
 
   const adAfterDrive = () => { void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); }); };
 
+  /** A free race never inherits a story or Europe mission left over from an earlier screen. */
+  const startFreeRace = (nextLevel = level) => { setActiveStoryMissionId(null); setActiveEuropeMissionId(null); startRace(nextLevel); };
   const startRace = (nextLevel = level) => { setResultStoryMissionId(null); setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
   const startEuropeMission = (missionId: string) => {
-    if (!africaCampaignDone(settings.storyCompleted ?? [], settings.africaRegionsCompleted ?? [])) { setNotice('Complete every Africa story mission and all ten regional drives first.'); return; }
-    const mission = EUROPE_MISSIONS.find((item) => item.id === missionId);
-    if (!mission || (settings.europeCompleted ?? []).includes(mission.id) || currentEuropeMission(settings.europeCompleted ?? [])?.id !== mission.id) return;
-    setStoryScene({ kind: 'europe-mission', id: mission.id });
+    const check = canStartEuropeMission(settings, missionId);
+    if (!check.ok) { setNotice(check.reason); return; }
+    setStoryScene({ kind: 'europe-mission', id: missionId });
   };
 
   const launchEuropeRace = (missionId: string) => {
     const mission = EUROPE_MISSIONS.find((item) => item.id === missionId);
-    if (!mission || (settings.europeCompleted ?? []).includes(mission.id) || currentEuropeMission(settings.europeCompleted ?? [])?.id !== mission.id) return;
+    if (!mission || !canStartEuropeMission(settings, missionId).ok) return;
     setStoryScene(null); setActiveStoryMissionId(null); setActiveEuropeMissionId(mission.id); setLevel(mission.level);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
     setNotice(''); startRace(mission.level);
   };
   const startStoryMission = (missionId: string) => {
     const mission = STORY_MISSIONS.find((item) => item.id === missionId);
-    if (!mission || settings.storyCompleted.includes(mission.id)) return;
-    if (mission.level > settings.unlocked) { setNotice(mission.lockedHint ?? `Reach career level ${mission.level} first.`); return; }
-    if ((settings.storyFuel ?? 100) < 15) { setNotice('NOT ENOUGH FUEL · Refuel in the story workshop before starting this mission.'); return; }
-    if ((settings.storyCondition ?? 100) < 15) { setNotice('CAR TOO DAMAGED · Repair the car in the story workshop before starting this mission.'); return; }
+    if (!mission) return;
+    const check = canStartStoryMission(settings, missionId);
+    if (!check.ok) { if (!settings.storyCompleted.includes(mission.id)) setNotice(check.reason); return; }
     if (needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) { setStoryScene({ kind: 'needs', id: mission.id }); return; }
     setStoryPrepMissionId(mission.id);
     setNotice('');
@@ -200,8 +183,8 @@ export default function Apex() {
     needLock.current = true; setTimeout(() => { needLock.current = false; }, 400);
     update(r.patch); sfx('complete');
   };
-  const storyRefuel = () => { if (settings.coins < 100 || (settings.storyFuel ?? 100) >= 100) return; update({ coins: settings.coins - 100, storyFuel: Math.min(100, (settings.storyFuel ?? 100) + 25) }); setNotice('FUEL ADDED · +25%'); };
-  const storyRepair = () => { if (settings.coins < 150 || (settings.storyCondition ?? 100) >= 100) return; update({ coins: settings.coins - 150, storyCondition: Math.min(100, (settings.storyCondition ?? 100) + 25) }); setNotice('REPAIRS COMPLETE · +25% CONDITION'); };
+  const storyRefuel = () => { const p = buyFuel(settings); if (!p) return; update(p); setNotice('FUEL ADDED · +25%'); };
+  const storyRepair = () => { const p = buyRepair(settings); if (!p) return; update(p); setNotice('REPAIRS COMPLETE · +25% CONDITION'); };
   const unlockCar = (id: string) => {
     const car = catalogCar(id);
     if (!car.ready) { setNotice(`${car.name}: the 3D model is still on its way.`); return; }
@@ -241,6 +224,7 @@ export default function Apex() {
       if (mission && talk) return <StoryScene kicker="CHAPTER 3 · EUROPE" title={mission.title} place={mission.subtitle} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => launchEuropeRace(mission.id)} onSkip={() => setStoryScene(null)} />;
       if (mission) return <StoryScene kicker="CHAPTER 3 · EUROPE" title={mission.title} place={mission.subtitle} lines={[{ who: 'Tomi', line: mission.briefing }]} goLabel="TO THE GRID  →" onDone={() => launchEuropeRace(mission.id)} onSkip={() => setStoryScene(null)} />;
     }
+    if (storyScene.kind === 'europe-ending') return <StoryScene kicker="EPILOGUE · NO LIMITS" title="No Limits" place="NÜRBURGRING · SUNRISE" lines={europeEndingLines(settings.storyChoices?.['johannesburg-road-home'], (settings.storyEvidence ?? []).length)} goLabel="THE END  →" onDone={() => { setStoryScene(null); update({ europeEndingSeen: true }); setPanel('story'); }} onSkip={() => { setStoryScene(null); update({ europeEndingSeen: true }); }} />;
     if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} trust={settings.storyTrust ?? 50} evidenceCount={(settings.storyEvidence ?? []).length} endingChoice={settings.storyChoices?.['johannesburg-road-home']} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
     if (storyScene.kind === 'needs') {
       const nm = STORY_MISSIONS.find((x) => x.id === storyScene.id); const list = needsFor(storyScene.id);
@@ -254,7 +238,7 @@ export default function Apex() {
     const jm = STORY_MISSIONS.find((x) => x.id === jobMissionId); const jd = jm ? jobFor(jm.id) : undefined;
     if (jm && jd) return <DriveMission key={jobRun} job={jd} title={jm.title} region={regionOf(jm.id)} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} quality={settings.quality} autoGas={settings.autoGas} upgrades={storyUpgrades()} bodyTier={settings.bodyTier} parts={partsOf(settings.storyNeedsDone)} onFinish={finishJob} onExit={() => { setJobMissionId(null); setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onContinue={() => { setJobMissionId(null); setActiveStoryMissionId(null); setPhase('menu'); setPanel('story'); }} onRetry={() => { if ((settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) { setNotice('Your car needs fuel or repairs first.'); setJobMissionId(null); setPhase('menu'); setPanel('story'); } else setJobRun((n) => n + 1); }} />;
   }
-  if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); adAfterDrive(); }} />;
+  if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const res = settleRegion(settings, regionId, reward, elapsedSeconds, points); if (!res) return; if (Object.keys(res.patch).length) update(res.patch as Partial<ApexSettings>); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${res.firstTime ? `+${reward} COINS` : (res.newBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED')} · ${points} CUP POINTS`); sfx('complete'); adAfterDrive(); }} />;
 
   if (phase === 'race') return <Race key={run} skin={activeStoryMissionId ? STORY_SKINS[activeStoryMissionId] : activeEuropeMissionId ? EUROPE_SKINS[activeEuropeMissionId] : undefined} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={storyUpgrades()} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
@@ -281,8 +265,8 @@ export default function Apex() {
           {notice ? <Text style={{ color: colors.good, marginTop: 12, fontWeight: '800' }}>{notice}</Text> : null}
           <View style={{ gap: 10, marginTop: 18 }}>
             {resultStoryMissionId ? (((settings.storyCompleted ?? []).includes(resultStoryMissionId) || (settings.europeCompleted ?? []).includes(resultStoryMissionId)) ? <Button title="CONTINUE STORY  →" onPress={() => { setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); }} /> : (EUROPE_MISSIONS.some((m) => m.id === resultStoryMissionId) ? <Button title="RETRY EUROPE MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); startEuropeMission(id); }} /> : <Button title="RETRY STORY MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); setStoryScene({ kind: 'mission', id }); }} />)) : null}
-            {!resultStoryMissionId && next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { setActiveStoryMissionId(null); startRace(level + 1); }} /> : null}
-            {!resultStoryMissionId ? <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startRace(level)} /> : null}
+            {!resultStoryMissionId && next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { startFreeRace(level + 1); }} /> : null}
+            {!resultStoryMissionId ? <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startFreeRace(level)} /> : null}
             <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setActiveEuropeMissionId(null); setPhase('menu'); setPanel('garage'); }} />
             <Button title="HOME" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setActiveEuropeMissionId(null); setPhase('menu'); setPanel('home'); }} />
           </View>
@@ -410,7 +394,7 @@ export default function Apex() {
               </Pressable>;
             })}
           </View>
-          <Button title="RACE ON THIS TRACK  →" onPress={() => startRace(level)} style={{ marginTop: 16 }} />
+          <Button title="RACE ON THIS TRACK  →" onPress={() => startFreeRace(level)} style={{ marginTop: 16 }} />
         </> : null}
 
         {panel === 'home' ? <>
@@ -439,7 +423,7 @@ export default function Apex() {
                   {['LOW', 'MEDIUM', 'HIGH'].map((l, q) => <Pressable key={l} onPress={() => update({ quality: q })} style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 10, backgroundColor: settings.quality === q ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: settings.quality === q ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{l}</Text></Pressable>)}
                 </View>
               </View>
-              <Button title="START CAREER RACE  →" onPress={() => startRace(level)} style={{ marginTop: 4, backgroundColor: '#245fff', borderColor: '#5eaaff' }} />
+              <Button title="START CAREER RACE  →" onPress={() => startFreeRace(level)} style={{ marginTop: 4, backgroundColor: '#245fff', borderColor: '#5eaaff' }} />
             </View>
           </Card>
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 12 }}>
@@ -470,7 +454,7 @@ export default function Apex() {
           const lagosProgress = chapterProgress(completed, 'lagos');
           const africaProgress = chapterProgress(completed, 'africa');
           const africaDriveCompleted = (settings.africaRegionsCompleted ?? []).length;
-          const africaCampaignComplete = africaProgress.complete && africaDriveCompleted === 10;
+          const africaCampaignComplete = europeUnlocked(completed, settings.africaRegionsCompleted ?? []);
           const renderMission = (mission: (typeof STORY_MISSIONS)[number], index: number, chapterUnlocked: boolean) => {
             const complete = completed.includes(mission.id);
             const isCurrent = current?.id === mission.id;

@@ -168,6 +168,9 @@ export default function Apex() {
     update(save as Partial<ApexSettings>);
     if (o.success && !settings.storyCompleted.includes(mission.id)) { sfx('complete'); setNotice(`STORY MISSION COMPLETE: ${mission.title} · +${patch.coinsGained} coins`); } else if (!o.success) sfx('lose');
     setResultStoryMissionId(mission.id);
+    // A completed/failed job has settled. Do not let a later free race inherit
+    // this story mission and consume story fuel or show the wrong retry screen.
+    setActiveStoryMissionId(null);
     adAfterDrive();
   };
   const storyUpgrades = () => { const u = [...levelsOf(settings.activeCar)]; if (activeStoryMissionId) { const a = settings.storyApproach ?? 'balanced'; if (a === 'speed') u[0] = Math.min(MAX_UPGRADE, u[0] + 1); if (a === 'grip') u[2] = Math.min(MAX_UPGRADE, u[2] + 1); if ((settings.storyCondition ?? 100) < 30) u[0] = Math.max(0, u[0] - 1); } return u; };

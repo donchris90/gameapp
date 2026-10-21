@@ -47,6 +47,8 @@ export default function Apex() {
   const [notice, setNotice] = useState('');
   const [jobRun, setJobRun] = useState(0);
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
+  // DriveMission can deliver the same result twice during a React/GL transition.
+  const processedJobAttemptsRef = useRef<Set<string>>(new Set());
   const [activeEuropeMissionId, setActiveEuropeMissionId] = useState<string | null>(null);
   const [resultStoryMissionId, setResultStoryMissionId] = useState<string | null>(null);
   const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe-mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | { kind: 'evidence' } | null>(null);
@@ -150,13 +152,17 @@ export default function Apex() {
     const mission = STORY_MISSIONS.find((item) => item.id === missionId);
     if (!mission || settings.storyCompleted.includes(mission.id)) return;
     if (mission.level > settings.unlocked) { setNotice(mission.lockedHint ?? `Reach career level ${mission.level} first.`); return; }
+    if ((settings.storyFuel ?? 100) < 15) { setNotice('NOT ENOUGH FUEL · Refuel in the story workshop before starting this mission.'); return; }
+    if ((settings.storyCondition ?? 100) < 15) { setNotice('CAR TOO DAMAGED · Repair the car in the story workshop before starting this mission.'); return; }
     if (needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) { setStoryScene({ kind: 'needs', id: mission.id }); return; }
     setStoryPrepMissionId(mission.id);
     setNotice('');
   };
   const launchPreparedStoryMission = () => {
     const mission = STORY_MISSIONS.find((item) => item.id === storyPrepMissionId);
-    if (!mission || (settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) return;
+    if (!mission) return;
+    if ((settings.storyFuel ?? 100) < 15) { setNotice('NOT ENOUGH FUEL · Refuel in the story workshop before starting this mission.'); return; }
+    if ((settings.storyCondition ?? 100) < 15) { setNotice('CAR TOO DAMAGED · Repair the car in the story workshop before starting this mission.'); return; }
     setActiveStoryMissionId(mission.id);
     update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1, storyChoices: { ...(settings.storyChoices ?? {}) } });
     setStoryPrepMissionId(null);
@@ -166,12 +172,18 @@ export default function Apex() {
   const finishJob = (o: JobOutcome) => {
     const mission = STORY_MISSIONS.find((x) => x.id === activeStoryMissionId); const def = mission ? jobFor(mission.id) : undefined;
     if (!mission || !def) return;
+    const attemptKey = `${mission.id}:${jobRun}`;
+    if (processedJobAttemptsRef.current.has(attemptKey)) return;
+    processedJobAttemptsRef.current.add(attemptKey);
+    if (processedJobAttemptsRef.current.size > 200) { const oldest = processedJobAttemptsRef.current.values().next().value; if (oldest) processedJobAttemptsRef.current.delete(oldest); }
     const patch = applyJobResult(settings, mission, def, o, MAX_LEVEL);
     const { coinsGained, ...save } = patch; void coinsGained;
     update(save as Partial<ApexSettings>);
     if (o.success && !settings.storyCompleted.includes(mission.id)) { sfx('complete'); setNotice(`STORY MISSION COMPLETE: ${mission.title} · +${patch.coinsGained} coins`); } else if (!o.success) sfx('lose');
     setResultStoryMissionId(mission.id);
     adAfterDrive();
+    // A settled job must not leak its story mission into the next free race.
+    setActiveStoryMissionId(null);
   };
   const storyUpgrades = () => { const u = [...levelsOf(settings.activeCar)]; if (activeStoryMissionId) { const a = settings.storyApproach ?? 'balanced'; if (a === 'speed') u[0] = Math.min(MAX_UPGRADE, u[0] + 1); if (a === 'grip') u[2] = Math.min(MAX_UPGRADE, u[2] + 1); if ((settings.storyCondition ?? 100) < 30) u[0] = Math.max(0, u[0] - 1); } return u; };
   const needLock = useRef(false);

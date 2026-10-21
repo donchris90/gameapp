@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { CarStyle, cleanStyle } from './style';
+import { STORY_MISSIONS } from './story';
 
 export interface ApexSettings {
   tilt: boolean;
@@ -47,6 +48,7 @@ const DEFAULTS: ApexSettings = {
   bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced',
 };
 
+const pct = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : d);
 export async function loadApex(): Promise<ApexSettings> {
   try {
     const saved = JSON.parse((await SecureStore.getItemAsync(KEY)) ?? '{}');
@@ -73,7 +75,11 @@ export async function loadApex(): Promise<ApexSettings> {
       cleanRaces: Number.isFinite(saved.cleanRaces) ? Math.max(0, Math.floor(saved.cleanRaces)) : DEFAULTS.cleanRaces,
       bestLaps: saved.bestLaps && typeof saved.bestLaps === 'object' && !Array.isArray(saved.bestLaps) ? saved.bestLaps : DEFAULTS.bestLaps,
       processedRaceKeys: Array.isArray(saved.processedRaceKeys) ? saved.processedRaceKeys.filter((x: unknown) => typeof x === 'string').slice(-250) : [],
-      storyCompleted: Array.isArray(saved.storyCompleted) ? Array.from(new Set(saved.storyCompleted.filter((x: unknown) => typeof x === 'string'))) : [],
+      storyCompleted: Array.isArray(saved.storyCompleted) ? Array.from(new Set(saved.storyCompleted.filter((x: unknown) => typeof x === 'string' && STORY_MISSIONS.some((m) => m.id === x)))) as string[] : [],
+      storyFuel: pct(saved.storyFuel, 100), storyCondition: pct(saved.storyCondition, 100), storyTrust: pct(saved.storyTrust, 50),
+      storyEvidence: Array.isArray(saved.storyEvidence) ? Array.from(new Set(saved.storyEvidence.filter((x: unknown) => typeof x === 'string'))).slice(0, 200) as string[] : [],
+      storyChoices: saved.storyChoices && typeof saved.storyChoices === 'object' && !Array.isArray(saved.storyChoices) ? Object.fromEntries(Object.entries(saved.storyChoices).filter(([, v]) => typeof v === 'string')) as Record<string, string> : {},
+      storyApproach: ['balanced', 'speed', 'grip', 'reliability'].includes(saved.storyApproach) ? saved.storyApproach : 'balanced',
       storyNeedsDone: Array.isArray(saved.storyNeedsDone) ? saved.storyNeedsDone.filter((x: unknown) => typeof x === 'string').slice(0, 100) : [],
       europeInvitationSeen: typeof saved.europeInvitationSeen === 'boolean' ? saved.europeInvitationSeen : false,
       lagosDriveRewardClaimed: typeof saved.lagosDriveRewardClaimed === 'boolean' ? saved.lagosDriveRewardClaimed : false,

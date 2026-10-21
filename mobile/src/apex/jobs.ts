@@ -196,4 +196,6 @@ export function jobOutcome(def: JobDef, s: JobState): JobOutcome {
   const timeBonus = success && def.timeLimit !== undefined ? Math.floor(Math.max(0, def.timeLimit - s.t) * 3) : 0;
   return { success, reason: s.reason, hits: s.hits, seconds: Math.round(s.t * 10) / 10, timeBonus, clues };
 }
-export const jobCoins = (def: JobDef, o: JobOutcome) => (o.success ? def.reward + o.timeBonus + (o.hits === 0 ? 50 : 0) : 0);
+/** A failed job still pays a small fee, so a player short of coins can always earn the fuel back. */
+export const FAIL_FEE = 40;
+export const jobCoins = (def: JobDef, o: JobOutcome) => (o.success ? def.reward + o.timeBonus + (o.hits === 0 ? 50 : 0) : FAIL_FEE);

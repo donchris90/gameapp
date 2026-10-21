@@ -25,8 +25,8 @@ function addBox(scene: THREE.Scene, x: number, y: number, z: number, w: number, 
  * The rules are in jobs.ts; this file only draws them and feeds in the player's position and collisions.
  * `onFinish` is called exactly once, the moment the job is won or lost.
  */
-export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quality = 2, autoGas = true, upgrades = [], bodyTier = 0, region, onFinish, onExit, onContinue, onRetry }: {
-  job: JobDef; title: string; carId: string; paint?: number; style?: CarStyle; quality?: number; autoGas?: boolean; upgrades?: number[]; bodyTier?: number; region?: RegionLook;
+export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quality = 2, autoGas = true, upgrades = [], bodyTier = 0, region, parts, onFinish, onExit, onContinue, onRetry }: {
+  job: JobDef; title: string; carId: string; paint?: number; style?: CarStyle; quality?: number; autoGas?: boolean; upgrades?: number[]; bodyTier?: number; region?: RegionLook; parts?: { cooling: boolean; brakes: boolean; suspension: boolean };
   onFinish: (o: JobOutcome) => void; onExit: () => void; onContinue: () => void; onRetry: () => void;
 }) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -100,7 +100,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
 
     // car handling, with the car's upgrades making a real difference
     const u = (k: number) => upgrades[k] ?? 0;
-    const maxSpeed = 34 * (1 + 0.03 * u(0) + 0.02 * u(1)), accelBase = 24 * (1 + 0.05 * u(0)), steerBase = 1.5 * (1 + 0.04 * u(2)), offroad = 10 * (1 - 0.08 * u(2));
+    const maxSpeed = 34 * (1 + 0.03 * u(0) + 0.02 * u(1)), accelBase = 24 * (1 + 0.05 * u(0)), steerBase = 1.5 * (1 + 0.04 * u(2)), offroad = 10 * (1 - 0.08 * u(2)) * (parts?.suspension ? 0.6 : 1);
     const nitroTop = maxSpeed + 13 + 1.5 * u(3), nitroPush = 18 + 2 * u(3);
     const m = { x: START.x, z: START.z, heading: 0, speed: 0 };
     const clock = new THREE.Clock(); let raf = 0; let hudClock = 0; let hitCooldown = 0; let collisionFlash = 0;
@@ -112,7 +112,7 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
       let didCollide = false;
       if (state.status === 'run') {
         const px = m.x, pz = m.z;
-        const accel = c.gas ? accelBase : 0; const braking = c.brake ? 38 : 0;
+        const accel = c.gas ? accelBase : 0; const braking = c.brake ? (parts?.brakes ? 48 : 38) : 0;
         m.speed += (accel - braking - m.speed * (c.gas ? 0.45 : 1.25)) * dt;
         if (c.nitro && c.gas) m.speed += nitroPush * dt;
         m.speed = Math.max(0, Math.min(c.nitro ? nitroTop : maxSpeed, m.speed));
@@ -124,9 +124,9 @@ export function DriveMission({ job, title, carId, paint = 0x2788ff, style, quali
         if (m.z > 18) { m.z = 18; m.speed *= 0.75; }
         if (m.z < -258) { m.z = -258; m.speed *= 0.75; }
         for (const o of colliders) {
-          if (Math.abs(m.x - o.x) < o.halfW + 1.35 && Math.abs(m.z - o.z) < o.halfD + 1.9) { m.x = px; m.z = pz; m.speed *= 0.38; didCollide = true; break; }
+          if (Math.abs(m.x - o.x) < o.halfW + 1.35 && Math.abs(m.z - o.z) < o.halfD + 1.9) { m.x = px; m.z = pz; m.speed *= parts?.suspension ? 0.5 : 0.38; didCollide = true; break; }
         }
-        const bump = (ax: number, az: number, r2: number) => { const dx = m.x - ax, dz = m.z - az; if (dx * dx + dz * dz < r2) { m.speed *= 0.5; didCollide = true; m.x += dx === 0 ? 0.35 : Math.sign(dx) * 0.35; m.z += Math.sign(dz || 1) * 0.22; } };
+        const bump = (ax: number, az: number, r2: number) => { const dx = m.x - ax, dz = m.z - az; if (dx * dx + dz * dz < r2) { m.speed *= parts?.suspension ? 0.6 : 0.5; didCollide = true; m.x += dx === 0 ? 0.35 : Math.sign(dx) * 0.35; m.z += Math.sign(dz || 1) * 0.22; } };
         ambient.forEach((n) => bump(n.x, n.z, 10.5));
         state.pursuers.forEach((p) => { if (p.active) bump(p.x, p.z, 8); });
         decoyActors.forEach((d) => bump(d.px, d.pz, 10.5));

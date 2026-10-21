@@ -15,6 +15,9 @@ export interface StoryNeed {
 const up = (kind: 0 | 1 | 2 | 3, level: number) => ({ kind, level });
 export const STORY_NEEDS: Record<string, StoryNeed[]> = {
   'the-night-run': [{ id: 'n-engine-1', art: 'engine', title: 'The engine will not pull', who: 'Tomi', line: 'She coughs like an old man on a hill. Give me a new set of plugs and a tuned engine and she will fly. Friend price.', price: 250, upgrade: up(0, 1), button: 'TUNE THE ENGINE' }],
+  'dakar-sand-intake': [{ id: 'n-cooling', art: 'heat', title: 'The engine runs too hot', who: 'Darius Cole', line: 'Dust and heat are cooking her. A bigger radiator and clean hoses, and she runs cooler and wears slower on long jobs.', price: 600, button: 'FIT COOLING' }],
+  'atlas-mountain-contract': [{ id: 'n-brakes', art: 'tyres', title: 'Brakes that fade on the mountain', who: 'Tomi', line: 'Downhill hairpins burn pads. Better pads and discs, and you stop shorter when it counts.', price: 700, button: 'FIT BRAKES' }],
+  'victoria-crossing': [{ id: 'n-suspension', art: 'engine', title: 'Rough road, soft springs', who: 'Amara Diallo', line: 'The detour is broken tarmac. Stiffer suspension keeps the car steady and takes hits better.', price: 800, button: 'FIT SUSPENSION' }],
   'earn-your-name': [{ id: 'n-licence', art: 'licence', title: 'You need a racing licence', who: 'Mara Okafor', line: 'No licence, no city events. The office closes soon. Pay the fee, sit the test, get your photo taken. Smile.', price: 300, button: 'GET THE LICENCE' }],
   'the-stolen-blueprint': [{ id: 'n-tyres-1', art: 'tyres', title: 'Bald tyres on wet streets', who: 'Tomi', line: 'Look at these. You could read a newspaper through them. Downtown is all tight corners, so fit proper tyres.', price: 350, upgrade: up(2, 1), button: 'FIT NEW TYRES' }],
   'lagos-grand-sprint': [{ id: 'n-turbo-1', art: 'boost', title: 'Add a turbo for the finale', who: 'Tomi', line: 'Darius will have the fastest car in Lagos. We bolt on a turbo, and the old car bites back.', price: 500, upgrade: up(1, 1), button: 'INSTALL TURBO' }],
@@ -49,3 +52,6 @@ export function applyNeed(s: NeedState, needId: string): NeedResult {
   if (need.upgrade) { const nl = [...levels]; nl[need.upgrade.kind] = Math.max(nl[need.upgrade.kind] ?? 0, need.upgrade.level); upgrades[s.activeCar] = nl; }
   return { ok: true, patch: { coins: s.coins - need.price, storyNeedsDone: [...(s.storyNeedsDone ?? []), need.id], upgrades } };
 }
+
+/** Story parts that are not part of the garage's four upgrades. Each one has a real effect in jobs and on wear. */
+export const partsOf = (done: string[] = []) => ({ cooling: done.includes('n-cooling'), brakes: done.includes('n-brakes'), suspension: done.includes('n-suspension') });

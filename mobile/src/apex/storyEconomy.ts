@@ -1,16 +1,16 @@
 import { JobDef, JobOutcome, jobCoins } from './jobs';
 
 /** Fuel and wear one story outing costs. Used by story races and story jobs alike. */
-export function storyUsage(approach: string, trust: number, hits: number) {
+export function storyUsage(approach: string, trust: number, hits: number, cooling = false) {
   const crewSupport = trust >= 75 ? -2 : trust < 30 ? 3 : 0;
   const fuel = Math.max(6, (approach === 'speed' ? 18 : approach === 'reliability' ? 10 : approach === 'grip' ? 13 : 14) + crewSupport);
-  const wear = Math.max(1, Math.min(25, 5 + Math.max(0, hits) * 3 + (approach === 'speed' ? 3 : 0) - (approach === 'reliability' ? 4 : 0) + (trust < 30 ? 2 : trust >= 75 ? -1 : 0)));
+  const wear = Math.max(1, Math.min(25, 5 + Math.max(0, hits) * 3 + (approach === 'speed' ? 3 : 0) - (approach === 'reliability' ? 4 : 0) + (trust < 30 ? 2 : trust >= 75 ? -1 : 0) - (cooling ? 2 : 0)));
   return { fuel, wear };
 }
 
 export interface JobSave {
   coins: number; careerXP?: number; unlocked: number; storyCompleted: string[];
-  storyFuel?: number; storyCondition?: number; storyTrust?: number; storyEvidence?: string[]; storyApproach?: string;
+  storyFuel?: number; storyCondition?: number; storyTrust?: number; storyEvidence?: string[]; storyApproach?: string; storyNeedsDone?: string[];
 }
 /**
  * What a finished job changes. Pays once per mission: a mission already completed pays nothing and records nothing.
@@ -20,7 +20,7 @@ export function applyJobResult(s: JobSave, mission: { id: string; level: number 
   const already = s.storyCompleted.includes(mission.id);
   if (already) return { coins: s.coins, coinsGained: 0 };
   const trust = s.storyTrust ?? 50;
-  const use = storyUsage(s.storyApproach ?? 'balanced', trust, o.hits);
+  const use = storyUsage(s.storyApproach ?? 'balanced', trust, o.hits, (s.storyNeedsDone ?? []).includes('n-cooling'));
   const gained = jobCoins(def, o);
   const patch: Partial<JobSave> & { coins: number; coinsGained: number } = {
     coins: s.coins + gained, coinsGained: gained,

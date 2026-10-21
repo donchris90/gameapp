@@ -33,7 +33,7 @@ assert.equal(syntaxErrors.length, 0, syntaxErrors.join('\n'));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-campaign-'));
 try {
-  for (const file of ['career.ts', 'jobs.ts', 'story.ts']) {
+  for (const file of ['career.ts', 'jobs.ts', 'storyTalkMore.ts', 'story.ts']) {
     const source = fs.readFileSync(path.join(root, 'src', 'apex', file), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
     fs.writeFileSync(path.join(temp, file.replace(/\.ts$/, '.js')), compiled);

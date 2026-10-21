@@ -35,7 +35,7 @@ describe('story jobs: rules', () => {
     const o = jobOutcome(del, s); expect(o.success).toBe(true); expect(jobCoins(del, o)).toBeGreaterThan(del.reward);
   });
   it('delivery fails on time and on damage', () => {
-    const s = newJob(del); run(del, s, { x: 0, z: 5 }, del.timeLimit! + 1); expect(s.status).toBe('failed'); expect(jobCoins(del, jobOutcome(del, s))).toBe(0);
+    const s = newJob(del); run(del, s, { x: 0, z: 5 }, del.timeLimit! + 1); expect(s.status).toBe('failed'); expect(jobCoins(del, jobOutcome(del, s))).toBe(40);
     const clean = jobFor('accra-ghost-lap')!; const c = newJob(clean); run(clean, c, { x: 0, z: 5 }, 1, true); expect(c.status).toBe('failed');
   });
   it('investigation: any order, clues returned only on success', () => {
@@ -84,7 +84,7 @@ describe('job results and economy', () => {
   });
   it('a failed job pays nothing, completes nothing, still costs fuel and trust', () => {
     const p = applyJobResult(base, m, def, { success: false, reason: 'TIME RAN OUT', hits: 2, seconds: 85, timeBonus: 0, clues: [] }, 60);
-    expect(p.coins).toBe(1000); expect(p.storyCompleted).toBeUndefined(); expect(p.storyEvidence).toBeUndefined();
+    expect(p.coins).toBe(1040); expect(p.storyCompleted).toBeUndefined(); expect(p.storyEvidence).toBeUndefined();
     expect(p.storyFuel).toBeLessThan(100); expect(p.storyCondition).toBeLessThan(100); expect(p.storyTrust).toBe(48);
   });
   it('unlock is capped at the max level and never lowers it', () => {

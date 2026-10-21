@@ -1,5 +1,6 @@
 import { CareerRaceResult } from './career';
 import { JOB_BY_MISSION, jobKindLabel } from './jobs';
+import { MORE_TALK } from './storyTalkMore';
 
 export type StoryChapter = 'lagos' | 'africa';
 export interface StoryMission {
@@ -264,6 +265,8 @@ export const STORY_TALK: Record<string, { before: StoryLine[]; after: StoryLine 
   STORY_MISSIONS.map((mission) => {
     const existing = STORY_TALK_BASE[mission.id];
     if (existing) return [mission.id, existing];
+    const more = MORE_TALK[mission.id];
+    if (more) return [mission.id, more];
     const speaker = mission.briefing.toLowerCase().includes('mara') ? 'Mara Okafor' : mission.briefing.toLowerCase().includes('darius') ? 'Darius Cole' : mission.briefing.toLowerCase().includes('amara') ? 'Amara Diallo' : 'Tomi';
     return [mission.id, {
       before: [

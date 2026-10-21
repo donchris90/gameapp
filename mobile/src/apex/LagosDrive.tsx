@@ -2,13 +2,10 @@ import * as THREE from 'three';
 import { makeRenderer } from './glfix';
 import { GLView, ExpoWebGLRenderingContext } from 'expo-gl';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useWindowDimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CarStyle, LAMPS } from './style';
-import { loadCarModel, MODELS } from './model';
-import { lookFor } from './cars';
-import { makeHeroCar } from './scene';
-import { buildLagosWorld } from './lagosWorld';
+import { loadCarModel } from './model';
 import './cars'; // Register the same GLB catalogue used by the garage and race renderer.
 
 export type LagosDriveResult = { checkpoints: number; coins: number; distance: number };
@@ -26,8 +23,8 @@ function addBox(scene: THREE.Scene, x: number, y: number, z: number, w: number, 
 }
 
 /** First playable, code-built Lagos district slice. It is a prototype environment, not a finished open world. */
-export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = false, quality = 2, autoGas = true, upgrades = [], bodyTier = 0, onExit, onWorkshop, onComplete }: {
-  carId: string; paint?: number; style?: CarStyle; rewardClaimed?: boolean; quality?: number; autoGas?: boolean; upgrades?: number[]; bodyTier?: number; onExit: () => void; onWorkshop: () => void; onComplete: (result: LagosDriveResult) => void;
+export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = false, quality = 2, autoGas = true, onExit, onWorkshop, onComplete }: {
+  carId: string; paint?: number; style?: CarStyle; rewardClaimed?: boolean; quality?: number; autoGas?: boolean; onExit: () => void; onWorkshop: () => void; onComplete: (result: LagosDriveResult) => void;
 }) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const carModelLoadRef = useRef(0);
@@ -35,12 +32,6 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const controls = useRef<Controls>({ left: false, right: false, gas: autoGas, brake: false, nitro: false });
   const motion = useRef({ x: 0, z: 0, heading: 0, speed: 0, distance: 0, checkpoints: 0 });
   const alive = useRef(true);
-  const win = useWindowDimensions(); const wide = win.width > win.height;
-  const [glReady, setGlReady] = useState(false);
-  // Wait until the phone is really in landscape before creating the 3D view, or it keeps its portrait size.
-  useEffect(() => { if (!wide) return; const id = setTimeout(() => setGlReady(true), 200); return () => clearTimeout(id); }, [wide]);
-  const glRef = useRef<any>(null);
-  const resizeRef = useRef<((w: number, h: number) => void) | null>(null);
   const [hud, setHud] = useState({ speed: 0, checkpoints: 0, banner: 'DRIVE TO THE GLOWING WAYPOINTS', nearWorkshop: false, collision: false });
   const finished = hud.checkpoints >= CHECKPOINTS.length;
   const onContextCreate = useCallback((gl: ExpoWebGLRenderingContext) => {
@@ -52,30 +43,120 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
     renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8bb5d7); const qf = [0.6, 0.8, 1][Math.max(0, Math.min(2, Math.round(quality)))]; scene.fog = new THREE.Fog(0x8bb5d7, 115 * qf, 310 * qf);
-    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500 * qf); glRef.current = gl; resizeRef.current = (nw, nh) => { if (nw < 1 || nh < 1) return; renderer.setSize(nw, nh, false); camera.aspect = nw / nh; camera.updateProjectionMatrix(); };
-    const world = buildLagosWorld(scene, { road: ROAD, quality });
-    const buildingColliders = world.colliders;
-    const car = new THREE.Group(); car.position.set(0, 0, 5); scene.add(car);
-    // The player's car is built exactly as in the race (same model, paint, rims, glass and lights).
-    let heroFlame: THREE.Mesh | null = null; let heroGroup: THREE.Group | null = null;
-    const putHero = (id: string) => {
-      const hero = makeHeroCar(style?.paint ?? paint, bodyTier, id, { ...lookFor(upgrades), style });
-      hero.head.emissiveIntensity = 1.3; hero.flame.visible = false;
-      if (heroGroup) car.remove(heroGroup);
-      heroGroup = hero.group; heroFlame = hero.flame; car.add(hero.group);
-    };
-    putHero(carId); // the built-in car shows at once if the model file is still loading
+    const camera = new THREE.PerspectiveCamera(62, w / Math.max(1, h), 0.1, 500 * qf);
+    scene.add(new THREE.HemisphereLight(0xdceeff, 0x48513d, 2.0));
+    const sun = new THREE.DirectionalLight(0xffe0b0, 2.2); sun.position.set(-35, 70, 20); scene.add(sun);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), new THREE.MeshStandardMaterial({ color: 0x68784d, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.08; scene.add(ground);
+    // A compact connected street grid: long boulevard, side streets and visible lane markings.
+    const asphalt = new THREE.MeshStandardMaterial({ color: 0x303641, roughness: 0.96 });
+    const road = (x: number, z: number, w: number, d: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), asphalt); m.position.set(x, 0, z); scene.add(m); };
+    road(0, -105, ROAD, 300); road(0, -105, 300, ROAD); road(42, -105, ROAD, 300); road(-42, -105, ROAD, 300); road(0, -42, 300, ROAD); road(0, -168, 300, ROAD); road(84, -105, ROAD, 300); road(-84, -105, ROAD, 300);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4e5a0 });
+    const verticalLineGeo = new THREE.BoxGeometry(0.18, 0.03, 4);
+    const verticalLineCount = 5 * Array.from({ length: 33 }, (_, i) => -250 + i * 9).length;
+    const verticalLines = new THREE.InstancedMesh(verticalLineGeo, lineMat, verticalLineCount);
+    const lineDummy = new THREE.Object3D(); let lineIndex = 0;
+    for (const x of [0, 42, -42, 84, -84]) for (let z = -250; z < 45; z += 9) { lineDummy.position.set(x, 0.08, z); lineDummy.updateMatrix(); verticalLines.setMatrixAt(lineIndex++, lineDummy.matrix); }
+    verticalLines.count = lineIndex; scene.add(verticalLines);
+    const horizontalLineGeo = new THREE.BoxGeometry(4, 0.03, 0.18);
+    const horizontalLines = new THREE.InstancedMesh(horizontalLineGeo, lineMat, 3 * 33); lineIndex = 0;
+    for (const z of [-42, -105, -168]) for (let x = -145; x < 150; x += 9) { lineDummy.position.set(x, 0.08, z); lineDummy.updateMatrix(); horizontalLines.setMatrixAt(lineIndex++, lineDummy.matrix); }
+    horizontalLines.count = lineIndex; scene.add(horizontalLines);
+    const sidewalk = new THREE.MeshStandardMaterial({ color: 0xb7ad95 });
+    for (const x of [-8, 8, 34, 50, 76, 92, -34, -50, -76, -92]) { const s = new THREE.Mesh(new THREE.BoxGeometry(2, 0.25, 310), sidewalk); s.position.set(x, 0.08, -105); scene.add(s); }
+    // Distinctive low-rise Lagos blocks with colorful facades and rooftop water tanks.
+    const facade = [0xc56b45, 0xd6b26c, 0x879c9e, 0xc4c7b9, 0x9c705a, 0xe0a15a, 0x788c76];
+    const buildingColliders: Array<{ x: number; z: number; halfW: number; halfD: number }> = [];
+    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x263b4c, emissive: 0x172a3d, roughness: 0.4 });
+    const windowGeometry = new THREE.BoxGeometry(1.1, 1.2, 0.08);
+    const windowPositions: THREE.Vector3[] = [];
+    let n = 0;
+    for (let z = -235; z < 30; z += 25) for (const side of [-1, 1]) for (const lane of [0, 1]) {
+      // Keep the blocks out of the cross-streets so the boulevard grid remains driveable.
+      if ([-168, -105, -42].some((roadZ) => Math.abs(z - roadZ) < 13)) continue;
+      const x = side * (20 + lane * 42 + ((n % 3) - 1) * 2); const buildingZ = z + (n % 2) * 5; const hgt = 8 + ((n * 7) % 19); const bw = 12 + (n % 4) * 2;
+      addBox(scene, x, hgt / 2, buildingZ, bw, hgt, 15, facade[n % facade.length]);
+      buildingColliders.push({ x, z: buildingZ, halfW: bw / 2, halfD: 7.5 });
+      for (let fy = 2; fy < hgt - 1; fy += 3) for (let fx = -bw / 2 + 2; fx < bw / 2 - 1; fx += 3) windowPositions.push(new THREE.Vector3(x + fx, fy, buildingZ + 7.58));
+      if (n % 3 === 0) { addBox(scene, x, hgt + 1.3, buildingZ, 3.2, 2.2, 3.2, 0x25333a); }
+      n++;
+    }
+    // Batch repeated windows into one instanced draw call for mobile performance.
+    const windowInstances = new THREE.InstancedMesh(windowGeometry, windowMaterial, windowPositions.length);
+    const windowDummy = new THREE.Object3D();
+    windowPositions.forEach((position, index) => { windowDummy.position.copy(position); windowDummy.updateMatrix(); windowInstances.setMatrixAt(index, windowDummy.matrix); });
+    windowInstances.instanceMatrix.needsUpdate = true; scene.add(windowInstances);
+    // Workshop landmark.
+    buildingColliders.push({ x: -18, z: -44, halfW: 6.5, halfD: 8.5 });
+    addBox(scene, -18, 3.3, -44, 13, 6.6, 17, 0xe1b26a);
+    addBox(scene, -18, 5.2, -35.2, 8, 1.4, 0.2, 0x1d293b);
+    addBox(scene, -18, 1.5, -35.15, 5.2, 3, 0.25, 0x3d4b5d);
+    // Bridge landmark spanning the road.
+    addBox(scene, 0, 10, -100, 70, 1.4, 5, 0x7a858e); addBox(scene, -32, 5, -100, 2, 10, 3, 0x6e777f); addBox(scene, 32, 5, -100, 2, 10, 3, 0x6e777f);
+    const car = new THREE.Group();
+    const fallback = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.62, 4.2), new THREE.MeshStandardMaterial({ color: paint, metalness: 0.48, roughness: 0.27 })); body.position.y = 0.78; fallback.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.65, 1.9), new THREE.MeshStandardMaterial({ color: 0x152a3d, metalness: 0.35, roughness: 0.25 })); cabin.position.set(0, 1.36, -0.25); fallback.add(cabin);
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.9 });
+    const rimMat = new THREE.MeshStandardMaterial({ color: style?.rimDesign ? style.rim : 0x7d8794, metalness: 0.8, roughness: 0.25 });
+    for (const x of [-1.05, 1.05]) for (const z of [-1.35, 1.35]) { const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.24, 12), tireMat); wheel.rotation.z = Math.PI / 2; wheel.position.set(x, 0.42, z); fallback.add(wheel); const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.255, 12), rimMat); rim.rotation.z = Math.PI / 2; rim.position.set(x * 1.015, 0.42, z); fallback.add(rim); }
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0c2 });
+    for (const x of [-0.72, 0.72]) { const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.08), lampMat); lamp.position.set(x, 0.85, -2.12); fallback.add(lamp); }
+    const nitroFlame = new THREE.Group();
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0x4ce9ff, transparent: true, opacity: 0.92 });
+    for (const fx of [-0.48, 0.48]) { const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.15, 7), flameMat); flame.rotation.x = Math.PI / 2; flame.position.set(fx, 0.62, 2.45); nitroFlame.add(flame); }
+    nitroFlame.visible = false; car.add(nitroFlame);
+    const underglow = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 3.5), new THREE.MeshBasicMaterial({ color: style?.glow ?? 0, transparent: true, opacity: 0.38, side: THREE.DoubleSide }));
+    underglow.rotation.x = -Math.PI / 2; underglow.position.y = 0.12; underglow.visible = Boolean(style?.glow); car.add(underglow);
+    car.add(fallback); car.position.set(0, 0, 5); scene.add(car);
+    // Replace the placeholder with the player's actual garage car when its GLB is available.
+    // The placeholder stays visible if loading fails, so free drive can still start immediately.
     const loadToken = ++carModelLoadRef.current;
-    void (async () => {
-      const lowId = `${carId}_lo`;
-      try { if (quality === 0) await loadCarModel(lowId); await loadCarModel(carId); } catch { /* keep the built-in car */ }
-      if (!alive.current || loadToken !== carModelLoadRef.current) return;
-      putHero(quality === 0 && MODELS.byId[lowId] ? lowId : carId);
-    })();
-    // Traffic uses the race's own car models.
+    void (quality === 0 ? loadCarModel(`${carId}_lo`).then((m) => m ?? loadCarModel(carId)) : loadCarModel(carId)).then((model) => {
+      if (!model || !alive.current || loadToken !== carModelLoadRef.current || !car.parent) return;
+      const imported = new THREE.Group();
+      const materialCache = new Map<any, THREE.Material>();
+      for (const [name, part] of Object.entries(model.parts)) {
+        const mats: THREE.Material[] = model.modern ? part.materials.map((desc) => {
+          let mat = materialCache.get(desc);
+          if (!mat) {
+            const isPaint = /paint|body/i.test(desc.name) || (/^body$/i.test(name) && !/glass|window|light|rubber|tyre|tire/i.test(desc.name));
+            const isRim = /rim/i.test(desc.name);
+            const isGlass = /glass|window|windscreen|windshield/i.test(desc.name);
+            const isLamp = /head.?light|tail.?light|lamp|reflector/i.test(desc.name);
+            const finishRoughness = style?.finish === 2 ? 0.82 : style?.finish === 1 ? 0.48 : style?.finish === 3 ? 0.2 : 0.28;
+            const tintOpacity = [1, 0.82, 0.58, 0.32][style?.tint ?? 0];
+            const lampColor = LAMPS[style?.lamp ?? 0].hex;
+            mat = new THREE.MeshStandardMaterial({
+              color: isPaint ? paint : isRim && (style?.rimDesign ?? 0) > 0 ? (style?.rim ?? 0x7d8794) : isLamp ? lampColor : new THREE.Color(desc.color[0], desc.color[1], desc.color[2]),
+              map: desc.map ?? undefined, metalness: Math.min(0.85, isPaint && (style?.finish === 3 || style?.finish === 4 || style?.finish === 5) ? 0.72 : desc.metallic), roughness: isPaint ? finishRoughness : Math.max(0.18, desc.roughness),
+              transparent: desc.blend || desc.color[3] < 0.99 || (isGlass && (style?.tint ?? 0) > 0), opacity: isGlass ? tintOpacity : desc.color[3], side: desc.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+              emissive: isLamp ? new THREE.Color(lampColor) : new THREE.Color(desc.emissive[0], desc.emissive[1], desc.emissive[2]),
+            });
+            materialCache.set(desc, mat);
+          }
+          return mat;
+        }) : [new THREE.MeshStandardMaterial({ color: /wheel/i.test(name) ? 0x17191e : (paint), metalness: 0.38, roughness: /wheel/i.test(name) ? 0.72 : 0.3 })];
+        const mesh = new THREE.Mesh(part.geometry, mats.length > 1 ? mats : mats[0]);
+        mesh.name = name; mesh.position.set(part.at[0], part.at[1], part.at[2]); imported.add(mesh);
+      }
+      const bounds = new THREE.Box3().setFromObject(imported);
+      const size = new THREE.Vector3(); bounds.getSize(size);
+      if (!Number.isFinite(size.z) || size.z < 0.1) return;
+      const scale = 4.2 / size.z;
+      imported.scale.setScalar(scale);
+      imported.position.set(-((bounds.min.x + bounds.max.x) * 0.5) * scale, -bounds.min.y * scale, -((bounds.min.z + bounds.max.z) * 0.5) * scale);
+      car.add(imported); fallback.visible = false;
+    }).catch(() => undefined);
+    // Lightweight traffic cars use the same simple mesh style to keep the prototype mobile-friendly.
     const traffic: Array<{ group: THREE.Group; x: number; z: number; direction: -1 | 1; speed: number; color: number }> = [];
     const makeTrafficCar = (x: number, z: number, direction: -1 | 1, speed: number, color: number) => {
-      const group = world.makeTraffic(color, traffic.length % 3);
+      const group = new THREE.Group();
+      const paintMat = new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.42 });
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.58, 3.7), paintMat); shell.position.y = 0.68; group.add(shell);
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.48, 1.45), new THREE.MeshStandardMaterial({ color: 0x172c3e, roughness: 0.25 })); glass.position.set(0, 1.17, -0.12); group.add(glass);
+      const wheels = new THREE.MeshStandardMaterial({ color: 0x101217, roughness: 0.9 });
+      for (const wx of [-0.9, 0.9]) for (const wz of [-1.1, 1.1]) { const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.29, 0.18, 10), wheels); wheel.rotation.z = Math.PI / 2; wheel.position.set(wx, 0.35, wz); group.add(wheel); }
       group.position.set(x, 0, z); group.rotation.y = direction === -1 ? 0 : Math.PI; scene.add(group);
       traffic.push({ group, x, z, direction, speed, color });
     };
@@ -113,7 +194,6 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
         // Keep the player within the connected district; sidewalks slow rather than hard-stop the car.
         if (Math.abs(m.x) > 100) { m.x = Math.sign(m.x) * 100; m.speed *= 0.72; }
         if (m.z > 18) { m.z = 18; m.speed *= 0.75; }
-        if (m.z < -258) { m.z = -258; m.speed *= 0.75; }
         // Solid building footprints stop the car entering facades; restore its previous position on impact.
         for (const obstacle of buildingColliders) {
           if (Math.abs(m.x - obstacle.x) < obstacle.halfW + 1.35 && Math.abs(m.z - obstacle.z) < obstacle.halfD + 1.9) {
@@ -130,13 +210,13 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
           }
         }
         car.position.set(m.x, 0, m.z); car.rotation.y = m.heading; car.rotation.z = ((c.left ? 1 : 0) - (c.right ? 1 : 0)) * -0.035;
-        if (heroFlame) { heroFlame.visible = c.nitro && c.gas && m.speed > 5; heroFlame.scale.setScalar(0.8 + Math.random() * 0.45); }
+        nitroFlame.visible = c.nitro && c.gas && m.speed > 5; nitroFlame.scale.setScalar(0.8 + Math.random() * 0.45);
         const cp = CHECKPOINTS[m.checkpoints];
         if (cp && Math.hypot(cp.x - m.x, cp.z - m.z) < 7) { m.checkpoints++; rings[m.checkpoints - 1]?.scale.setScalar(0.001); }
       }
       rings.forEach((ring, i) => { if (i >= m.checkpoints) ring.rotation.z += dt * (i === m.checkpoints ? 0.8 : 0.25); });
       const target = new THREE.Vector3(m.x + Math.sin(m.heading) * 10, 5.8, m.z + Math.cos(m.heading) * 10);
-      camera.position.lerp(target, 0.11); world.sky.position.set(camera.position.x, 0, camera.position.z); camera.lookAt(m.x, 0.9, m.z - 8);
+      camera.position.lerp(target, 0.11); camera.lookAt(m.x, 0.9, m.z - 8);
       renderer.render(scene, camera); (gl as any).endFrameEXP?.();
       collisionClock = didCollide ? 0.45 : Math.max(0, collisionClock - dt);
       hudClock += dt; if (hudClock > 0.12) { hudClock = 0; setHud({ speed: Math.round(m.speed * 3.6), checkpoints: m.checkpoints, banner: m.checkpoints >= CHECKPOINTS.length ? 'DISTRICT RUN COMPLETE' : CHECKPOINTS[m.checkpoints]?.label ?? 'EXPLORE LAGOS', nearWorkshop: Math.hypot(m.x + 18, m.z + 44) < 14, collision: collisionClock > 0 }); }
@@ -152,7 +232,7 @@ export function LagosDrive({ carId, paint = 0x2788ff, style, rewardClaimed = fal
   const btn = (key: keyof Controls, label: string, flex = 1, accent = false) => <Pressable key={key} {...hold(key)} style={({ pressed }) => [styles.btn, { flex }, accent && { borderColor: 'rgba(61,224,255,.6)' }, pressed && { backgroundColor: 'rgba(124,92,255,.8)' }]}><Text style={[styles.btnText, (key === 'left' || key === 'right') && { fontSize: 24 }]}>{label}</Text></Pressable>;
   const left = Math.max(insets.left, 14); const right = Math.max(insets.right, 14);
   return <View style={styles.root}>
-    {glReady ? <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={() => { setTimeout(() => { const g = glRef.current; if (g) resizeRef.current?.(g.drawingBufferWidth ?? 0, g.drawingBufferHeight ?? 0); }, 60); }} /> : null}
+    <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
     <View pointerEvents="none" style={[styles.panel, { position: 'absolute', top: insets.top + 8, left, flexDirection: 'row', alignItems: 'flex-end', gap: 14, paddingHorizontal: 14, paddingVertical: 8 }]}>
       <View><Text style={styles.label}>SPEED</Text><Text style={styles.big}>{hud.speed}<Text style={styles.unit}> KM/H</Text></Text></View>
       <View><Text style={styles.label}>WAYPOINT</Text><Text style={styles.num}>{Math.min(hud.checkpoints + 1, 3)}/3</Text></View>

@@ -25,7 +25,7 @@ const hash = (n: number) => { let x = (n | 0) + 0x9e3779b9; x = Math.imul(x ^ (x
 
 // ---- time of day: the level picks the light ----
 export interface Theme { sky: number; horizon: number; fog: number; sun: number; sunPower: number; ambient: number; ground: number; night: boolean; lamps: boolean }
-export const THEMES: Theme[] = [
+const THEMES: Theme[] = [
   { sky: 0x3a8ee6, horizon: 0xbfe4ff, fog: 0xbfe4ff, sun: 0xfff1d6, sunPower: 2.2, ambient: 0xcfe6ff, ground: 0x6f8f4e, night: false, lamps: false }, // day
   { sky: 0x5b3a8c, horizon: 0xffa46b, fog: 0xe58a5e, sun: 0xffb27a, sunPower: 1.7, ambient: 0xffd2b0, ground: 0x7a6a45, night: false, lamps: true }, // sunset
   { sky: 0x0a1030, horizon: 0x2b3d7a, fog: 0x16224a, sun: 0x8ea6ff, sunPower: 1.1, ambient: 0x7a8ccc, ground: 0x1b2438, night: true, lamps: true }, // night
@@ -33,7 +33,7 @@ export const THEMES: Theme[] = [
 export const themeFor = (level: number) => THEMES[[0, 0, 1, 2][(Math.max(1, level) - 1) % 4]];
 
 // A tiny window-grid texture made from raw pixels (no image files needed).
-export function windowTexture(): THREE.DataTexture {
+function windowTexture(): THREE.DataTexture {
   const w = 8, h = 8, data = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, win = x % 4 >= 1 && x % 4 <= 2 && y % 4 >= 1 && y % 4 <= 2;
@@ -44,14 +44,14 @@ export function windowTexture(): THREE.DataTexture {
   return tex;
 }
 /** Grey speckle for asphalt and grass, tinted by the material colour. */
-export function speckleTexture(base: number, spread: number, size = 32): THREE.DataTexture {
+function speckleTexture(base: number, spread: number, size = 32): THREE.DataTexture {
   const data = new Uint8Array(size * size * 4); let s = 12345;
   const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
   for (let i = 0; i < size * size; i++) { const v = Math.max(0, Math.min(255, base + (rnd() - 0.5) * spread)); data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.needsUpdate = true; return tex;
 }
 /** Dark skyscrapers with lit windows, for the far-off city. */
-export function towerTexture(): THREE.DataTexture {
+function towerTexture(): THREE.DataTexture {
   const w = 16, h = 32, data = new Uint8Array(w * h * 4); let s = 777;
   const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -477,7 +477,7 @@ export function makeRivalCar(color: number, modelId = 'rival'): CarParts {
 }
 
 /** A plainer car for the traffic: shorter and taller than the hero car. */
-export function buildTrafficCar(color: number, kind: number) {
+function buildTrafficCar(color: number, kind: number) {
   const shape = kind === 1 ? SHAPES.hatch : SHAPES.saloon;
   const paint = std(color, { metalness: 0.4, roughness: 0.3, envMap: envMap(), envMapIntensity: 0.8 });
   const glass = std(0x172338, { metalness: 0.7, roughness: 0.12, envMap: envMap(), envMapIntensity: 1 });
@@ -490,7 +490,7 @@ export function buildTrafficCar(color: number, kind: number) {
   return group;
 }
 
-export function buildBus() {
+function buildBus() {
   const g = new THREE.Group();
   const yellow = std(0xf2c200, { metalness: 0.3, roughness: 0.5 }); // a yellow city bus with a black stripe
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.3, 10.6), yellow); body.position.y = 1.6; g.add(body);
@@ -501,7 +501,7 @@ export function buildBus() {
   return g;
 }
 
-export function buildTruck(color: number) {
+function buildTruck(color: number) {
   const g = new THREE.Group();
   const cab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 2.4), std(color, { metalness: 0.4 })); cab.position.set(0, 1.5, -3.4); g.add(cab);
   const glass = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.8, 0.1), GLASS_M); glass.position.set(0, 2.0, -4.62); g.add(glass);

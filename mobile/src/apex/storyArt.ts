@@ -1,5 +1,7 @@
+import { STORY_MISSIONS } from './story';
+
 /** Bundled, offline story artwork. Static requires keep Metro asset discovery reliable. */
-export const STORY_ART: Record<string, number> = {
+const STORY_ART_BASE: Record<string, number> = {
   'one-more-start': require('../../assets/story/lagos-intro.png'),
   'the-night-run': require('../../assets/story/race-action.png'),
   'earn-your-name': require('../../assets/story/characters.png'),
@@ -18,13 +20,28 @@ export const STORY_ART: Record<string, number> = {
   'africa-grand-championship': require('../../assets/story/mission-complete.png'),
 };
 
-/** Cartoon comic panels for the story needs. */
-export const NEED_ART: Record<string, number> = {
-  engine: require('../../assets/story/need_engine.jpg'),
-  tyres: require('../../assets/story/need_tyres.jpg'),
-  licence: require('../../assets/story/need_licence.jpg'),
-  fuel: require('../../assets/story/need_fuel.jpg'),
-  border: require('../../assets/story/need_border.jpg'),
-  heat: require('../../assets/story/need_heat.jpg'),
-  boost: require('../../assets/story/need_boost.jpg'),
+
+// New missions reuse the existing small illustration set instead of bundling a unique
+// large image for every beat. This keeps the story complete offline without ballooning the APK.
+const FALLBACK_ART = {
+  lagos: require('../../assets/story/lagos-intro.png'),
+  race: require('../../assets/story/race-action.png'),
+  clue: require('../../assets/story/mission-briefing.png'),
+  crew: require('../../assets/story/characters.png'),
+  betrayal: require('../../assets/story/betrayal.png'),
+  finale: require('../../assets/story/mission-complete.png'),
+  africa: require('../../assets/story/africa-campaign.png'),
 };
+
+export const STORY_ART: Record<string, number> = Object.fromEntries(STORY_MISSIONS.map((mission) => {
+  if (STORY_ART_BASE[mission.id]) return [mission.id, STORY_ART_BASE[mission.id]];
+  const text = `${mission.title} ${mission.briefing}`.toLowerCase();
+  const art = mission.chapter === 'lagos' ? FALLBACK_ART.lagos
+    : /betray|wrong passenger|broken team|ambush|sabotage|raid/.test(text) ? FALLBACK_ART.betrayal
+    : /father|record|clue|evidence|data|project|signal|witness|notebook|telemetry/.test(text) ? FALLBACK_ART.clue
+    : /crew|friend|rival|amara|darius|mara|team|contract/.test(text) ? FALLBACK_ART.crew
+    : /championship|champion|final|crown|king of/.test(text) ? FALLBACK_ART.finale
+    : /race|run|pursuit|crossing|route|qualifier|coast|circuit/.test(text) ? FALLBACK_ART.race
+    : FALLBACK_ART.africa;
+  return [mission.id, art];
+})) as Record<string, number>;

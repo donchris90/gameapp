@@ -13,10 +13,10 @@ import { MAX_UPGRADE, UPGRADE_KINDS, carStats, levelSpec, MAX_LEVEL, TICKS_PER_S
 import { TrackMap } from '../src/apex/TrackMap';
 import { ApexSettings, loadApex, saveApex } from '../src/apex/storage';
 import { calculateCareerRewards, driverRankForXP, xpIntoRank } from '../src/apex/career';
-import { AFRICA_STORY, chapterProgress, currentStoryMission, LAGOS_STORY, STORY_MISSIONS, storyMissionComplete } from '../src/apex/story';
-import { africaCampaignDone, needDone, needsFor, STORY_NEEDS, STORY_SKINS, STORY_TALK } from '../src/apex/storyExtras';
-import { EuropeInvitation, StoryNeeds, StoryScene } from '../src/apex/StoryScene';
+import { africaCampaignDone, chapterProgress, currentStoryMission, STORY_MISSIONS, STORY_SKINS, STORY_TALK, storyMissionComplete } from '../src/apex/story';
+import { EuropeInvitation, StoryScene } from '../src/apex/StoryScene';
 import { STORY_ART } from '../src/apex/storyArt';
+import { StoryApproach, StoryWorkshop } from '../src/apex/StoryWorkshop';
 import { LagosDrive } from '../src/apex/LagosDrive';
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { sfx } from '../src/sfx';
@@ -31,14 +31,16 @@ export default function Apex() {
   const router = useRouter();
   const [phase, setPhase] = useState<'menu' | 'race' | 'result' | 'drive' | 'africa'>('menu');
   const [panel, setPanel] = useState<Panel>('home');
-  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, storyNeedsDone: [], europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {} });
+  const [settings, setSettings] = useState<ApexSettings>({ tilt: true, invert: false, unlocked: 1, coins: 0, activeCar: 'cts', unlockedCars: ['cts'], paint: 0x2788ff, bodyTier: 0, completedRaces: 0, careerXP: 0, podiums: 0, cleanRaces: 0, bestLaps: {}, processedRaceKeys: [], upgrades: {}, track: 'circuit', laps: 3, roadLaps: 1, autoGas: true, quality: 2, styles: {}, europeInvitationSeen: false, storyCompleted: [], lagosDriveRewardClaimed: false, africaRegionsCompleted: [], africaBestTimes: {}, africaChampionshipPoints: {}, storyFuel: 100, storyCondition: 100, storyTrust: 50, storyEvidence: [], storyChoices: {}, storyApproach: 'balanced' });
   const [browse, setBrowse] = useState('cts'); // the car being looked at in the garage
   const [level, setLevel] = useState(1);
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [notice, setNotice] = useState('');
   const [activeStoryMissionId, setActiveStoryMissionId] = useState<string | null>(null);
-  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'needs'; id: string } | { kind: 'europe' } | null>(null);
+  const [resultStoryMissionId, setResultStoryMissionId] = useState<string | null>(null);
+  const [storyScene, setStoryScene] = useState<{ kind: 'mission'; id: string } | { kind: 'europe' } | null>(null);
+  const [storyPrepMissionId, setStoryPrepMissionId] = useState<string | null>(null);
   const [lastReward, setLastReward] = useState({ base: 0, placement: 0, clean: 0, record: 0, xp: 0, isRecord: false });
   const processedRaceKeysRef = useRef<Set<string>>(new Set());
 
@@ -72,8 +74,20 @@ export default function Apex() {
     const rewards = calculateCareerRewards(r, Number(settings.bestLaps?.[recordKey] ?? 0));
     const reward = rewards.base + rewards.placement + rewards.clean + rewards.record;
     const activeMission = STORY_MISSIONS.find((mission) => mission.id === activeStoryMissionId);
+    setResultStoryMissionId(activeMission?.id ?? null);
     const storyWon = Boolean(activeMission && !settings.storyCompleted.includes(activeMission.id) && storyMissionComplete(activeMission, r, settings.completedRaces + 1));
     const storyCompleted = storyWon ? [...settings.storyCompleted, activeMission!.id] : settings.storyCompleted;
+    const isStoryRace = Boolean(activeMission);
+    const approach = settings.storyApproach ?? 'balanced';
+    const trust = settings.storyTrust ?? 50;
+    const crewSupport = trust >= 75 ? -2 : trust < 30 ? 3 : 0;
+    const fuelUse = Math.max(6, (approach === 'speed' ? 18 : approach === 'reliability' ? 10 : approach === 'grip' ? 13 : 14) + crewSupport);
+    const storyFuel = isStoryRace ? Math.max(0, (settings.storyFuel ?? 100) - fuelUse) : (settings.storyFuel ?? 100);
+    const wear = isStoryRace ? Math.min(25, 5 + Math.max(0, r.hits ?? 0) * 3 + (approach === 'speed' ? 3 : 0) - (approach === 'reliability' ? 4 : 0) + (trust < 30 ? 2 : trust >= 75 ? -1 : 0)) : 0;
+    const storyCondition = isStoryRace ? Math.max(0, (settings.storyCondition ?? 100) - Math.max(1, wear)) : (settings.storyCondition ?? 100);
+    const storyTrust = isStoryRace ? Math.max(0, Math.min(100, (settings.storyTrust ?? 50) + (r.rank === 1 ? 3 : r.rank <= 3 ? 1 : -2))) : (settings.storyTrust ?? 50);
+    const evidenceId = activeMission && storyWon && /clue|notebook|signal|evidence|recording|witness|project|files|black.box|telemetry|broker|father|control.room/i.test(`${activeMission.title} ${activeMission.briefing}`) ? activeMission.id : null;
+    const storyEvidence = evidenceId ? Array.from(new Set([...(settings.storyEvidence ?? []), evidenceId])) : (settings.storyEvidence ?? []);
     const nextUnlocked = r.rank <= 3 && level >= settings.unlocked && level < MAX_LEVEL ? level + 1 : settings.unlocked;
     const bestLaps = { ...(settings.bestLaps ?? {}) };
     if (rewards.isRecord) bestLaps[rewards.recordKey] = rewards.bestLap;
@@ -87,10 +101,10 @@ export default function Apex() {
       bestLaps,
       processedRaceKeys: [...(settings.processedRaceKeys ?? []), raceKey].slice(-250),
       unlocked: nextUnlocked,
-      storyCompleted,
+      storyCompleted, storyFuel, storyCondition, storyTrust, storyEvidence,
     });
-    if (storyWon) { const talk = STORY_TALK[activeMission!.id]; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}`); setActiveStoryMissionId(null); }
-    else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) setNotice(`Mission not complete yet: ${activeMission.objective}`);
+    if (storyWon) { const talk = STORY_TALK[activeMission!.id]; const ending = activeMission!.id === 'johannesburg-road-home' ? (settings.storyChoices?.[activeMission!.id] === 'publish-evidence' ? (storyEvidence.length >= 5 ? ' · ENDING: EVIDENCE RELEASED PUBLICLY WITH A STRONG CASE' : ' · ENDING: EVIDENCE RELEASED, BUT SOME PROOF IS STILL MISSING') : settings.storyChoices?.[activeMission!.id] === 'keep-evidence' ? ' · ENDING: EVIDENCE PRESERVED FOR THE NEXT INVESTIGATION' : '') : ''; const support = storyTrust >= 75 ? ' · CREW SUPPORT: HIGH' : storyTrust < 30 ? ' · CREW SUPPORT: LOW — NEXT RUNS COST MORE FUEL' : ''; setNotice(`STORY MISSION COMPLETE: ${activeMission!.title}${talk ? ` · ${talk.after.who}: “${talk.after.line}”` : ''}${ending}${support} · FUEL ${storyFuel}% · CONDITION ${storyCondition}%`); setActiveStoryMissionId(null); }
+    else if (activeMission && !settings.storyCompleted.includes(activeMission.id)) { setNotice(`Mission not complete yet: ${activeMission.objective}`); setActiveStoryMissionId(null); }
     else if (nextUnlocked > settings.unlocked) setNotice(`Level ${nextUnlocked} unlocked!`);
     setPhase('result');
     sfx(r.rank === 1 ? 'win' : r.rank <= 3 ? 'complete' : 'lose');
@@ -103,24 +117,24 @@ export default function Apex() {
 
   const adAfterDrive = () => { void adDue('APEX_RUN').then((due) => { if (due) setTimeout(() => { void showInterstitial(); }, 1800); }); };
 
-  const startRace = (nextLevel = level) => { setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
+  const startRace = (nextLevel = level) => { setResultStoryMissionId(null); setLevel(nextLevel); setRun((n) => n + 1); setPhase('race'); };
   const startStoryMission = (missionId: string) => {
     const mission = STORY_MISSIONS.find((item) => item.id === missionId);
     if (!mission || settings.storyCompleted.includes(mission.id)) return;
     if (mission.level > settings.unlocked) { setNotice(mission.lockedHint ?? `Reach career level ${mission.level} first.`); return; }
-    if (needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) { setStoryScene({ kind: 'needs', id: mission.id }); return; }
-    setActiveStoryMissionId(mission.id);
-    update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1 });
+    setStoryPrepMissionId(mission.id);
     setNotice('');
+  };
+  const launchPreparedStoryMission = () => {
+    const mission = STORY_MISSIONS.find((item) => item.id === storyPrepMissionId);
+    if (!mission || (settings.storyFuel ?? 100) < 15 || (settings.storyCondition ?? 100) < 15) return;
+    setActiveStoryMissionId(mission.id);
+    update({ track: mission.track, laps: mission.track === 'circuit' ? 2 : settings.laps, roadLaps: 1, storyChoices: { ...(settings.storyChoices ?? {}) } });
+    setStoryPrepMissionId(null);
     startRace(mission.level);
   };
-  const solveNeed = (needId: string) => {
-    const need = Object.values(STORY_NEEDS).flat().find((n) => n.id === needId); if (!need) return;
-    if (settings.coins < need.price) { setNotice(`You need ${(need.price - settings.coins).toLocaleString()} more coins.`); return; }
-    const patch: Partial<ApexSettings> = { coins: settings.coins - need.price, storyNeedsDone: [...(settings.storyNeedsDone ?? []), need.id] };
-    if (need.upgrade) { const id = settings.activeCar; const nl = [...levelsOf(id)]; nl[need.upgrade.kind] = Math.max(nl[need.upgrade.kind] ?? 0, need.upgrade.level); patch.upgrades = { ...settings.upgrades, [id]: nl }; }
-    update(patch); sfx('complete');
-  };
+  const storyRefuel = () => { if (settings.coins < 100 || (settings.storyFuel ?? 100) >= 100) return; update({ coins: settings.coins - 100, storyFuel: Math.min(100, (settings.storyFuel ?? 100) + 25) }); setNotice('FUEL ADDED · +25%'); };
+  const storyRepair = () => { if (settings.coins < 150 || (settings.storyCondition ?? 100) >= 100) return; update({ coins: settings.coins - 150, storyCondition: Math.min(100, (settings.storyCondition ?? 100) + 25) }); setNotice('REPAIRS COMPLETE · +25% CONDITION'); };
   const unlockCar = (id: string) => {
     const car = catalogCar(id);
     if (!car.ready) { setNotice(`${car.name}: the 3D model is still on its way.`); return; }
@@ -148,19 +162,19 @@ export default function Apex() {
     <Dim style={{ fontSize: 11 }}>{onCircuit ? 'LAPS' : 'ROUNDS'}</Dim>
     {roundChoices.map((n) => <Pressable key={n} onPress={() => update(onCircuit ? { laps: n } : { roadLaps: n })} style={{ paddingVertical: 5, paddingHorizontal: 14, borderRadius: 10, backgroundColor: roundsNow === n ? '#245fff' : colors.cardAlt, borderWidth: 1, borderColor: roundsNow === n ? '#5eaaff' : colors.line }}><Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{n}</Text></Pressable>)}
   </View>;
-  if (phase === 'menu' && storyScene) {
-    if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
-    if (storyScene.kind === 'needs') {
-      const nm = STORY_MISSIONS.find((x) => x.id === storyScene.id); const list = needsFor(storyScene.id);
-      if (nm) return <StoryNeeds title={nm.title} needs={list} done={list.map((n) => needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))} coins={settings.coins} onSolve={solveNeed} onGo={() => { setStoryScene(null); startStoryMission(nm.id); }} onBack={() => setStoryScene(null)} />;
-    }
-    const m = STORY_MISSIONS.find((x) => x.id === storyScene.id); const talk = m ? STORY_TALK[m.id] : undefined;
-    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} art={STORY_ART[m.id]} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { if (needsFor(m.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar)))) setStoryScene({ kind: 'needs', id: m.id }); else { setStoryScene(null); startStoryMission(m.id); } }} onSkip={() => setStoryScene(null)} />;
+  if (phase === 'menu' && storyPrepMissionId) {
+    const mission = STORY_MISSIONS.find((x) => x.id === storyPrepMissionId);
+    if (mission) return <StoryWorkshop mission={mission} coins={settings.coins} fuel={settings.storyFuel ?? 100} condition={settings.storyCondition ?? 100} trust={settings.storyTrust ?? 50} evidenceCount={(settings.storyEvidence ?? []).length} approach={(settings.storyApproach ?? 'balanced') as StoryApproach} choice={settings.storyChoices?.[mission.id]} onApproach={(storyApproach) => update({ storyApproach })} onChoice={(choice) => { const oldChoice = settings.storyChoices?.[mission.id]; const delta = oldChoice ? 0 : (['forgive-darius', 'reject-vanguard', 'trust-amara', 'publish-evidence', 'keep-evidence'].includes(choice) ? 3 : choice === 'test-amara' ? 0 : -1); update({ storyChoices: { ...(settings.storyChoices ?? {}), [mission.id]: choice }, storyTrust: Math.max(0, Math.min(100, (settings.storyTrust ?? 50) + delta)) }); }} onRefuel={storyRefuel} onRepair={storyRepair} onGarage={() => { setStoryPrepMissionId(null); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Upgrade the car before returning to the story.'); }} onStart={launchPreparedStoryMission} onBack={() => setStoryPrepMissionId(null)} />;
   }
-  if (phase === 'drive') return <LagosDrive upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} autoGas={settings.autoGas} quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); adAfterDrive(); }} />;
+  if (phase === 'menu' && storyScene) {
+    if (storyScene.kind === 'europe') return <EuropeInvitation coins={settings.coins} trust={settings.storyTrust ?? 50} evidenceCount={(settings.storyEvidence ?? []).length} endingChoice={settings.storyChoices?.['johannesburg-road-home']} onClose={() => { setStoryScene(null); if (!settings.europeInvitationSeen) update({ europeInvitationSeen: true }); }} />;
+    const m = STORY_MISSIONS.find((x) => x.id === storyScene.id); const talk = m ? STORY_TALK[m.id] : undefined;
+    if (m && talk) return <StoryScene kicker={m.chapter === 'lagos' ? 'CHAPTER 1 · BORN IN LAGOS' : 'CHAPTER 2 · THE ROAD ACROSS AFRICA'} title={m.title} place={m.subtitle} art={STORY_ART[m.id]} lines={talk.before} goLabel="TO THE GRID  →" onDone={() => { setStoryScene(null); startStoryMission(m.id); }} onSkip={() => setStoryScene(null)} />;
+  }
+  if (phase === 'drive') return <LagosDrive autoGas={settings.autoGas} quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} rewardClaimed={settings.lagosDriveRewardClaimed} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('TOMI’S WORKSHOP · Choose, upgrade, and customize your car.'); }} onComplete={(driveResult) => { const reward = settings.lagosDriveRewardClaimed ? 0 : driveResult.coins; update({ coins: settings.coins + reward, lagosDriveRewardClaimed: true }); setNotice(`LAGOS DISTRICT RUN COMPLETE · ${reward ? `+${reward} coins` : 'reward already claimed'} · ${driveResult.distance} m driven`); setPhase('menu'); setPanel('story'); sfx('complete'); adAfterDrive(); }} />;
   if (phase === 'africa') return <AfricaScene quality={settings.quality} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} completedRegions={settings.africaRegionsCompleted ?? []} bestTimes={settings.africaBestTimes ?? {}} championshipPoints={settings.africaChampionshipPoints ?? {}} onExit={() => { setPhase('menu'); setPanel('story'); }} onWorkshop={() => { setPhase('menu'); setPanel('garage'); setNotice('REGIONAL GARAGE · Choose, upgrade, and customize your car.'); }} onRegionComplete={(regionId, reward, elapsedSeconds, points) => { const current = settings.africaRegionsCompleted ?? []; const alreadyCompleted = current.includes(regionId); const previousBest = settings.africaBestTimes?.[regionId] ?? Infinity; const isNewBest = elapsedSeconds > 0 && elapsedSeconds < previousBest; const oldPoints = settings.africaChampionshipPoints?.[regionId] ?? 0; const isBetterCupResult = points > oldPoints; const nextRegions = alreadyCompleted ? current : [...current, regionId]; if (!alreadyCompleted || isNewBest || isBetterCupResult) update({ africaRegionsCompleted: nextRegions, africaBestTimes: isNewBest ? { ...(settings.africaBestTimes ?? {}), [regionId]: elapsedSeconds } : (settings.africaBestTimes ?? {}), africaChampionshipPoints: isBetterCupResult ? { ...(settings.africaChampionshipPoints ?? {}), [regionId]: points } : (settings.africaChampionshipPoints ?? {}), coins: settings.coins + (alreadyCompleted ? 0 : reward) }); setNotice(`AFRICA TOUR · ${regionId.toUpperCase()} COMPLETE · ${alreadyCompleted ? (isNewBest ? `NEW BEST ${elapsedSeconds.toFixed(1)}s` : 'PERSONAL BEST SAVED') : `+${reward} COINS`} · ${points} CUP POINTS`); sfx('complete'); adAfterDrive(); }} />;
 
-  if (phase === 'race') return <Race key={run} skin={activeStoryMissionId ? STORY_SKINS[activeStoryMissionId] : undefined} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={levelsOf(settings.activeCar)} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
+  if (phase === 'race') return <Race key={run} skin={activeStoryMissionId ? STORY_SKINS[activeStoryMissionId] : undefined} level={level} track={settings.track} laps={roundsNow} tilt={settings.tilt} invert={settings.invert} carId={settings.activeCar} paint={styleOf(settings.activeCar).paint} style={styleOf(settings.activeCar)} autoGas={settings.autoGas} quality={settings.quality} upgrades={(() => { const u = [...levelsOf(settings.activeCar)]; if (activeStoryMissionId) { const a = settings.storyApproach ?? 'balanced'; if (a === 'speed') u[0] = Math.min(MAX_UPGRADE, u[0] + 1); if (a === 'grip') u[2] = Math.min(MAX_UPGRADE, u[2] + 1); if ((settings.storyCondition ?? 100) < 30) u[0] = Math.max(0, u[0] - 1); } return u; })()} bodyTier={settings.bodyTier} onDone={done} onFlip={() => update({ invert: !settings.invert })} />;
 
   if (phase === 'result' && result) {
     const next = level < MAX_LEVEL && level + 1 <= Math.max(settings.unlocked, result.rank <= 3 ? level + 1 : 0);
@@ -184,8 +198,9 @@ export default function Apex() {
           </Card>
           {notice ? <Text style={{ color: colors.good, marginTop: 12, fontWeight: '800' }}>{notice}</Text> : null}
           <View style={{ gap: 10, marginTop: 18 }}>
-            {next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { setActiveStoryMissionId(null); startRace(level + 1); }} /> : null}
-            <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startRace(level)} />
+            {resultStoryMissionId ? (settings.storyCompleted.includes(resultStoryMissionId) ? <Button title="CONTINUE STORY  →" onPress={() => { setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); }} /> : <Button title="RETRY STORY MISSION  ↻" onPress={() => { const id = resultStoryMissionId; setResultStoryMissionId(null); setPhase('menu'); setPanel('story'); setStoryScene({ kind: 'mission', id }); }} />) : null}
+            {!resultStoryMissionId && next ? <Button title={`NEXT LEVEL  ${level + 1}  →`} onPress={() => { setActiveStoryMissionId(null); startRace(level + 1); }} /> : null}
+            {!resultStoryMissionId ? <Button title="RACE AGAIN" kind={next ? 'ghost' : 'primary'} onPress={() => startRace(level)} /> : null}
             <Button title="RETURN TO GARAGE" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('garage'); }} />
             <Button title="HOME" kind="ghost" onPress={() => { setActiveStoryMissionId(null); setPhase('menu'); setPanel('home'); }} />
           </View>
@@ -389,7 +404,6 @@ export default function Apex() {
                   <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>{mission.title}</Text><Text style={{ color: colors.x, fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{mission.subtitle}</Text><Dim>{mission.briefing}</Dim><Text style={{ color: complete ? colors.good : colors.gold, fontSize: 11, fontWeight: '800' }}>{complete ? 'MISSION COMPLETE' : lockedByChapter ? 'COMPLETE THE LAGOS CHAPTER FIRST' : lockedByProgress ? 'COMPLETE THE PREVIOUS MISSION FIRST' : lockedByLevel ? (mission.lockedHint ?? `Reach career level ${mission.level}`) : mission.objective}</Text>
                 </View>
               </View>
-              {isCurrent && needsFor(mission.id).some((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar))) ? <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800' }}>BEFORE YOU RACE: {needsFor(mission.id).filter((n) => !needDone(n, settings.storyNeedsDone ?? [], levelsOf(settings.activeCar))).map((n) => n.title).join(' · ')}</Text> : null}
               {isCurrent ? <Button title={locked ? `LOCKED · ${lockedByChapter ? 'LAGOS CHAPTER' : `LEVEL ${mission.level}`}` : `START MISSION  →`} disabled={locked} onPress={() => (STORY_TALK[mission.id] && mission.level <= settings.unlocked ? setStoryScene({ kind: 'mission', id: mission.id }) : startStoryMission(mission.id))} /> : null}
             </Card>;
           };
@@ -397,6 +411,7 @@ export default function Apex() {
             <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>APEX RUN / CAREER STORY</Text>
             <H1>From Lagos to Africa</H1>
             <Dim>Build your name from local street races to the continent’s biggest championship. Story races use the existing race engine, career rewards, car upgrades and saved mission progress. The Africa Tour contains ten regional driving environments with sequential destination unlocks, distinct waypoint routes, regional bonus objectives, a Cup standings table, one-time first-clear rewards, and saved best times and points. Story missions now include bundled cinematic artwork, mission thumbnails, and illustrated dialogue scenes. The driving environments remain compact procedural representations, not full-scale city reconstructions.</Dim>
+            <Card style={{ marginTop: 10, gap: 9, backgroundColor: '#101b34', borderColor: '#28578b' }}><Text style={{ color: '#fff', fontWeight: '900' }}>TOMI’S CAR & CREW</Text><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Dim>Fuel</Dim><Text style={{ color: (settings.storyFuel ?? 100) < 30 ? colors.bad : colors.good, fontWeight: '900' }}>{settings.storyFuel ?? 100}%</Text><Dim>Condition</Dim><Text style={{ color: (settings.storyCondition ?? 100) < 30 ? colors.bad : colors.good, fontWeight: '900' }}>{settings.storyCondition ?? 100}%</Text></View><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Dim>Crew trust</Dim><Text style={{ color: colors.x, fontWeight: '900' }}>{settings.storyTrust ?? 50}/100</Text><Dim>Clues recovered</Dim><Text style={{ color: colors.gold, fontWeight: '900' }}>{(settings.storyEvidence ?? []).length}</Text></View><Dim>Story races use persistent fuel, condition, crew trust and evidence. Refuel, repair and choose a race approach in Tomi’s workshop before each mission.</Dim></Card>
             <Card style={{ marginTop: 14, gap: 9, borderColor: '#28578b', backgroundColor: '#101b34' }}>
               <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>NEW · LAGOS FREE DRIVE</Text>
               <Dim>Explore the playable Lagos district prototype with connected roads, landmarks, touch driving controls and waypoint objectives.</Dim>
@@ -407,7 +422,7 @@ export default function Apex() {
               <Dim>Drive through ten regional environments, earn one-time completion rewards, improve personal bests, and collect Africa Cup points: gold 3, silver 2, bronze 1. Each region has a bonus driving objective worth up to 100 extra coins on its first clear. Cup points and regional results are saved with your career; open the Cup Table in the scene to compare standings.</Dim>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Dim>Regional drive challenges</Dim><Text style={{ color: colors.good, fontWeight: '900', fontSize: 11 }}>{(settings.africaRegionsCompleted ?? []).length}/10 COMPLETE · {Object.values(settings.africaChampionshipPoints ?? {}).reduce((sum, n) => sum + n, 0)} CUP PTS</Text></View>
               <View style={{ height: 5, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${((settings.africaRegionsCompleted ?? []).length / 10) * 100}%`, backgroundColor: '#3ddc97' }} /></View>
-              {lagosProgress.complete ? <Button title="ENTER AFRICA TOUR  →" onPress={() => { setNotice(''); setPhase('africa'); }} /> : <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '900' }}>LOCKED · COMPLETE ALL FIVE LAGOS MISSIONS</Text>}
+              {lagosProgress.complete ? <Button title="ENTER AFRICA TOUR  →" onPress={() => { setNotice(''); setPhase('africa'); }} /> : <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '900' }}>LOCKED · COMPLETE ALL SEVEN LAGOS MISSIONS</Text>}
             </Card>
             <Card style={{ marginTop: 14, gap: 9, borderColor: africaProgress.complete ? '#236b63' : '#28578b', backgroundColor: '#101b34' }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900' }}>CAMPAIGN STATUS</Text><Text style={{ color: colors.x, fontWeight: '900' }}>{lagosProgress.completed + africaProgress.completed}/{lagosProgress.total + africaProgress.total}</Text></View>
@@ -419,17 +434,17 @@ export default function Apex() {
               <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHAPTER 1 · NIGERIA</Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>Born in Lagos</Text><Text style={{ color: lagosProgress.complete ? colors.good : colors.dim, fontWeight: '900', fontSize: 12 }}>{lagosProgress.completed}/{lagosProgress.total}</Text></View>
               <View style={{ height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${lagosProgress.completed / lagosProgress.total * 100}%`, backgroundColor: '#3ddc97' }} /></View>
-              {LAGOS_STORY.map((mission, index) => renderMission(mission, index, true))}
+              {STORY_MISSIONS.filter((mission) => mission.chapter === 'lagos').map((mission, index) => renderMission(mission, index, true))}
             </View>
             <View style={{ gap: 10, marginTop: 18 }}>
               <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>CHAPTER 2 · THE CONTINENTAL TOUR</Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>The Road Across Africa</Text><Text style={{ color: africaProgress.complete ? colors.good : colors.dim, fontWeight: '900', fontSize: 12 }}>{africaProgress.completed}/{africaProgress.total}</Text></View>
               <Dim>Ghana · Côte d’Ivoire · Senegal · Kenya · Egypt · Morocco · Namibia · South Africa · Zambia / Zimbabwe</Dim>
               <View style={{ height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.cardAlt }}><View style={{ height: 5, width: `${africaProgress.completed / africaProgress.total * 100}%`, backgroundColor: '#3ddc97' }} /></View>
-              {!lagosProgress.complete ? <Card style={{ gap: 6, borderColor: colors.line }}><Text style={{ color: '#fff', fontWeight: '900' }}>AFRICA TOUR LOCKED</Text><Dim>Finish all five Lagos missions to earn your invitation to the continental tour.</Dim></Card> : null}
-              {AFRICA_STORY.map((mission, index) => renderMission(mission, index, lagosProgress.complete))}
-              {africaProgress.complete && !africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#b98237', backgroundColor: '#2b2115' }}><Text style={{ color: colors.gold, fontWeight: '900', fontSize: 16 }}>AFRICAN CHAMPIONSHIP WON</Text><Dim>All eleven story races are complete. Finish all ten regional driving challenges above to complete the full Africa milestone.</Dim></Card> : null}
-              {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Button title="VIEW EUROPE INVITATION  →" onPress={() => setStoryScene({ kind: 'europe' })} /><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All eleven African story events and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
+              {!lagosProgress.complete ? <Card style={{ gap: 6, borderColor: colors.line }}><Text style={{ color: '#fff', fontWeight: '900' }}>AFRICA TOUR LOCKED</Text><Dim>Finish all seven Lagos missions to earn your invitation to the continental tour.</Dim></Card> : null}
+              {STORY_MISSIONS.filter((mission) => mission.chapter === 'africa').map((mission, index) => renderMission(mission, index, lagosProgress.complete))}
+              {africaProgress.complete && !africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#b98237', backgroundColor: '#2b2115' }}><Text style={{ color: colors.gold, fontWeight: '900', fontSize: 16 }}>AFRICAN CHAMPIONSHIP WON</Text><Dim>All {africaProgress.total} African story missions are complete. Finish all ten regional driving challenges above to complete the full Africa milestone.</Dim></Card> : null}
+              {africaCampaignComplete ? <Card style={{ gap: 7, borderColor: '#236b63', backgroundColor: '#102a28' }}><Button title="VIEW EUROPE INVITATION  →" onPress={() => setStoryScene({ kind: 'europe' })} /><Text style={{ color: colors.good, fontWeight: '900', fontSize: 16 }}>AFRICA CAMPAIGN COMPLETE</Text><Dim>You are the African Champion. All {africaProgress.total} African story missions and all ten regional driving challenges are complete. The Europe invitation is earned, but the Europe campaign itself is not included in this milestone.</Dim></Card> : null}
             </View>
             <Button title="BACK HOME" kind="ghost" onPress={() => setPanel('home')} style={{ marginTop: 14 }} />
           </>;

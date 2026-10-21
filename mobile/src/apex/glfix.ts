@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import { LogBox } from 'react-native';
-
-// expo-gl only offers WebGL 1; three.js warns about it on every start. It is harmless, so keep it off the screen.
-LogBox.ignoreLogs(['THREE.WebGLRenderer: WebGL 1 support']);
 
 /**
  * Some Android drivers answer getShaderPrecisionFormat (and a few other early capability queries) with nothing while the

@@ -1,0 +1,43 @@
+import { ScrollView, Text, View } from 'react-native';
+import { Button, Card, Dim, colors } from '../ui';
+import { StoryMission } from './story';
+
+export type StoryApproach = 'balanced' | 'speed' | 'grip' | 'reliability';
+type StoryChoice = { id: string; title: string; detail: string };
+const choiceFor = (id: string): { prompt: string; options: StoryChoice[] } | null => {
+  if (id === 'atlas-betrayal' || id === 'atlas-what-darius-hid') return { prompt: 'Darius admits he hid a clue from Tomi. How do you respond?', options: [{ id: 'forgive-darius', title: 'Give Darius one chance', detail: 'Protect crew trust and keep him close.' }, { id: 'confront-darius', title: 'Demand the full truth', detail: 'Prioritise evidence over forgiveness.' }] };
+  if (id === 'victoria-price-silence') return { prompt: 'Vanguard offers a guaranteed championship place if Tomi abandons the investigation.', options: [{ id: 'reject-vanguard', title: 'Reject the offer', detail: 'Stand with the crew and the investigation.' }, { id: 'fake-acceptance', title: 'Pretend to accept', detail: 'Try to learn more from inside Vanguard.' }] };
+  if (id === 'cape-rivals-confession') return { prompt: 'Amara says her betrayal was an infiltration. How do you handle her return?', options: [{ id: 'trust-amara', title: 'Trust Amara', detail: 'Restore the alliance and share the evidence.' }, { id: 'test-amara', title: 'Ask for proof first', detail: 'Keep your guard up until her story checks out.' }] };
+  if (id === 'johannesburg-road-home') return { prompt: 'The complete recording is in your hands. What should the crew do with it?', options: [{ id: 'publish-evidence', title: 'Release the evidence publicly', detail: 'Expose Vanguard and protect the record.' }, { id: 'keep-evidence', title: 'Keep a private copy', detail: 'Protect the source while planning the next move.' }] };
+  return null;
+};
+const approaches: { id: StoryApproach; title: string; detail: string; icon: string }[] = [
+  { id: 'balanced', title: 'Balanced setup', detail: 'No trade-off. A safe choice for unknown routes.', icon: '⚖️' },
+  { id: 'speed', title: 'Maximum speed', detail: 'Prioritise the engine and straight-line pace.', icon: '⚡' },
+  { id: 'grip', title: 'Cornering grip', detail: 'Prioritise tyres and control through bends.', icon: '🛞' },
+  { id: 'reliability', title: 'Protect the car', detail: 'Prioritise reliability and preserve condition.', icon: '🔧' },
+];
+function Meter({ label, value, color }: { label: string; value: number; color: string }) {
+  return <View style={{ gap: 5, flex: 1 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: '#a9b7d6', fontSize: 11, fontWeight: '800' }}>{label}</Text><Text style={{ color, fontSize: 11, fontWeight: '900' }}>{value}%</Text></View><View style={{ height: 7, borderRadius: 6, overflow: 'hidden', backgroundColor: '#26324d' }}><View style={{ height: 7, width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: color }} /></View></View>;
+}
+export function StoryWorkshop({ mission, coins, fuel, condition, trust, evidenceCount, approach, choice, onApproach, onChoice, onRefuel, onRepair, onGarage, onStart, onBack }: {
+  mission: StoryMission; coins: number; fuel: number; condition: number; trust: number; evidenceCount: number; approach: StoryApproach; choice?: string;
+  onApproach: (value: StoryApproach) => void; onChoice: (value: string) => void; onRefuel: () => void; onRepair: () => void; onGarage: () => void; onStart: () => void; onBack: () => void;
+}) {
+  const decision = choiceFor(mission.id);
+  const canDrive = fuel >= 15 && condition >= 15 && (!decision || Boolean(choice));
+  return <View style={{ flex: 1, backgroundColor: '#070b1c' }}><ScrollView contentContainerStyle={{ padding: 18, paddingTop: 28, paddingBottom: 28, gap: 14 }}>
+    <Text style={{ color: colors.x, fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>TOMI’S WORKSHOP · PRE-RACE PREPARATION</Text>
+    <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900' }}>{mission.title}</Text>
+    <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 }}>{mission.subtitle}</Text>
+    <Card style={{ gap: 8, backgroundColor: '#101b34', borderColor: '#28578b' }}><Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>THE JOB</Text><Dim>{mission.briefing}</Dim><Dim>OBJECTIVE · {mission.objective}</Dim>{mission.specialRule ? <View style={{ borderRadius: 9, borderWidth: 1, borderColor: mission.specialRule === 'clean-finish' ? '#4aa884' : '#b98237', backgroundColor: mission.specialRule === 'clean-finish' ? '#102a28' : '#2b2115', padding: 9, gap: 3 }}><Text style={{ color: mission.specialRule === 'clean-finish' ? '#8fffd4' : '#ffd17d', fontSize: 10, fontWeight: '900' }}>SPECIAL MISSION CONDITION</Text><Dim>{mission.specialRule === 'clean-finish' ? 'A clean result is mandatory: zero vehicle collisions and zero pedestrian hits. Finishing the race alone will not pass this mission.' : `Damage control is mandatory: finish with no more than ${mission.id === 'atlas-cut-line' ? 'one' : 'two'} vehicle collisions and zero pedestrian hits.`}</Dim></View> : null}</Card>
+    <Card style={{ gap: 12, backgroundColor: '#0f1830' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>CAR STATUS</Text><View style={{ flexDirection: 'row', gap: 14 }}><Meter label="FUEL" value={fuel} color={fuel < 30 ? '#ff6a6a' : '#3ddc97'} /><Meter label="CONDITION" value={condition} color={condition < 30 ? '#ff6a6a' : '#5eaaff'} /></View><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Dim>Available coins</Dim><Text style={{ color: colors.gold, fontWeight: '900' }}>{coins.toLocaleString()}</Text></View><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Button title="REFUEL +25 · 100" kind="ghost" disabled={fuel >= 100 || coins < 100} onPress={onRefuel} /></View><View style={{ flex: 1 }}><Button title="REPAIR +25 · 150" kind="ghost" disabled={condition >= 100 || coins < 150} onPress={onRepair} /></View></View><Dim>Each story race consumes fuel. Collisions wear the car down. Refuel and repair here before the next run.</Dim></Card>
+    {decision ? <Card style={{ gap: 9, backgroundColor: '#21182b', borderColor: '#8b5eb8' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>STORY DECISION</Text><Dim>{decision.prompt}</Dim>{decision.options.map((item) => <View key={item.id} style={{ borderWidth: 1, borderColor: choice === item.id ? '#b58cff' : '#453357', backgroundColor: choice === item.id ? '#38244b' : '#171224', borderRadius: 12, padding: 11, gap: 4 }}><Text onPress={() => onChoice(item.id)} style={{ color: '#fff', fontWeight: '900' }}>{choice === item.id ? '● ' : '○ '}{item.title}</Text><Text onPress={() => onChoice(item.id)} style={{ color: '#c9b9df', fontSize: 12 }}>{item.detail}</Text></View>)}</Card> : null}
+    <Card style={{ gap: 9, backgroundColor: '#0f1830' }}><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>CHOOSE YOUR APPROACH</Text><Dim>Your choice is saved and affects this story run’s setup trade-off.</Dim>{approaches.map((item) => <View key={item.id} style={{ borderWidth: 1, borderColor: approach === item.id ? '#5eaaff' : '#293652', backgroundColor: approach === item.id ? '#14294b' : '#0a1225', borderRadius: 12, padding: 11, gap: 4 }}><Text onPress={() => onApproach(item.id)} style={{ color: '#fff', fontWeight: '900' }}>{approach === item.id ? '● ' : '○ '}{item.icon}  {item.title}</Text><Text onPress={() => onApproach(item.id)} style={{ color: '#a9b7d6', fontSize: 12 }}>{item.detail}</Text></View>)}</Card>
+    <Card style={{ gap: 7, backgroundColor: '#101b34' }}><Text style={{ color: '#fff', fontWeight: '900' }}>CREW & INVESTIGATION</Text><Meter label="CREW TRUST" value={trust} color="#b58cff" /><Text style={{ color: '#a9b7d6', fontSize: 12 }}>Evidence recovered: {evidenceCount} · Crew trust changes with mission results and saved decisions.</Text></Card>
+    {fuel < 15 || condition < 15 ? <Text style={{ color: '#ff8d8d', fontWeight: '800', fontSize: 12 }}>The car needs at least 15% fuel and 15% condition before you can leave. Refuel or repair to continue.</Text> : decision && !choice ? <Text style={{ color: '#d4b6ff', fontWeight: '800', fontSize: 12 }}>Choose a response above before starting this mission.</Text> : null}
+    <Button title="OPEN GARAGE & UPGRADES  ⚙" kind="ghost" onPress={onGarage} />
+    <Button title={canDrive ? 'START MISSION  →' : 'CAR NOT READY'} disabled={!canDrive} onPress={onStart} />
+    <Button title="BACK TO STORY" kind="ghost" onPress={onBack} />
+  </ScrollView></View>;
+}

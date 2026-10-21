@@ -113,6 +113,13 @@ try {
     const repeatCooling = extras.applyNeed({ ...needState, ...coolingNeed.patch }, 'n-cooling');
     assert.equal(repeatCooling.ok, false, 'Non-upgrade story parts must not be charged twice');
   }
+  const fuelNeed = extras.applyNeed({ ...needState, coins: 1000, storyFuel: 8 }, 'n-fuel-ke');
+  assert.equal(fuelNeed.ok, true, 'Long-road fuel purchase should be available');
+  if (fuelNeed.ok) {
+    assert.equal(fuelNeed.patch.storyFuel, 100, 'Buying story fuel must refill the tank so the mission can launch');
+    const repeatFuel = extras.applyNeed({ ...needState, ...fuelNeed.patch, storyFuel: fuelNeed.patch.storyFuel }, 'n-fuel-ke');
+    assert.equal(repeatFuel.ok, false, 'Fuel supplies must not be charged twice');
+  }
   const poorNeed = extras.applyNeed({ ...needState, coins: 0 }, 'n-engine-1');
   assert.equal(poorNeed.ok, false, 'Story need purchase must reject insufficient funds');
   if (!poorNeed.ok) assert.equal(poorNeed.reason, 'funds');
@@ -181,7 +188,7 @@ try {
   console.log('PASS: 56 missions (7 Lagos + 49 Africa), metadata, unique IDs, dialogue, and campaign order.');
   console.log('PASS: race-result rules, clean/low-damage conditions, delivery damage limit, and ten-region Africa completion gate.');
   console.log('PASS: Africa Tour region IDs match save-data IDs and every region has a job visual theme.');
-  console.log('PASS: story upgrade/part purchases are idempotent and reject insufficient funds.');
+  console.log('PASS: story upgrade/part purchases are idempotent, fuel purchases refill the tank, and insufficient funds are rejected.');
   console.log('PASS: story jobs reward success/failure correctly, consume resources, and cannot pay twice.');
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });

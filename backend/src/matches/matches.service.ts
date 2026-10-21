@@ -69,14 +69,15 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
 
   // ---- views ----
 
-  view(m: MatchFull) {
+  view(m: MatchFull, viewerId?: string) {
     const engine = this.games.get(m.game);
+    const viewerSeat = viewerId === undefined ? undefined : m.players.find((p) => p.userId === viewerId)?.seat;
     return {
       id: m.id, roomId: m.roomId, game: m.game, stake: Number(m.stake), pot: Number(m.pot), houseFee: Number(m.houseFee),
       status: m.status, endReason: m.endReason, winnerId: m.winnerId, version: m.version,
       turnSeat: m.turnSeat, turnDeadline: m.turnDeadline,
       autoPlay: m.players.filter((p) => this.auto.has(`${m.id}:${p.userId}`)).map((p) => p.userId),
-      state: engine ? engine.publicState(m.state) : null,
+      state: !engine ? null : engine.publicStateFor && viewerSeat !== undefined ? engine.publicStateFor(m.state, viewerSeat) : engine.publicState(m.state),
       players: m.players.map((p) => ({
         userId: p.userId, username: p.user.username, displayName: p.user.displayName, frame: p.user.equippedFrame, title: p.user.equippedTitle,
         seat: p.seat, payout: Number(p.payout), result: p.result, left: !!p.leftAt,
@@ -89,15 +90,14 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private emit(m: MatchFull, event: string) {
-    const v = this.view(m);
-    for (const p of m.players) if (!p.user.isBot) this.realtime.emitToUser(p.userId, event, v);
+    for (const p of m.players) if (!p.user.isBot) this.realtime.emitToUser(p.userId, event, this.view(m, p.userId));
     if (event !== 'match:ended') this.botDriver?.(m);
   }
 
   async get(userId: string, matchId: string) {
     const m = await this.prisma.match.findUnique({ where: { id: matchId }, include: matchInclude });
     if (!m || !m.players.some((p) => p.userId === userId)) throw appError(404, 'MATCH_NOT_FOUND', 'Match not found');
-    return this.view(m);
+    return this.view(m, userId);
   }
 
   async current(userId: string) {
@@ -105,7 +105,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       where: { status: 'ACTIVE', players: { some: { userId, leftAt: null } } }, include: matchInclude, orderBy: { startedAt: 'desc' },
     });
     if (!m) throw appError(404, 'NO_ACTIVE_MATCH', 'You are not in a match');
-    return this.view(m);
+    return this.view(m, userId);
   }
 
   /**

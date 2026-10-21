@@ -6,6 +6,7 @@ import { LudoEngine } from './ludo.engine';
 import { GameEngine } from './engine';
 import { TicTacToeEngine } from './tictactoe.engine';
 import { WaterSortEngine } from './watersort.engine';
+import { WhotEngine } from './whot.engine';
 
 /** The games that can actually be played right now. Others are added as their engines land. */
 @Injectable()
@@ -18,6 +19,7 @@ export class GameRegistry {
     this.register(new AyoEngine());
     this.register(new LudoEngine());
     this.register(new ApexRaceEngine());
+    this.register(new WhotEngine());
   }
 
   register(engine: GameEngine<any>) {

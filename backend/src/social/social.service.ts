@@ -14,7 +14,7 @@ import { VoiceService, dmChannel } from './voice.service';
 const EMOTE_GAP_MS = 1200;
 const CALL_RING_MS = 30_000;
 export type Period = 'week' | 'all';
-export const GAMES = ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO', 'APEX'] as const;
+export const GAMES = ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO', 'APEX', 'WHOT'] as const;
 
 interface Call { id: string; from: string; to: string; channel: string; at: number; answered: boolean }
 

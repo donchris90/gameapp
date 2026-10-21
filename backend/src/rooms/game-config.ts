@@ -7,6 +7,7 @@ export const GAME_CONFIG: Record<GameType, { min: number; max: number }> = {
   LUDO: { min: 2, max: 4 },
   WATER_SORT: { min: 1, max: 1 },
   APEX: { min: 2, max: 4 },
+  WHOT: { min: 2, max: 4 },
 };
 
 /** Games played alone. They have no rooms, no quick match and no stakes. */

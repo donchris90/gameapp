@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { appError } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 
-export const AD_GAMES = ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO', 'APEX_RUN'] as const;
+export const AD_GAMES = ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO', 'WHOT', 'APEX_RUN'] as const;
 export type AdGame = (typeof AD_GAMES)[number];
 /** Show a full-screen ad after every Nth finished game of that kind. 0 = never, 1 = after every game. */
 export type AdPolicy = Record<AdGame, number>;
 export const AD_EVERY_MAX = 20;
-export const DEFAULT_AD_POLICY: AdPolicy = { TICTACTOE: 1, WATER_SORT: 1, AYO: 1, LUDO: 1, APEX_RUN: 1 };
+export const DEFAULT_AD_POLICY: AdPolicy = { TICTACTOE: 1, WATER_SORT: 1, AYO: 1, LUDO: 1, WHOT: 1, APEX_RUN: 1 };
 const KEY = 'adPolicy';
 const CACHE_MS = 15_000;
 

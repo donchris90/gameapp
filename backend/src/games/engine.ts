@@ -52,4 +52,6 @@ export interface GameEngine<S = unknown> {
   onDeadline?(state: S, activeSeats: number[]): { state: S; outcome: Outcome };
   /** What clients are allowed to see. Hide anything secret here. */
   publicState(state: S): unknown;
+  /** Games with hidden information (hands of cards): what the player in `seat` is allowed to see. */
+  publicStateFor?(state: S, seat: number): unknown;
 }

@@ -6,6 +6,11 @@ export const HOW_TO_PLAY: Record<GameType, string[]> = {
     'Get three of your marks in a row, across, down or diagonal, to win.',
     'A full board with no line is a draw and everyone gets their stake back.',
   ],
+  WHOT: [
+    'Everyone gets 6 cards. Play a card that matches the shape or the number of the one showing. If you cannot, tap the pile to take one card.',
+    '1 Hold On: play again. 2 Pick Two: the next player picks 2 and misses their turn, unless they answer with a 2, and then it stacks. 14 General Market: everyone else picks 1 and you play again.',
+    'Every other card is plain. The first player to empty their hand wins, even if the last card is a power card. Last card is called for you automatically.',
+  ],
   APEX: [
     'Create a room, invite friends and set a stake. Everyone drives the same stock car on the same track, so skill decides.',
     'You all start together and see each other as ghost cars. Cars pass through each other, so nobody can wreck your race.',

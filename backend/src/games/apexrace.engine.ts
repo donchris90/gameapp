@@ -35,7 +35,7 @@ export class ApexRaceEngine implements GameEngine<ApexRaceState> {
     };
   }
 
-  applyMove(state: ApexRaceState, seat: number, move: unknown): MoveResult<ApexRaceState> {
+  applyMove(state: ApexRaceState, seat: number, move: unknown, _ctx?: EngineContext): MoveResult<ApexRaceState> {
     if (seat < 0 || seat >= state.ticks.length) throw new IllegalMove('BAD_MOVE', 'You are not in this race');
     if (state.ticks[seat] !== null) throw new IllegalMove('ALREADY_FINISHED', 'You already finished this race');
     const inputs = (move as { inputs?: unknown } | null)?.inputs;

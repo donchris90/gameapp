@@ -24,6 +24,7 @@ class AdPolicyDto {
   @IsOptional() @IsInt() @Min(0) @Max(20) WATER_SORT?: number;
   @IsOptional() @IsInt() @Min(0) @Max(20) AYO?: number;
   @IsOptional() @IsInt() @Min(0) @Max(20) LUDO?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(20) WHOT?: number;
   @IsOptional() @IsInt() @Min(0) @Max(20) APEX_RUN?: number;
 }
 const lim = (n: number) => Math.min(Math.max(n, 1), 100);

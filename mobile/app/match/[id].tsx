@@ -5,6 +5,7 @@ import { api, explain } from '../../src/api';
 import { adDue, preloadInterstitial, showInterstitial } from '../../src/ads';
 import { Ayo } from '../../src/games/Ayo';
 import { Ludo } from '../../src/games/Ludo';
+import { Whot } from '../../src/games/Whot';
 import { TicTacToe } from '../../src/games/TicTacToe';
 import { WaterSort } from '../../src/games/WaterSort';
 import { ApexRace, isRacing } from '../../src/games/ApexRace';
@@ -104,7 +105,7 @@ export default function MatchScreen() {
   const solo = match.players.length === 1; // a puzzle played alone (Water Sort)
   const resultText = !over ? '' : solo ? (mine?.result === 'WON' ? `Level ${match.state.level ?? ''} solved! 🎉` : match.endReason === 'FORFEIT' ? 'You gave up' : "Time's up") : mine?.result === 'WON' ? 'You won! 🎉' : mine?.result === 'DRAW' ? 'Draw' : 'You lost';
   const status = over ? resultText : solo ? '' : myTurn ? (match.game === 'LUDO' && match.state.phase === 'ROLL' ? 'Your turn: roll' : 'Your turn') : '';
-  const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111', APEX: '#0A0D16' } as Record<string, string>)[match.game];
+  const bg = ({ TICTACTOE: '#0B1020', AYO: '#1C1009', LUDO: '#120F2B', WATER_SORT: '#111111', APEX: '#0A0D16', WHOT: '#0F2A1E' } as Record<string, string>)[match.game];
   const onAuto = !over && !!match.autoPlay?.includes(user.id);
   const takeBack = () => api<Match>(`/matches/${match.id}/resume`, { method: 'POST' }).then(accept).catch((e) => Alert.alert('Take back control', explain(e)));
   const quitToHome = () => api<Match>(`/matches/${match.id}/forfeit`, { method: 'POST' }).then((m) => { accept(m); goBack(); }).catch(() => goBack());
@@ -136,6 +137,7 @@ export default function MatchScreen() {
           match.game === 'TICTACTOE' ? <TicTacToe {...props} />
             : match.game === 'AYO' ? <Ayo {...props} />
             : match.game === 'LUDO' ? <Ludo {...props} />
+            : match.game === 'WHOT' ? <Whot {...props} />
             : match.game === 'APEX' ? <ApexRace match={match} mySeat={mySeat} onMove={async (m) => { await send(m); }} onQuit={quitToHome} />
             : <WaterSort {...props} onQuit={quitToHome} />
         ) : null}

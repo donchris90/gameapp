@@ -331,7 +331,7 @@ function Audit() {
   );
 }
 
-const AD_GAMES: Array<[string, string]> = [['TICTACTOE', '❌⭕ Tic Tac Toe'], ['AYO', '🌰 Ayo'], ['LUDO', '🎲 Ludo'], ['WATER_SORT', '🧪 Water Sort'], ['APEX_RUN', '🏎️ Apex Run']];
+const AD_GAMES: Array<[string, string]> = [['TICTACTOE', '❌⭕ Tic Tac Toe'], ['AYO', '🌰 Ayo'], ['LUDO', '🎲 Ludo'], ['WHOT', '🃏 Whot'], ['WATER_SORT', '🧪 Water Sort'], ['APEX_RUN', '🏎️ Apex Run']];
 
 function Ads() {
   const { data, error, reload } = useLoad<Record<string, number>>('/admin/settings/ads');

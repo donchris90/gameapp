@@ -1,4 +1,4 @@
-export type GameType = 'TICTACTOE' | 'WATER_SORT' | 'AYO' | 'LUDO' | 'APEX';
+export type GameType = 'TICTACTOE' | 'WATER_SORT' | 'AYO' | 'LUDO' | 'APEX' | 'WHOT';
 export interface UserSummary { id: string; username: string; displayName: string; }
 export interface Me extends UserSummary { email: string; friendCode: string; role: string; createdAt: string; }
 export interface ChatMessage { id: string; from: string; to: string; body: string; createdAt: string; readAt: string | null }

@@ -33,6 +33,7 @@ enum GameType {
   AYO
   LUDO
   APEX
+  WHOT
 }
 
 enum FriendshipStatus {

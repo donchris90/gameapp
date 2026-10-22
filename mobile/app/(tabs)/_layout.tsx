@@ -14,7 +14,8 @@ export default function TabsLayout() {
     }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('🏠') }} />
       <Tabs.Screen name="shop" options={{ title: 'Coins', tabBarIcon: icon('🪙') }} />
-      <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥'), tabBarBadge: chatUnread > 0 ? chatUnread : undefined }} />
+      <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥') }} />
+      <Tabs.Screen name="community" options={{ title: 'Community', tabBarIcon: icon('📣') }} />
       <Tabs.Screen name="me" options={{ title: 'Me', tabBarIcon: icon('🙂') }} />
     </Tabs>
   );

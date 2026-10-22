@@ -30,6 +30,7 @@ import { canStartEuropeMission, canStartStoryMission, europeEndingLines, europeF
 import { AfricaScene } from '../src/apex/AfricaScene';
 import { EUROPE_MISSIONS, EUROPE_SKINS, EUROPE_TALK, currentEuropeMission, europeMissionComplete } from '../src/apex/europe';
 import { sfx } from '../src/sfx';
+import { SoundToggle } from '../src/SoundToggle';
 import { useSession } from '../src/session';
 import { displayCoins, flushOps, legacyOp, opsForDelta } from '../src/apex/coinSync';
 import { Body, Button, Card, Chip, Dim, H1, Screen, Coins, colors } from '../src/ui';
@@ -418,7 +419,7 @@ export default function Apex() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, paddingBottom: 16 }}>
           <Pressable onPress={() => router.back()}><Text style={{ color: colors.dim, fontWeight: '800' }}>‹ BACK</Text></Pressable>
           <View style={{ alignItems: 'center' }}><Text style={{ color: '#f4f7ff', fontSize: 24, fontWeight: '900', letterSpacing: 3 }}>APEX<Text style={{ color: colors.x }}> RUN</Text></Text><Text style={{ color: colors.dim, fontSize: 9, letterSpacing: 3 }}>DRIVE · CUSTOMIZE · CONQUER</Text></View>
-          <Coins amount={settings.coins} size={13} />
+          <View style={{ alignItems: 'flex-end', gap: 6 }}><Coins amount={settings.coins} size={13} /><SoundToggle /></View>
         </View>
 
         {panel === 'tracks' ? <>

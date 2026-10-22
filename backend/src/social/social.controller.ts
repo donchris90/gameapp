@@ -26,6 +26,9 @@ export class SocialController {
     return this.social.leaderboard(u.id, period, game);
   }
 
+  @Get('online')
+  online() { return this.social.onlineCount(); }
+
   @Get('emotes')
   emotes() { return { emotes: EMOTES }; }
 

@@ -27,6 +27,11 @@ export class PresenceService {
     return true;
   }
 
+  /** How many players have an open connection right now. */
+  count(): number {
+    return this.sockets.size;
+  }
+
   isOnline(userId: string): boolean {
     return (this.sockets.get(userId)?.size ?? 0) > 0;
   }

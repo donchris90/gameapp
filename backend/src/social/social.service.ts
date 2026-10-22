@@ -36,6 +36,9 @@ export class SocialService {
     private readonly billing: CallBillingService,
   ) {}
 
+  /** Everyone connected right now (not just friends). */
+  onlineCount() { return { online: this.presence.count() }; }
+
   // ---- profiles ----
 
   async profile(meId: string, userId: string) {

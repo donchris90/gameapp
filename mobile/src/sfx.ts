@@ -41,6 +41,8 @@ export async function loadSoundSetting() {
 }
 export async function setSoundOn(on: boolean) {
   enabled = on;
+  if (!on) silenceLoops();
+  else if (pendingEngine) engineStart(pendingEngine); // muted at the green light, unmuted mid-race: bring the engine in now
   listeners.forEach((f) => f(on));
   try { await SecureStore.setItemAsync(KEY, on ? '1' : '0'); } catch { /* not saved, still applies now */ }
 }
@@ -134,8 +136,13 @@ function rpmOf(speed: number, thr: number, dt: number, rival = false): number {
   return Math.max(1200, next);
 }
 
+let pendingEngine: string | null = null;
+/** Mute: the engine loops keep running but go silent, so unmuting mid-race picks up where the car is. */
+function silenceLoops() { (Object.keys(loops) as Loop[]).forEach((n) => { try { const p = loops[n]; if (p) p.volume = 0; } catch { /* ignore */ } }); }
+
 export function engineStart(carId = 'gt3') {
-  if (!enabled) return;
+  if (!enabled) { pendingEngine = carId; return; }
+  pendingEngine = null;
   box.profile = ENGINE_PROFILES[carId] ?? DEFAULT_PROFILE;
   try {
     const set = ENGINE_SETS[carId] ?? ENGINE_SETS.cts;
@@ -195,4 +202,4 @@ export function engineUpdate(i: EngineIn) {
   box.rivRate += (wantRate - box.rivRate) * 0.2;
   setLoop('rival', box.rivVol < 0.004 ? 0 : box.rivVol, box.rivRate);
 }
-export function engineStop() { box.live = false; (Object.keys(lastRate) as Loop[]).forEach((n) => { delete lastRate[n]; }); (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }
+export function engineStop() { pendingEngine = null; box.live = false; (Object.keys(lastRate) as Loop[]).forEach((n) => { delete lastRate[n]; }); (Object.keys(loops) as Loop[]).forEach((n) => { try { loops[n]?.pause(); } catch { /* ignore */ } }); }

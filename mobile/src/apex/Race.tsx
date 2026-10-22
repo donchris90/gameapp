@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as THREE from 'three';
 import { makeRenderer } from './glfix';
 import { engineStart, engineStop, engineUpdate, sfx } from '../sfx';
+import { SoundToggle } from '../SoundToggle';
 import { colors } from '../ui';
 import { drive, newDriver } from './bot';
 import { randomName } from './names';
@@ -346,6 +347,7 @@ export function Race({ level, track = 'straight', laps = 3, tilt, invert, carId 
       <Pressable onPress={() => setCameraMode((m) => m === 'chase' ? 'cockpit' : 'chase')} style={{ position: 'absolute', top: insets.top + (wide ? 92 : 92) + (hudAheadShown ? 22 : 0), left: Math.max(insets.left, 14), backgroundColor: 'rgba(10,14,30,.72)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(94,194,255,.6)' }}>
         <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{cameraMode === 'chase' ? '▣ Chase view' : '◉ Cockpit view'}</Text>
       </Pressable>
+      <SoundToggle style={{ position: 'absolute', top: insets.top + 134 + (hudAheadShown ? 22 : 0), left: Math.max(insets.left, 14) }} />
       {tilt && onFlip ? (
         <Pressable onPress={onFlip} style={{ position: 'absolute', top: insets.top + (wide ? 130 : 110), right: Math.max(insets.right, 14), backgroundColor: 'rgba(10,14,30,.6)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 }}>
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>⇄ Flip tilt</Text>

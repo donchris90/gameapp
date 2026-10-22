@@ -16,6 +16,7 @@ import { useCountdown } from '../../src/useCountdown';
 import { titleText } from '../../src/cosmetics';
 import { onSoundChange, setSoundOn, sfx, soundOn } from '../../src/sfx';
 import { EmoteControls } from '../../src/Emotes';
+import { ChatButton, ChatPanel, useMatchChat } from '../../src/MatchChat';
 import { Chip, CoinSummary, Outcome, ResultModal, Standing } from '../../src/ResultModal';
 import { fmtTime } from '../../src/games/ApexRace';
 import { VoiceButton } from '../../src/Voice';
@@ -33,6 +34,7 @@ export default function MatchScreen() {
   const [sound, setSound] = useState(soundOn());
   const [rematchBusy, setRematchBusy] = useState(false);
   const [theyWant, setTheyWant] = useState<string | null>(null);
+  const chat = useMatchChat();
   useEffect(() => onSoundChange(setSound), []);
 
   const adShown = useRef(false);
@@ -124,6 +126,7 @@ export default function MatchScreen() {
         <Text numberOfLines={1} style={{ flex: 1, color: over ? (mine?.result === 'WON' ? colors.good : colors.text) : colors.accent, fontWeight: '900', fontSize: 13 }}>{status}</Text>
         {seconds !== null ? <Text style={{ color: !solo && seconds <= 8 ? colors.bad : colors.dim, fontWeight: '800', fontSize: 13 }}>{solo ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}</Text> : null}
         {match.pot > 0 ? <Coins amount={match.pot} /> : <Dim>{solo ? 'Solo' : 'Friendly'}</Dim>}
+        {solo || !match.roomId ? null : <ChatButton unread={chat.unread} onPress={() => chat.setOpen(true)} />}
         {solo ? null : <VoiceButton />}
         {solo ? null : <EmoteControls matchId={match.id} />}
         <Pressable onPress={() => void setSoundOn(!sound)} hitSlop={10}><Text style={{ fontSize: 18 }}>{sound ? '🔊' : '🔇'}</Text></Pressable>
@@ -150,6 +153,8 @@ export default function MatchScreen() {
       {!over ? (
         solo ? null : <Pressable onPress={resign} style={{ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 22, marginVertical: 6 }}><Text style={{ color: colors.dim, fontWeight: '800' }}>Resign</Text></Pressable>
       ) : null}
+
+      <ChatPanel chat={chat} />
 
       {over ? (
         <ResultModal

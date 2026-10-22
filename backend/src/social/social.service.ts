@@ -9,6 +9,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { PushService } from '../push/push.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { Emote } from './emotes';
+import { CallBillingService } from './call-billing.service';
+import { CallMode } from '../settings/settings.service';
 import { VoiceService, dmChannel } from './voice.service';
 
 const EMOTE_GAP_MS = 1200;
@@ -16,7 +18,7 @@ const CALL_RING_MS = 30_000;
 export type Period = 'week' | 'all';
 export const GAMES = ['TICTACTOE', 'WATER_SORT', 'AYO', 'LUDO', 'APEX', 'WHOT'] as const;
 
-interface Call { id: string; from: string; to: string; channel: string; at: number; answered: boolean }
+interface Call { id: string; from: string; to: string; channel: string; at: number; answered: boolean; mode: CallMode; fromSession?: string }
 
 @Injectable()
 export class SocialService {
@@ -31,6 +33,7 @@ export class SocialService {
     private readonly presence: PresenceService,
     private readonly push: PushService,
     private readonly voice: VoiceService,
+    private readonly billing: CallBillingService,
   ) {}
 
   // ---- profiles ----
@@ -142,14 +145,14 @@ export class SocialService {
   // ---- voice ----
 
   /** Voice for people sharing a room or a game. The channel name is fixed by the server, so nobody can listen in elsewhere. */
-  async roomVoice(userId: string) {
+  async roomVoice(userId: string, mode: CallMode = 'voice') {
     const roomId = await this.rooms.currentRoomId(userId);
     if (!roomId) throw appError(404, 'NOT_IN_ROOM', 'You are not in a room');
-    return this.voice.tokenFor(`room-${roomId}`, userId);
+    return this.billing.begin(userId, `room-${roomId}`, mode);
   }
 
   /** Starts a voice call to a friend who is online: rings them over the socket. */
-  async startCall(fromId: string, toId: string) {
+  async startCall(fromId: string, toId: string, mode: CallMode = 'voice') {
     if (!this.voice.configured) throw appError(503, 'VOICE_NOT_CONFIGURED', 'Voice calls are not switched on yet');
     if (fromId === toId) throw appError(400, 'SELF', 'You cannot call yourself');
     if (!(await this.friends.areFriends(fromId, toId)) || (await this.friends.isBlocked(fromId, toId))) throw appError(403, 'NOT_FRIENDS', 'You can only call your friends');
@@ -157,10 +160,12 @@ export class SocialService {
     this.sweepCalls();
     for (const c of this.calls.values()) if (c.from === fromId || c.to === fromId || c.to === toId || c.from === toId) throw appError(409, 'BUSY', 'One of you is already in a call');
     const from = await this.prisma.user.findUniqueOrThrow({ where: { id: fromId }, select: { id: true, displayName: true, username: true } });
-    const call: Call = { id: randomUUID(), from: fromId, to: toId, channel: dmChannel(fromId, toId), at: Date.now(), answered: false };
+    const channel = dmChannel(fromId, toId);
+    const session = await this.billing.begin(fromId, channel, mode); // takes the caller's first minute; refunded if nobody answers
+    const call: Call = { id: randomUUID(), from: fromId, to: toId, channel, at: Date.now(), answered: false, mode, fromSession: session.sessionId };
     this.calls.set(call.id, call);
-    this.realtime.emitToUser(toId, 'call:incoming', { callId: call.id, from, ringMs: CALL_RING_MS });
-    return { callId: call.id, ...this.voice.tokenFor(call.channel, fromId) };
+    this.realtime.emitToUser(toId, 'call:incoming', { callId: call.id, from, ringMs: CALL_RING_MS, mode, price: session.price });
+    return { callId: call.id, ...session };
   }
 
   async answerCall(userId: string, callId: string, accept: boolean) {
@@ -168,12 +173,14 @@ export class SocialService {
     if (!c || c.to !== userId || Date.now() - c.at > CALL_RING_MS) { this.calls.delete(callId); throw appError(404, 'CALL_ENDED', 'That call has ended'); }
     if (!accept) {
       this.calls.delete(callId);
+      await this.billing.refundFirstMinute(c.fromSession);
       this.realtime.emitToUser(c.from, 'call:declined', { callId });
       return { ok: true };
     }
+    const session = await this.billing.begin(userId, c.channel, c.mode); // the person answering pays for their own minutes
     c.answered = true;
     this.realtime.emitToUser(c.from, 'call:answered', { callId });
-    return { callId, ...this.voice.tokenFor(c.channel, userId) };
+    return { callId, ...session };
   }
 
   /** Either side hanging up (or the caller giving up while it rings) ends the call for both. */
@@ -181,13 +188,14 @@ export class SocialService {
     const c = this.calls.get(callId);
     if (!c || (c.from !== userId && c.to !== userId)) return { ok: true };
     this.calls.delete(callId);
+    if (!c.answered) void this.billing.refundFirstMinute(c.fromSession);
     this.realtime.emitToUser(c.from === userId ? c.to : c.from, 'call:ended', { callId });
     return { ok: true };
   }
 
   private sweepCalls() {
     const now = Date.now();
-    for (const [id, c] of this.calls) if (!c.answered && now - c.at > CALL_RING_MS + 5000) this.calls.delete(id);
+    for (const [id, c] of this.calls) if (!c.answered && now - c.at > CALL_RING_MS + 5000) { this.calls.delete(id); void this.billing.refundFirstMinute(c.fromSession); }
     for (const [id, c] of this.calls) if (now - c.at > 3 * 3600_000) this.calls.delete(id);
   }
 

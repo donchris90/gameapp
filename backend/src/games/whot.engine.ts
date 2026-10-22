@@ -174,7 +174,7 @@ export class WhotEngine implements GameEngine<WhotState> {
   }
 
   /** A player left with two or more still playing: their cards go back under the pile and the game goes on. */
-  onSeatLeft(state: WhotState, seat: number): MoveResult<WhotState> {
+  onSeatLeft(state: WhotState, seat: number, _active?: number[]): MoveResult<WhotState> {
     const left = [...state.left, seat];
     let next: WhotState = { ...state, left, draw: [...state.draw, ...state.hands[seat]], hands: state.hands.map((h, i) => (i === seat ? [] : h)) };
     if (state.turn === seat) next = { ...next, turn: this.nextSeat(next, seat), pending: 0 };

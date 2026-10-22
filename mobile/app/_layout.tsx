@@ -9,7 +9,7 @@ import { SessionProvider, useSession, useSocketEvent } from '../src/session';
 import { listenForNotificationTaps } from '../src/push';
 import { loadSoundSetting } from '../src/sfx';
 import { colors } from '../src/ui';
-import { CallBar, answerCall } from '../src/Voice';
+import { CallBar, VideoBubbles, answerCall } from '../src/Voice';
 import { leaveVoice } from '../src/voice';
 import { Match } from '../src/types';
 
@@ -45,8 +45,9 @@ function Gate() {
     ]);
   });
 
-  useSocketEvent<{ callId: string; from: { displayName: string }; ringMs: number }>('call:incoming', (c) => {
-    Alert.alert('📞 Incoming call', `${c.from.displayName} is calling you.`, [
+  useSocketEvent<{ callId: string; from: { displayName: string }; ringMs: number; mode?: 'voice' | 'video'; price?: number }>('call:incoming', (c) => {
+    const kind = c.mode === 'video' ? 'video call' : 'voice call';
+    Alert.alert(c.mode === 'video' ? '📹 Incoming video call' : '📞 Incoming call', `${c.from.displayName} is calling you (${kind}${c.price ? `, ${c.price} coins a minute for you` : ', free'}).`, [
       { text: 'Decline', style: 'cancel', onPress: () => void answerCall(c.callId, false) },
       { text: 'Answer', onPress: () => void answerCall(c.callId, true) },
     ], { cancelable: false });
@@ -64,6 +65,7 @@ function Gate() {
   return (
     <View style={{ flex: 1 }}>
       <CallBar />
+      <VideoBubbles />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
     </View>
   );

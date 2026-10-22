@@ -27,6 +27,10 @@ class AdPolicyDto {
   @IsOptional() @IsInt() @Min(0) @Max(20) WHOT?: number;
   @IsOptional() @IsInt() @Min(0) @Max(20) APEX_RUN?: number;
 }
+class CallPricingDto {
+  @IsOptional() @IsInt() @Min(0) @Max(1000) voice?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1000) video?: number;
+}
 const lim = (n: number) => Math.min(Math.max(n, 1), 100);
 
 @Controller('admin')
@@ -39,6 +43,12 @@ export class AdminController {
 
   @Post('settings/ads') @HttpCode(200)
   setAdPolicy(@CurrentUser() a: AuthUser, @Body() dto: AdPolicyDto) { return this.settings.setAdPolicy(a.id, { ...dto }); }
+
+  @Get('settings/calls')
+  callPricing() { return this.settings.callPricing(); }
+
+  @Post('settings/calls') @HttpCode(200)
+  setCallPricing(@CurrentUser() a: AuthUser, @Body() dto: CallPricingDto) { return this.settings.setCallPricing(a.id, { ...dto }); }
 
   @Get('stats') stats() { return this.admin.stats(); }
 

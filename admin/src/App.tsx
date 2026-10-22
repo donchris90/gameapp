@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react';
 import { ApiError, api, login, logout, setLogoutHandler, signedIn } from './api';
 
-type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'reports' } | { page: 'purchases' } | { page: 'audit' } | { page: 'ads' };
+type View = { page: 'dashboard' } | { page: 'users' } | { page: 'user'; id: string } | { page: 'matches' } | { page: 'reports' } | { page: 'purchases' } | { page: 'audit' } | { page: 'ads' } | { page: 'calls' };
 
 const n = (v: number) => v.toLocaleString();
 const when = (s: string) => new Date(s).toLocaleString();
@@ -35,7 +35,7 @@ export function App() {
     <div className="layout">
       <nav className="side">
         <h1>🎮 PlayCircle</h1>
-        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('reports', 'Reports')}{nav('purchases', 'Purchases')}{nav('ads', 'Ads')}{nav('audit', 'Audit log')}
+        {nav('dashboard', 'Dashboard')}{nav('users', 'Players')}{nav('matches', 'Games')}{nav('reports', 'Reports')}{nav('purchases', 'Purchases')}{nav('ads', 'Ads')}{nav('calls', 'Calls')}{nav('audit', 'Audit log')}
         <div style={{ flex: 1 }} />
         <a onClick={async () => { await logout(); setAuthed(false); }}>Log out</a>
       </nav>
@@ -48,6 +48,7 @@ export function App() {
         {view.page === 'purchases' && <Purchases />}
         {view.page === 'audit' && <Audit />}
         {view.page === 'ads' && <Ads />}
+        {view.page === 'calls' && <CallPrices />}
       </main>
     </div>
   );
@@ -327,6 +328,37 @@ function Audit() {
           {items.length === 0 && !busy ? <tr><td colSpan={5} className="dim">Nothing yet.</td></tr> : null}</tbody>
       </table>
       <Pager cursor={cursor} onMore={more} more={busy} />
+    </>
+  );
+}
+
+function CallPrices() {
+  const { data, error, reload } = useLoad<{ voice: number; video: number }>('/admin/settings/calls');
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [msgText, setMsgText] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => { if (data) setVals({ voice: String(data.voice), video: String(data.video) }); }, [data]);
+  const save = async () => {
+    setErr(''); setMsgText('');
+    try {
+      await api('/admin/settings/calls', 'POST', { voice: Number(vals.voice), video: Number(vals.video) });
+      setMsgText('Saved. New calls use these prices straight away. Calls already running keep the price they started with.'); reload();
+    } catch (e) { setErr(msg(e)); }
+  };
+  return (
+    <>
+      <h2>Voice and video call prices</h2>
+      <p className="dim">Coins each person pays <b>per minute</b> while on a call. Everyone on the call pays for their own minutes, charged one minute at a time. If a player runs out of coins the call ends for them. <b>0</b> = free. A call nobody answers is refunded.</p>
+      {error || err ? <div className="err">{error || err}</div> : null}
+      {msgText ? <p className="pos">{msgText}</p> : null}
+      <table>
+        <thead><tr><th>Call type</th><th>Coins per minute (0 to 1000)</th></tr></thead>
+        <tbody>
+          <tr><td>🎙️ Voice call</td><td><input type="number" min={0} max={1000} step={1} style={{ maxWidth: 120 }} value={vals.voice ?? ''} onChange={(e) => setVals({ ...vals, voice: e.target.value })} /></td></tr>
+          <tr><td>📹 Video call</td><td><input type="number" min={0} max={1000} step={1} style={{ maxWidth: 120 }} value={vals.video ?? ''} onChange={(e) => setVals({ ...vals, video: e.target.value })} /></td></tr>
+        </tbody>
+      </table>
+      <div className="row" style={{ marginTop: 14 }}><button onClick={save}>Save</button></div>
     </>
   );
 }

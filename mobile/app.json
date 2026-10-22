@@ -14,7 +14,8 @@
       "bundleIdentifier": "com.playcircle.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "PlayCircle uses the microphone for voice chat with your friends."
+        "NSMicrophoneUsageDescription": "PlayCircle uses the microphone for voice chat with your friends.",
+        "NSCameraUsageDescription": "PlayCircle uses the camera for video calls with your friends."
       }
     },
     "android": {
@@ -29,7 +30,8 @@
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
-        "BLUETOOTH_CONNECT"
+        "BLUETOOTH_CONNECT",
+        "CAMERA"
       ]
     },
     "plugins": [

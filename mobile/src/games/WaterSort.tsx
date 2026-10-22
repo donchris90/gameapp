@@ -26,7 +26,7 @@ const RIM_H = (w: number) => Math.max(8, Math.round(w * 0.24));
 const runsOf = (tube: number[]) => { const out: Array<{ c: number; n: number }> = []; for (const c of tube) { const l = out[out.length - 1]; if (l && l.c === c) l.n++; else out.push({ c, n: 1 }); } return out; };
 const lerp = (p: Animated.Value, a: number, b: number, from: number[], to: number[]) => p.interpolate({ inputRange: [0, a, b, 1], outputRange: [from[0], to[0], to[1], from[1]] });
 
-interface Pour { from: number; to: number; count: number; color: number; before: number[][]; p: Animated.Value }
+interface Pour { from: number; to: number; count: number; color: number; before: number[][]; p: Animated.Value; done?: boolean }
 
 /**
  * A thin glass tube. While a pour is running the source tube lifts, tips over the target, and drains while the target fills.
@@ -140,6 +140,9 @@ export function WaterSort({ match, mySeat, onMove, busy, height, onQuit }: { mat
 
   useEffect(() => { if (!active) setPicked(null); }, [active]);
   useEffect(() => { setPicked(null); setClosed(false); setPour(null); }, [match.id]);
+  // Release the pour once its animation is over and the request has finished (answered or refused).
+  useEffect(() => { if (pour?.done && !busy) setPour(null); }, [pour, busy]);
+  useEffect(() => { if (!pour) return; const t = setTimeout(() => setPour(null), 6000); return () => clearTimeout(t); }, [pour?.p]);
   const noMoves = active && !!s.noMoves && !pour;
   useEffect(() => { if (noMoves) sfx('nomoves'); else setClosed(false); }, [noMoves]);
 
@@ -170,7 +173,8 @@ export function WaterSort({ match, mySeat, onMove, busy, height, onQuit }: { mat
     setPour({ from, to, count, color, before: board.map((t) => t.slice()), p });
     sfx('pour');
     onMove({ from, to });
-    Animated.timing(p, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }).start(() => setPour(null));
+    // Keep showing the finished pour until the server has answered; clearing earlier flashed the old board (liquid went back, then vanished).
+    Animated.timing(p, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }).start(() => setPour((cur) => (cur && cur.p === p ? { ...cur, done: true } : cur)));
   };
 
   const tap = (i: number) => {

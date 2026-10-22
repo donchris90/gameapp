@@ -12,12 +12,12 @@ export class VoiceService {
   }
 
   /** `uid` is a number Agora needs; it is derived from the player id so the same player always gets the same uid. */
-  tokenFor(channel: string, userId: string) {
+  tokenFor(channel: string, userId: string, ttl = TTL_SECONDS) {
     if (!this.configured) throw appError(503, 'VOICE_NOT_CONFIGURED', 'Voice calls are not switched on yet');
     const uid = uidOf(userId);
-    const expires = Math.floor(Date.now() / 1000) + TTL_SECONDS;
+    const expires = Math.floor(Date.now() / 1000) + ttl;
     const token = RtcTokenBuilder.buildTokenWithUid(process.env.AGORA_APP_ID!, process.env.AGORA_APP_CERTIFICATE!, channel, uid, RtcRole.PUBLISHER, expires, expires);
-    return { appId: process.env.AGORA_APP_ID!, channel, uid, token, expiresIn: TTL_SECONDS };
+    return { appId: process.env.AGORA_APP_ID!, channel, uid, token, expiresIn: ttl };
   }
 }
 

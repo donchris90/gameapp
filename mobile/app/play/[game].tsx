@@ -76,15 +76,18 @@ export default function PlayScreen() {
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <Pressable onPress={() => router.back()} style={{ paddingVertical: 12 }}><Text style={{ color: colors.accent, fontWeight: '700' }}>‹ Back</Text></Pressable>
-        <Text style={{ fontSize: 44 }}>{info.emoji}</Text>
-        <H1>{info.title}</H1>
-        <Dim style={{ marginBottom: 10 }}>{info.blurb}</Dim>
+        <View style={{ borderRadius: 24, padding: 20, marginBottom: 16, backgroundColor: info.color, overflow: 'hidden', gap: 8 }}>
+          <Text style={{ fontSize: 42 }}>{info.emoji}</Text>
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900' }}>{info.title}</Text>
+          <Text style={{ color: 'rgba(255,255,255,.88)', fontSize: 14, fontWeight: '600' }}>{info.blurb}</Text>
+          <Text style={{ color: 'rgba(255,255,255,.82)', fontSize: 12, fontWeight: '800', marginTop: 4 }}>CHOOSE YOUR MATCH</Text>
+        </View>
         <Card style={{ marginBottom: 16, gap: 6 }}>
           <Text onPress={() => setHelp((h) => !h)} style={{ color: colors.text, fontWeight: '800' }}>{help ? '▾' : '▸'} How to play</Text>
           {help ? HOW_TO_PLAY[game].map((t, i) => <Dim key={i}>{i + 1}. {t}</Dim>) : null}
         </Card>
 
-        <Body style={{ fontWeight: '800', marginBottom: 8 }}>Stake per player</Body>
+        <Body style={{ fontWeight: '800', marginBottom: 8 }}>Entry option</Body>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {stakes.map((s) => <Chip key={s} label={s === 0 ? 'Free' : s.toLocaleString()} selected={stake === s} disabled={s > coins} onPress={() => setStake(s)} />)}
         </View>
@@ -92,7 +95,7 @@ export default function PlayScreen() {
 
         {ranged && cfg ? (
           <>
-            <Body style={{ fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Players</Body>
+            <Body style={{ fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Number of players</Body>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {Array.from({ length: cfg.maxPlayers - cfg.minPlayers + 1 }, (_, i) => cfg.minPlayers + i).map((n) => (
                 <Chip key={n} label={`${n}`} selected={size === n} onPress={() => setSize(n)} />
@@ -121,7 +124,7 @@ export default function PlayScreen() {
           ) : (
             <>
               {game === 'APEX' ? null : <Button title="Quick match" onPress={quick} busy={busy} />}
-              <Button title={game === 'APEX' ? 'Create race room' : 'Play with friends'} kind={game === 'APEX' ? 'primary' : 'ghost'} onPress={withFriends} busy={busy} />
+              <Button title={game === 'APEX' ? 'Create race room' : 'Create room · Play with friends'} kind={game === 'APEX' ? 'primary' : 'ghost'} onPress={withFriends} busy={busy} />
               {game === 'APEX' ? <Dim style={{ textAlign: 'center' }}>Races are for friends: share the room code or invite them from the lobby.</Dim> : null}
             </>
           )}

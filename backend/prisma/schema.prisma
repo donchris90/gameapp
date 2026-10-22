@@ -128,6 +128,7 @@ model User {
   pushTokens       PushToken[]
   reportsMade      ChatReport[] @relation("ReportBy")
   reportsAgainst   ChatReport[] @relation("ReportAbout")
+  communityPosts   CommunityPost[]
   // Cosmetics currently shown. Frame and title are visible to other players; the board theme only to you.
   equippedFrame    String?
   equippedTitle    String?
@@ -458,6 +459,17 @@ model ChatReport {
 }
 
 // Admin-editable settings, one row per setting (value is JSON). See SettingsService.
+model CommunityPost {
+  id        String   @id @default(uuid())
+  authorId  String
+  body      String   @db.VarChar(500)
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+}
+
 model AppSetting {
   key       String   @id
   value     Json

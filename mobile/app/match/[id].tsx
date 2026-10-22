@@ -16,13 +16,15 @@ import { useCountdown } from '../../src/useCountdown';
 import { titleText } from '../../src/cosmetics';
 import { onSoundChange, setSoundOn, sfx, soundOn } from '../../src/sfx';
 import { EmoteControls } from '../../src/Emotes';
+import { Chip, CoinSummary, Outcome, ResultModal, Standing } from '../../src/ResultModal';
+import { fmtTime } from '../../src/games/ApexRace';
 import { VoiceButton } from '../../src/Voice';
-import { Avatar, Body, Button, Card, Coins, Dim, Screen, colors } from '../../src/ui';
+import { Body, Button, Coins, Dim, Screen, colors } from '../../src/ui';
 
 export default function MatchScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user, refreshCoins } = useSession();
+  const { user, coins, refreshCoins } = useSession();
   const [match, setMatch] = useState<Match | null>(null);
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState(false);
@@ -147,20 +149,83 @@ export default function MatchScreen() {
 
       {!over ? (
         solo ? null : <Pressable onPress={resign} style={{ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 22, marginVertical: 6 }}><Text style={{ color: colors.dim, fontWeight: '800' }}>Resign</Text></Pressable>
-      ) : (
-        <Card style={{ marginVertical: 8, gap: 8, alignItems: 'center' }}>
-          {mine?.result === 'WON' && match.pot > 0 ? <Body>You won <Text style={{ color: colors.gold, fontWeight: '900' }}>{mine.payout.toLocaleString()}</Text> coins</Body> : null}
-          {mine?.result === 'DRAW' && match.stake > 0 ? <Body>Your {match.stake.toLocaleString()} coins were returned</Body> : null}
-          {mine?.result === 'LOST' && match.stake > 0 ? <Body>You lost {match.stake.toLocaleString()} coins</Body> : null}
-          {solo ? null : match.endReason === 'TIMEOUT' ? <Dim>Out of time</Dim> : match.endReason === 'FORFEIT' ? <Dim>Resigned</Dim> : null}
-          {theyWant ? <Body style={{ color: colors.gold, fontWeight: '800' }}>🔁 {theyWant} wants a rematch</Body> : null}
-          <View style={{ flexDirection: 'row', gap: 10, alignSelf: 'stretch' }}>
-            {solo ? null : <Button title={theyWant ? 'Accept rematch' : 'Rematch'} onPress={rematch} busy={rematchBusy} style={{ flex: 1 }} />}
-            {solo ? <Button title={mine?.result === 'WON' ? 'Next level' : 'Try again'} onPress={playAgain} busy={busy} style={{ flex: 1 }} /> : null}
-            <Button title={solo ? 'Home' : 'Back to lobby'} kind="ghost" onPress={goBack} style={{ flex: 1 }} />
-          </View>
-        </Card>
-      )}
+      ) : null}
+
+      {over ? (
+        <ResultModal
+          {...resultModal(match, mine, solo, theyWant, coins)}
+          banner={theyWant ? `${theyWant} wants a rematch` : null}
+          primary={solo ? { title: mine?.result === 'WON' ? 'Next level' : 'Try again', onPress: playAgain, busy } : { title: theyWant ? 'Accept rematch' : match.game === 'APEX' ? 'Race again' : 'Rematch', onPress: rematch, busy: rematchBusy }}
+          secondary={{ title: solo ? 'Home' : 'Back to lobby', onPress: goBack }}
+        />
+      ) : null}
     </Screen>
   );
+}
+
+const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+
+/** Everything the result card shows, worked out from the finished match. */
+function resultModal(match: Match, mine: Match['players'][number] | undefined, solo: boolean, _theyWant: string | null, coins: number) {
+  const info = GAME_INFO[match.game];
+  const n = match.players.length;
+  const won = mine?.result === 'WON';
+  const draw = mine?.result === 'DRAW';
+  const apex = match.game === 'APEX';
+  const ticks: Array<number | null> = apex ? (match.state?.ticks ?? []) : [];
+  const ranked = apex
+    ? [...match.players].sort((a, b) => { const x = ticks[a.seat] ?? null; const y = ticks[b.seat] ?? null; return x !== null && y !== null ? x - y : x !== null ? -1 : y !== null ? 1 : a.seat - b.seat; })
+    : [...match.players].sort((a, b) => (a.result === 'WON' ? -1 : 0) - (b.result === 'WON' ? -1 : 0) || a.seat - b.seat);
+  const myRank = Math.max(0, ranked.findIndex((p) => p.userId === mine?.userId));
+  const myTicks = mine ? ticks[mine.seat] ?? null : null;
+
+  let outcome: Outcome = won ? 'WON' : draw ? 'DRAW' : 'LOST';
+  let title = won ? 'VICTORY' : draw ? 'DRAW' : 'DEFEAT';
+  if (solo) {
+    outcome = won ? 'SOLVED' : 'FAILED';
+    title = won ? `LEVEL ${match.state?.level ?? ''} SOLVED`.replace('  ', ' ') : match.endReason === 'FORFEIT' ? 'GAVE UP' : "TIME'S UP";
+  } else if (apex && !won) {
+    if (myTicks !== null) { outcome = 'PLACE'; title = `${ORD[myRank]?.toUpperCase() ?? `${myRank + 1}TH`} PLACE`; }
+    else title = 'NO TIME';
+  }
+
+  const bits = [info.title];
+  if (apex) bits.push(`${match.state?.laps ?? 2} laps`);
+  else if (solo) bits.push('solo');
+  else bits.push(`${n} players`);
+  if (!solo && !apex && match.endReason === 'FORFEIT') bits.push('resigned');
+  if (!solo && !apex && match.endReason === 'TIMEOUT') bits.push('out of time');
+  const subtitle = bits.join(' · ');
+
+  let coin: CoinSummary | null = null;
+  if (!solo) {
+    if (won && match.pot > 0) coin = { delta: mine!.payout, note: '', pot: match.pot, houseFee: match.houseFee, net: mine!.payout - match.stake, potLabel: `Prize pot (${n} × ${match.stake.toLocaleString()})` };
+    else if (draw && match.stake > 0) coin = { delta: 0, note: `Your ${match.stake.toLocaleString()} coin stake was returned` };
+    else if (!won && !draw && match.stake > 0) coin = { delta: -match.stake, note: apex ? 'Only the fastest time takes the pot' : 'Your stake went to the winner' };
+    else if (match.stake === 0) coin = null;
+  }
+
+  const standings: Standing[] = ranked.map((p, i) => ({
+    key: p.userId, name: p.displayName, me: p.userId === mine?.userId, winner: apex ? i === 0 && ticks[p.seat] !== null : p.result === 'WON',
+    place: apex ? (ticks[p.seat] !== null && ticks[p.seat] !== undefined ? i + 1 : null) : p.result === 'WON' ? 1 : p.result === 'DRAW' ? null : i + 1,
+    right: apex ? (ticks[p.seat] !== null && ticks[p.seat] !== undefined ? fmtTime(ticks[p.seat] as number) : p.left ? 'left' : 'no time')
+      : p.left ? 'left the game' : p.result === 'WON' ? 'Won' : p.result === 'DRAW' ? 'Draw' : 'Lost',
+  }));
+  if (!apex) { let place = 1; standings.forEach((s) => { if (s.place !== null) s.place = place++; }); }
+
+  const chips: Chip[] = [];
+  if (!solo) {
+    chips.push({ label: 'Players', value: String(n) });
+    if (match.stake > 0) chips.push({ label: 'Stake', value: match.stake.toLocaleString() });
+    if (apex && myTicks !== null) chips.push({ label: 'Your time', value: fmtTime(myTicks) });
+    else if (match.game === 'LUDO' && typeof match.state?.moves === 'number') chips.push({ label: 'Moves', value: String(match.state.moves) });
+  }
+  if (apex && myTicks !== null && myRank > 0 && ticks[ranked[0].seat] !== null) chips.push({ label: 'Behind 1st', value: `+${((myTicks - (ticks[ranked[0].seat] as number)) / 30).toFixed(2)}s` });
+
+  return {
+    outcome, title, subtitle, coin, standings: solo ? undefined : standings, chips,
+    nextUp: solo && won ? `Level ${(Number(match.state?.level) || 0) + 1}` : null,
+    balance: solo ? null : coins,
+    delayMs: solo ? 600 : 900,
+  };
 }

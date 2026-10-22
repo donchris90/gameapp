@@ -35,3 +35,5 @@ export interface PlayerProfile {
 }
 export interface LeaderRow { userId: string; username: string; displayName: string; frame: string | null; title: string | null; wins: number; rank: number }
 export interface Leaderboard { period: 'week' | 'all'; game: GameType | null; top: LeaderRow[]; me: { rank: number | null; wins: number }; players: number }
+export type Friend = UserSummary & { online: boolean; activity: Activity };
+export interface Invite { id: string; expiresAt: string; from: UserSummary; room: { code: string; game: GameType; stake: number } }

@@ -23,6 +23,10 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false           # paste the Supabase session pooler URL in the Render dashboard
+      - key: SMTP_USER
+        sync: false           # the Gmail address that sends reset-code emails
+      - key: SMTP_PASS
+        sync: false           # a Google App password for it (not the normal Gmail password)
       - key: CORS_ORIGINS
         sync: false           # your admin website address
       - key: GOOGLE_PLAY_PACKAGE_NAME

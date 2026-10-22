@@ -18,6 +18,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { SocialModule } from './social/social.module';
 import { SettingsModule } from './settings/settings.module';
+import { MailModule } from './mail/mail.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
 
@@ -30,6 +31,7 @@ import { WalletModule } from './wallet/wallet.module';
     }),
     PrismaModule,
     SettingsModule,
+    MailModule,
     GamesModule,
     WalletModule,
     AuthModule,

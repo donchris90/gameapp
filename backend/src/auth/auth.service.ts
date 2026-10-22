@@ -1,5 +1,5 @@
 import {
-  ConflictException, ForbiddenException, Inject, Injectable, UnauthorizedException, UnprocessableEntityException,
+  BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, UnauthorizedException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -7,9 +7,11 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import { AppConfig, CONFIG } from '../config/config';
 import { Prisma, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { WalletService } from '../wallet/wallet.service';
 import { randomCode } from '../common/codes';
 import { ageInYears, parseBirthDate } from './age';
+import { RESET_MINUTES, checkResetCode, currentWindow, resetCode } from './reset-code';
 import { LoginDto, RegisterDto } from './dto';
 
 export interface TokenPair {
@@ -28,12 +30,15 @@ export function publicUser(u: Pick<User, 'id' | 'email' | 'username' | 'displayN
 export class AuthService {
   /** Verified against when the login identifier is unknown, so response time does not reveal which accounts exist. */
   private dummyHash: Promise<string>;
+  private readonly lastReset = new Map<string, number>();
+  private readonly resetTries = new Map<string, { n: number; until: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly wallet: WalletService,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly mail: MailService,
   ) {
     this.dummyHash = argon2.hash('not-a-real-password');
   }
@@ -89,6 +94,41 @@ export class AuthService {
     if (!user || !ok) throw new UnauthorizedException('Wrong email/username or password');
     this.assertActive(user);
     return { user: publicUser(user), tokens: await this.issueTokens(user, randomUUID(), userAgent) };
+  }
+
+  /** Emails a six-digit code. Always answers the same way, so nobody can use it to find out which emails have accounts. */
+  async forgotPassword(emailIn: string) {
+    const email = emailIn.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (user && user.status === 'ACTIVE' && !user.isBot) {
+      const last = this.lastReset.get(user.id) ?? 0;
+      if (Date.now() - last > 45_000) { // at most one email every 45 seconds per account
+        this.lastReset.set(user.id, Date.now());
+        const code = resetCode(this.config.jwtAccessSecret, user.id, user.passwordHash, currentWindow());
+        void this.mail.sendResetCode(user.email, user.displayName, code, RESET_MINUTES);
+      }
+    }
+    return { ok: true };
+  }
+
+  async resetPassword(emailIn: string, code: string, newPassword: string) {
+    const email = emailIn.trim().toLowerCase();
+    const bad = () => new BadRequestException('That code is wrong or has expired. Ask for a new one.');
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const tries = this.resetTries.get(email);
+    if (tries && tries.until > Date.now() && tries.n >= 5) throw new BadRequestException('Too many wrong codes. Wait 15 minutes, then ask for a new code.');
+    if (!user || user.status !== 'ACTIVE' || !checkResetCode(this.config.jwtAccessSecret, user.id, user.passwordHash, code)) {
+      const n = tries && tries.until > Date.now() ? tries.n + 1 : 1;
+      this.resetTries.set(email, { n, until: Date.now() + 15 * 60_000 });
+      throw bad();
+    }
+    this.resetTries.delete(email);
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      this.prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }), // sign out every device
+    ]);
+    return { ok: true };
   }
 
   async refresh(refreshToken: string, userAgent?: string) {

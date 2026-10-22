@@ -34,3 +34,19 @@ export class RefreshDto {
   @IsString() @MinLength(20) @MaxLength(200)
   refreshToken!: string;
 }
+
+export class ForgotDto {
+  @IsEmail() @MaxLength(254)
+  email!: string;
+}
+
+export class ResetDto {
+  @IsEmail() @MaxLength(254)
+  email!: string;
+
+  @Matches(/^\d{6}$/, { message: 'The code is 6 digits' })
+  code!: string;
+
+  @IsString() @MinLength(8) @MaxLength(128)
+  newPassword!: string;
+}

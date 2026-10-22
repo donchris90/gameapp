@@ -1,7 +1,7 @@
 import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, RegisterDto } from './dto';
+import { ForgotDto, LoginDto, RefreshDto, RegisterDto, ResetDto } from './dto';
 
 const AUTH_LIMIT = { default: { limit: Number(process.env.AUTH_RATE_PER_MINUTE ?? 10), ttl: 60_000 } };
 
@@ -18,6 +18,16 @@ export class AuthController {
   @Post('login') @HttpCode(200)
   login(@Body() dto: LoginDto, @Headers('user-agent') ua?: string) {
     return this.auth.login(dto, ua);
+  }
+
+  @Post('forgot') @HttpCode(200)
+  forgot(@Body() dto: ForgotDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Post('reset') @HttpCode(200)
+  reset(@Body() dto: ResetDto) {
+    return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
   }
 
   @Post('refresh') @HttpCode(200)

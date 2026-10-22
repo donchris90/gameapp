@@ -39,6 +39,29 @@ export class SocialService {
   /** Everyone connected right now (not just friends). */
   onlineCount() { return { online: this.presence.count() }; }
 
+  // ---- community broadcasts ----
+
+  async communityFeed() {
+    const posts = await this.prisma.communityPost.findMany({
+      where: { author: { status: 'ACTIVE', isBot: false } },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, body: true, createdAt: true, author: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true } } },
+    });
+    return { posts };
+  }
+
+  async broadcast(userId: string, rawBody: string) {
+    const body = rawBody.trim();
+    if (!body || body.length > 500) throw appError(400, 'BAD_POST', 'Write a message between 1 and 500 characters');
+    const author = await this.prisma.user.findUnique({ where: { id: userId }, select: { status: true, isBot: true } });
+    if (!author || author.status !== 'ACTIVE' || author.isBot) throw appError(403, 'POST_NOT_ALLOWED', 'Your account cannot post to the community');
+    const post = await this.prisma.communityPost.create({
+      data: { authorId: userId, body },
+      select: { id: true, body: true, createdAt: true, author: { select: { id: true, username: true, displayName: true, equippedFrame: true, equippedTitle: true } } },
+    });
+    return { post };
+  }
+
   // ---- profiles ----
 
   async profile(meId: string, userId: string) {

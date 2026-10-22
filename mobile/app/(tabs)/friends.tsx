@@ -87,11 +87,26 @@ export default function Friends() {
   return (
     <Screen>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.text} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ borderRadius: 24, padding: 20, marginBottom: 16, backgroundColor: '#30235D', gap: 8, overflow: 'hidden' }}>
+          <Text style={{ color: '#CFC4FF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>YOUR SOCIAL CIRCLE</Text>
           <H1>Friends</H1>
-          <Pressable onPress={() => router.push('/leaderboard')} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card }}><Text style={{ color: colors.text, fontWeight: '800' }}>🏆 Leaderboard</Text></Pressable>
+          <Text style={{ color: '#E2DDF8', fontSize: 13, lineHeight: 19 }}>Find your people, catch up in chat, and jump into a game together.</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+            <View style={{ flex: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(255,255,255,.10)' }}>
+              <Text style={{ color: '#fff', fontSize: 23, fontWeight: '900' }}>{friends.length}</Text>
+              <Text style={{ color: '#DCD6F7', fontSize: 11 }}>Friends</Text>
+            </View>
+            <View style={{ flex: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(255,255,255,.10)' }}>
+              <Text style={{ color: '#fff', fontSize: 23, fontWeight: '900' }}>{friends.filter((f) => f.online).length}</Text>
+              <Text style={{ color: '#DCD6F7', fontSize: 11 }}>Online now</Text>
+            </View>
+            <Pressable onPress={() => router.push('/leaderboard')} style={{ flex: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(255,255,255,.10)', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 22 }}>🏆</Text><Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>Rankings</Text>
+            </Pressable>
+          </View>
         </View>
-        <Field label="" placeholder="Find by username or friend code" value={q} onChangeText={search} />
+        <Body style={{ fontWeight: '900', fontSize: 17, marginBottom: 8 }}>Discover people</Body>
+        <Field label="" placeholder="Search username or enter friend code" value={q} onChangeText={search} />
         {looksLikeCode ? <Button title="Add by friend code" kind="ghost" onPress={addByCode} style={{ marginBottom: 12 }} /> : null}
         {results.map((u) => (
           <Card key={u.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
@@ -112,7 +127,10 @@ export default function Friends() {
         ))}
         {outgoing.length > 0 ? <Dim style={{ marginVertical: 6 }}>Waiting for: {outgoing.map((r) => r.user.displayName).join(', ')}</Dim> : null}
 
-        <Body style={{ fontWeight: '800', marginTop: 12, marginBottom: 8 }}>Your friends ({friends.length})</Body>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 }}>
+          <Body style={{ fontWeight: '900', fontSize: 17 }}>Your friends</Body>
+          <Dim>{friends.length} total · {friends.filter((f) => f.online).length} online</Dim>
+        </View>
         {friends.length === 0 ? <Empty text="No friends yet. Search for a username above or share your friend code from the Me tab." /> : null}
         {friends.map((f) => (
           <Card key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>

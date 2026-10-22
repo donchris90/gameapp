@@ -122,6 +122,7 @@ function Dice({ value, rolls, color, size, canRoll, onRoll }: { value: number | 
   const [shown, setShown] = useState<number>(value ?? 1);
   const [rolling, setRolling] = useState(false);
   const seen = useRef(rolls);
+  const latest = useRef(value); latest.current = value; // the landing face is always the newest roll, never one captured when the tumble began
 
   useEffect(() => {
     if (rolls === seen.current) { if (value) setShown(value); return; }
@@ -138,7 +139,11 @@ function Dice({ value, rolls, color, size, canRoll, onRoll }: { value: number | 
         Animated.timing(hop, { toValue: 0.35, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         Animated.timing(hop, { toValue: 0, duration: 110, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       ]),
-    ]).start(() => { clearInterval(flick); setShown(value ?? 1); setRolling(false); sfx('dice_land'); });
+    ]).start(({ finished }) => {
+      clearInterval(flick);
+      if (!finished) return; // a newer roll took over: it will land the die itself
+      setShown(latest.current ?? 1); setRolling(false); sfx('dice_land');
+    });
     return () => clearInterval(flick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolls]);

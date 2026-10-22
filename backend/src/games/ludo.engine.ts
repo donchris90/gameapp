@@ -47,6 +47,9 @@ export function legalTokens(state: Pick<LudoState, 'tokens'>, seat: number, dice
  * lose the turn. Landing on a lone ring square held by opponents sends their tokens back to the yard (not on safe squares),
  * and earns another turn, as does getting a token home. A token needs the exact number to finish. First to bring all four home wins.
  */
+/** How long the dice tumbles on screen. The turn clock does not start until it has landed. */
+export const DICE_ANIM_MS = 900;
+
 export class LudoEngine implements GameEngine<LudoState> {
   readonly game: GameType = 'LUDO';
 
@@ -83,7 +86,7 @@ export class LudoEngine implements GameEngine<LudoState> {
     const sixes = value === 6 ? state.sixes + 1 : 0;
     const pass = (skipped: 'NO_MOVE' | 'THREE_SIXES'): MoveResult<LudoState> => {
       const turn = this.nextSeat(state, seat);
-      return { state: { ...state, turn, phase: 'ROLL', dice: null, sixes: 0, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value, skipped } }, turnSeat: turn };
+      return { state: { ...state, turn, phase: 'ROLL', dice: null, sixes: 0, rolls: (state.rolls ?? 0) + 1, lastRoll: { seat, value, skipped } }, turnSeat: turn, holdMs: DICE_ANIM_MS + 600 }; // the next clock starts after the dice has landed and been read
     };
     if (sixes >= 3) return pass('THREE_SIXES');
     if (legalTokens(state, seat, value).length === 0) return pass('NO_MOVE');
@@ -94,7 +97,7 @@ export class LudoEngine implements GameEngine<LudoState> {
       const res = this.moveToken(rolled, seat, only[0]);
       return { ...res, holdMs: (res.holdMs ?? 0) + 1400 };
     }
-    return { state: rolled, turnSeat: seat };
+    return { state: rolled, turnSeat: seat, holdMs: DICE_ANIM_MS };
   }
 
   private moveToken(state: LudoState, seat: number, token: unknown): MoveResult<LudoState> {

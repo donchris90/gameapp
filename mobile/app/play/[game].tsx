@@ -114,18 +114,39 @@ export default function PlayScreen() {
           )}
         </Card>
 
-        <View style={{ gap: 12, marginTop: 20 }}>
+        <View style={{ marginTop: 20, marginBottom: 10, gap: 4 }}>
+          <Body style={{ fontSize: 18, fontWeight: '900' }}>Who do you want to play with?</Body>
+          <Dim>Choose a quick opponent or bring your own crew.</Dim>
+        </View>
+        <View style={{ gap: 12 }}>
           {searching ? (
-            <Card style={{ alignItems: 'center', gap: 12 }}>
-              <Text style={{ fontSize: 28 }}>🔎</Text>
-              <Body>Looking for an opponent…</Body>
-              <Button title="Cancel" kind="ghost" onPress={cancel} />
+            <Card style={{ alignItems: 'center', gap: 12, paddingVertical: 18 }}>
+              <Text style={{ fontSize: 30 }}>🔎</Text>
+              <Body style={{ fontWeight: '900' }}>Finding your next opponent</Body>
+              <Dim style={{ textAlign: 'center' }}>We’ll match you with someone looking for the same game and player count.</Dim>
+              <Button title="Cancel search" kind="ghost" onPress={cancel} />
             </Card>
           ) : (
             <>
-              {game === 'APEX' ? null : <Button title="Quick match" onPress={quick} busy={busy} />}
-              <Button title={game === 'APEX' ? 'Create race room' : 'Create room · Play with friends'} kind={game === 'APEX' ? 'primary' : 'ghost'} onPress={withFriends} busy={busy} />
-              {game === 'APEX' ? <Dim style={{ textAlign: 'center' }}>Races are for friends: share the room code or invite them from the lobby.</Dim> : null}
+              {game === 'APEX' ? null : (
+                <Pressable onPress={() => void quick()} disabled={busy} style={{ borderRadius: 20, padding: 16, backgroundColor: '#30235D', flexDirection: 'row', alignItems: 'center', gap: 12, opacity: busy ? 0.65 : 1 }}>
+                  <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(255,255,255,.13)', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 25 }}>⚡</Text></View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900' }}>Play with anyone</Text>
+                    <Text style={{ color: '#DCD5FF', fontSize: 12, lineHeight: 17 }}>Find a random player and jump straight into a match.</Text>
+                  </View>
+                  <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>›</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => void withFriends()} disabled={busy} style={{ borderRadius: 20, padding: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: busy ? 0.65 : 1 }}>
+                <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(124,92,255,.16)', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 25 }}>👥</Text></View>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900' }}>{game === 'APEX' ? 'Create a race room' : 'Play with friends'}</Text>
+                  <Text style={{ color: colors.dim, fontSize: 12, lineHeight: 17 }}>Open a private lobby, invite friends, or share your room code.</Text>
+                </View>
+                <Text style={{ color: colors.accent, fontSize: 22, fontWeight: '900' }}>›</Text>
+              </Pressable>
+              {game === 'APEX' ? <Dim style={{ textAlign: 'center' }}>Invite friends from the lobby before starting your race.</Dim> : null}
             </>
           )}
         </View>

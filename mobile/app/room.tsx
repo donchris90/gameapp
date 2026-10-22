@@ -67,22 +67,32 @@ export default function RoomScreen() {
           <View style={{ minWidth: 44, alignItems: 'flex-end' }}><VoiceButton /></View>
         </View>
 
-        <Card style={{ alignItems: 'center', gap: 6 }}>
-          <Dim>Room code</Dim>
-          <Pressable onPress={async () => { await Clipboard.setStringAsync(room.code); Alert.alert('Copied', 'Room code copied.'); }}>
-            <Text style={{ color: colors.text, fontSize: 36, fontWeight: '900', letterSpacing: 6 }}>{room.code}</Text>
+        <View style={{ borderRadius: 24, padding: 20, backgroundColor: '#34247D', gap: 12, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: '#D8D0FF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }}>YOUR GAME LOBBY</Text>
+            <Text style={{ color: '#C4F7DB', fontSize: 11, fontWeight: '900' }}>{room.members.length >= room.minPlayers ? 'READY TO START' : 'WAITING FOR PLAYERS'}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 58, height: 58, borderRadius: 18, backgroundColor: 'rgba(255,255,255,.14)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 32 }}>{info.emoji}</Text>
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>{info.title}</Text>
+              <Text style={{ color: '#D8D0FF', fontSize: 12 }}>{room.members.length} of {room.maxPlayers} players · {room.stake > 0 ? `${room.stake.toLocaleString()} coins entry` : 'Friendly game'}</Text>
+            </View>
+          </View>
+          <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,.18)' }} />
+          <Text style={{ color: '#D8D0FF', fontSize: 11, fontWeight: '800' }}>ROOM CODE · TAP TO COPY</Text>
+          <Pressable onPress={async () => { await Clipboard.setStringAsync(room.code); Alert.alert('Copied', 'Room code copied.'); }} style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,.12)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 14 }}>
+            <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900', letterSpacing: 6 }}>{room.code}</Text>
           </Pressable>
-          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
-            {room.stake > 0 ? <Coins amount={room.stake} /> : <Dim>Friendly game</Dim>}
-            <Text style={{ color: colors.dim }}>{room.members.length}/{room.maxPlayers} players</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
+            <View style={{ flex: 1 }}><Button title="Share invite" kind="ghost" style={{ minHeight: 42, borderColor: 'rgba(255,255,255,.3)' }} onPress={() => Share.share({ message: `Join my ${info.title} game on PlayCircle! Room code: ${room.code}` })} /></View>
+            <View style={{ flex: 1 }}><Button title="Invite friends" style={{ minHeight: 42 }} onPress={openInvite} /></View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
-            <Button title="Share code" kind="ghost" style={{ minHeight: 40 }} onPress={() => Share.share({ message: `Join my ${info.title} game on PlayCircle! Room code: ${room.code}` })} />
-            <Button title="Invite friend" kind="ghost" style={{ minHeight: 40 }} onPress={openInvite} />
-          </View>
-        </Card>
+        </View>
 
-        <View style={{ gap: 8, marginTop: 14 }}>
+        <View style={{ gap: 8, marginTop: 18 }}><Text style={{ color: colors.text, fontSize: 18, fontWeight: "900", marginBottom: 2 }}>Players in your room</Text>
           {Array.from({ length: room.maxPlayers }, (_, i) => room.members.find((m) => m.seat === i) ?? null).map((m, i) => (
             <Card key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
               {m ? (
@@ -92,7 +102,7 @@ export default function RoomScreen() {
                   {m.userId === room.hostId ? <Text>👑</Text> : m.ready ? <Text style={{ color: colors.good, fontWeight: '800' }}>✓</Text> : null}
                   {isHost && m.userId !== user.id ? <Text onPress={() => act(() => api(`/rooms/current/kick/${m.userId}`, { method: 'POST' }), 'Remove player')} style={{ color: colors.dim, fontSize: 18, paddingHorizontal: 6 }}>✕</Text> : null}
                 </>
-              ) : <Dim style={{ paddingVertical: 8 }}>Waiting for a player…</Dim>}
+              ) : <View style={{ flex: 1, paddingVertical: 8, gap: 3 }}><Body style={{ fontWeight: "800" }}>Open player slot</Body><Dim>Invite a friend or share the room code to fill this seat.</Dim></View>}
             </Card>
           ))}
         </View>

@@ -62,8 +62,8 @@ export default function RoomScreen() {
     <Screen>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 }}>
-          <Pressable onPress={leave}><Text style={{ color: colors.bad, fontWeight: '700' }}>Leave</Text></Pressable>
-          <Body style={{ fontWeight: '800' }}>{info.emoji} {info.title}</Body>
+          <Pressable onPress={leave} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line }}><Text style={{ color: colors.bad, fontWeight: '800' }}>Leave room</Text></Pressable>
+          <View style={{ alignItems: 'center', flex: 1 }}><Body style={{ fontWeight: '900' }}>{info.emoji} {info.title}</Body><Dim style={{ fontSize: 10 }}>MULTIPLAYER LOBBY</Dim></View>
           <View style={{ minWidth: 44, alignItems: 'flex-end' }}><VoiceButton /></View>
         </View>
 
@@ -94,7 +94,7 @@ export default function RoomScreen() {
 
         <View style={{ gap: 8, marginTop: 18 }}><Text style={{ color: colors.text, fontSize: 18, fontWeight: "900", marginBottom: 2 }}>Players in your room</Text>
           {Array.from({ length: room.maxPlayers }, (_, i) => room.members.find((m) => m.seat === i) ?? null).map((m, i) => (
-            <Card key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
+            <Card key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderRadius: 18 }}>
               {m ? (
                 <>
                   <Pressable onPress={() => router.push({ pathname: '/player/[id]', params: { id: m.userId } })}><Avatar name={m.displayName} online={m.online} frame={m.frame} /></Pressable>

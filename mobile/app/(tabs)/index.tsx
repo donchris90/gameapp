@@ -104,8 +104,8 @@ export default function Home() {
     const server = games?.games.find((x) => x.game === g);
     const playable = !!server?.available && SCREEN_READY.has(g);
     return (
-      <Pressable key={g} disabled={!playable} onPress={() => router.push(`/play/${g}`)} style={({ pressed }) => ({ width: '48.5%', opacity: playable ? (pressed ? 0.85 : 1) : 0.5, transform: [{ scale: pressed ? 0.98 : 1 }] })}>
-        <View style={{ backgroundColor: info.color, borderRadius: 22, padding: 14, minHeight: 118, justifyContent: 'space-between', overflow: 'hidden' }}>
+      <Pressable key={g} disabled={!playable} onPress={() => router.push(`/play/${g}`)} style={({ pressed }) => ({ width: '48%', flexGrow: 0, flexShrink: 0, opacity: playable ? (pressed ? 0.88 : 1) : 0.52, transform: [{ scale: pressed ? 0.985 : 1 }] })}>
+        <View style={{ backgroundColor: info.color, borderRadius: 20, padding: 14, height: 124, justifyContent: 'space-between', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,.14)' }}>
           <View pointerEvents="none" style={{ position: 'absolute', right: -18, top: -18, width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,.14)' }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Text style={{ fontSize: 30 }}>{info.emoji}</Text>
@@ -233,22 +233,22 @@ export default function Home() {
           </View>
         </View>
 
-        {heading('Games to play together')}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {list.map((g) => tile(g))}
-        </View>
-        <View style={{ gap: 10, marginTop: 10 }}>
-          <Pressable onPress={() => router.push('/apex')} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-            <View style={{ backgroundColor: '#B3202F', borderRadius: 22, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, overflow: 'hidden' }}>
-              <Text style={{ fontSize: 32 }}>🏎️</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900' }}>Apex Run</Text>
-                <Text style={{ color: 'rgba(255,255,255,.85)', fontSize: 12, fontWeight: '600' }}>Story, tours and races. Race 5 rivals, tilt to steer.</Text>
-              </View>
-              <Text style={{ color: '#fff', fontWeight: '900' }}>Race ›</Text>
-            </View>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+          <Pressable onPress={() => router.push('/community')} style={{ flex: 1, minHeight: 82, borderRadius: 18, padding: 12, backgroundColor: '#29205B', borderWidth: 1, borderColor: '#5742A5', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 22 }}>📣</Text><Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>Broadcast</Text><Text style={{ color: '#CFC5FF', fontSize: 11 }}>Tell the community</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/friends')} style={{ flex: 1, minHeight: 82, borderRadius: 18, padding: 12, backgroundColor: '#132A48', borderWidth: 1, borderColor: '#285A91', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 22 }}>👥</Text><Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>Find players</Text><Text style={{ color: '#B7D8FF', fontSize: 11 }}>Grow your circle</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/leaderboard')} style={{ flex: 1, minHeight: 82, borderRadius: 18, padding: 12, backgroundColor: '#103A37', borderWidth: 1, borderColor: '#1A756B', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 22 }}>🏆</Text><Text style={{ color: '#fff', fontWeight: '900', fontSize: 13 }}>Rankings</Text><Text style={{ color: '#B1F4E8', fontSize: 11 }}>See top players</Text>
           </Pressable>
         </View>
+        {heading('Games to play together')}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 }}>
+          {list.map((g) => tile(g))}
+        </View>
+
 
         {top.length ? (
           <>

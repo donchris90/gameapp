@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsBoolean, IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsUUID, IsString, MaxLength } from 'class-validator';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { appError } from '../common/errors';
@@ -7,6 +7,7 @@ import { EMOTES } from './emotes';
 import { CallBillingService } from './call-billing.service';
 import { GAMES, SocialService } from './social.service';
 
+class BroadcastDto { @IsString() @MaxLength(500) body!: string }
 class CallDto { @IsUUID() userId!: string; @IsOptional() @IsIn(['voice', 'video']) mode?: 'voice' | 'video' }
 class ModeDto { @IsOptional() @IsIn(['voice', 'video']) mode?: 'voice' | 'video' }
 class AnswerDto { @IsBoolean() accept!: boolean }
@@ -15,6 +16,12 @@ class AnswerDto { @IsBoolean() accept!: boolean }
 @UseGuards(JwtAuthGuard)
 export class SocialController {
   constructor(private readonly social: SocialService, private readonly billing: CallBillingService) {}
+
+  @Get('community/posts')
+  communityFeed() { return this.social.communityFeed(); }
+
+  @Post('community/posts') @HttpCode(201)
+  broadcast(@CurrentUser() u: AuthUser, @Body() dto: BroadcastDto) { return this.social.broadcast(u.id, dto.body); }
 
   @Get('players/:id')
   profile(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) { return this.social.profile(u.id, id); }

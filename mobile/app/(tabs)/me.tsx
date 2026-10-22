@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { api } from '../../src/api';
 import { titleText, useShop } from '../../src/cosmetics';
 import { setSoundOn, soundOn } from '../../src/sfx';
@@ -40,22 +40,43 @@ export default function Me() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <View style={{ alignItems: 'center', marginTop: 16, gap: 6 }}>
-          <Avatar name={user.displayName} size={72} frame={equipped?.frame} />
-          <H1>{user.displayName}</H1>
-          <Dim>@{user.username}{titleText(equipped?.title) ? `  ·  ${titleText(equipped?.title)}` : ''}</Dim>
-          <Coins amount={coins} size={22} />
+        <View style={{ marginTop: 8, marginBottom: 16, borderRadius: 26, padding: 20, backgroundColor: '#21194D', borderWidth: 1, borderColor: '#4A3A89', overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', right: -36, top: -46, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(124,92,255,.18)' }} />
+          <Text style={{ color: '#B9A9FF', fontSize: 11, fontWeight: '900', letterSpacing: 2, marginBottom: 14 }}>PLAYER PROFILE</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Avatar name={user.displayName} size={76} frame={equipped?.frame} />
+            <View style={{ flex: 1 }}>
+              <H1>{user.displayName}</H1>
+              <Dim>@{user.username}</Dim>
+              {titleText(equipped?.title) ? <Text style={{ color: '#E2D9FF', fontWeight: '800', marginTop: 4 }}>{titleText(equipped?.title)}</Text> : null}
+              <View style={{ alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: 'rgba(46,213,115,.12)' }}>
+                <Text style={{ color: colors.good, fontSize: 11, fontWeight: '900' }}>● PLAYER ACCOUNT</Text>
+              </View>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 18 }}>
+            <View style={{ flex: 1, borderRadius: 15, backgroundColor: 'rgba(255,255,255,.07)', padding: 12 }}>
+              <Dim style={{ fontSize: 11 }}>Coin balance</Dim><Coins amount={coins} size={19} />
+            </View>
+            <View style={{ flex: 1, borderRadius: 15, backgroundColor: 'rgba(255,255,255,.07)', padding: 12 }}>
+              <Dim style={{ fontSize: 11 }}>Games won</Dim><Text style={{ color: '#fff', fontSize: 21, fontWeight: '900' }}>{wins}</Text>
+            </View>
+          </View>
         </View>
 
-        <Card style={{ marginTop: 16, alignItems: 'center', gap: 4 }}>
-          <Dim>Your friend code</Dim>
-          <Text onPress={async () => { await Clipboard.setStringAsync(user.friendCode); Alert.alert('Copied', 'Friend code copied.'); }} style={{ color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: 4 }}>{user.friendCode}</Text>
-          <Dim style={{ fontSize: 12 }}>Tap to copy. Friends can add you with it.</Dim>
+        <Card style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(124,92,255,.18)', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22 }}>🔗</Text></View>
+            <View style={{ flex: 1 }}><Body style={{ fontWeight: '900' }}>Your friend code</Body><Dim style={{ fontSize: 12 }}>Share it so people can add you.</Dim></View>
+            <Pressable onPress={async () => { await Clipboard.setStringAsync(user.friendCode); Alert.alert('Copied', 'Friend code copied.'); }} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.accent }}><Text style={{ color: '#fff', fontWeight: '900' }}>Copy</Text></Pressable>
+          </View>
+          <Text onPress={async () => { await Clipboard.setStringAsync(user.friendCode); Alert.alert('Copied', 'Friend code copied.'); }} style={{ color: colors.text, fontSize: 25, fontWeight: '900', letterSpacing: 4, textAlign: 'center', paddingVertical: 8 }}>{user.friendCode}</Text>
         </Card>
 
-        <Button style={{ marginTop: 12 }} kind="ghost" title="✨ Customize: frames, titles, boards" onPress={() => router.push('/cosmetics')} />
-
-        <Button style={{ marginTop: 10 }} kind="ghost" title={sound ? '🔊 Sound and vibration: on' : '🔇 Sound and vibration: off'} onPress={() => { const n = !sound; setSound(n); void setSoundOn(n); }} />
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+          <Button style={{ flex: 1 }} title="✨ Customize profile" onPress={() => router.push('/cosmetics')} />
+          <Button style={{ flex: 1 }} kind="ghost" title={sound ? '🔊 Sound on' : '🔇 Sound off'} onPress={() => { const n = !sound; setSound(n); void setSoundOn(n); }} />
+        </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
           <Button style={{ flex: 1 }} kind={tab === 'games' ? 'primary' : 'ghost'} title={`Games (${wins} won)`} onPress={() => setTab('games')} />

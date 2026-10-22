@@ -12,7 +12,7 @@ export default function TabsLayout() {
       headerShown: false, tabBarActiveTintColor: colors.text, tabBarInactiveTintColor: colors.dim,
       tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.line }, sceneStyle: { backgroundColor: colors.bg },
     }}>
-      <Tabs.Screen name="index" options={{ title: 'Play', tabBarIcon: icon('🎮') }} />
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('🏠') }} />
       <Tabs.Screen name="shop" options={{ title: 'Coins', tabBarIcon: icon('🪙') }} />
       <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥'), tabBarBadge: chatUnread > 0 ? chatUnread : undefined }} />
       <Tabs.Screen name="me" options={{ title: 'Me', tabBarIcon: icon('🙂') }} />

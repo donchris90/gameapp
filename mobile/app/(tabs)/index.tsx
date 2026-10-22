@@ -212,7 +212,28 @@ export default function Home() {
           </Pressable>
         </ScrollView>
 
-        {heading('Play')}
+        {heading("Your community", { label: "Find people", onPress: () => router.push('/friends') })}
+        <View style={{ borderRadius: 22, padding: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: 'rgba(124,92,255,.18)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 23 }}>💬</Text>
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Stay connected</Text>
+              <Text style={{ color: colors.dim, fontSize: 12, lineHeight: 17 }}>{online.length ? `${online.length} friend${online.length === 1 ? '' : 's'} online now. Say hello or invite someone to play.` : 'Meet players, add friends, and find someone to play with.'}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => router.push('/friends')} style={{ flex: 1, minHeight: 42, borderRadius: 14, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '900' }}>Find friends</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push('/leaderboard')} style={{ flex: 1, minHeight: 42, borderRadius: 14, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: colors.text, fontWeight: '800' }}>Community rankings</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {heading('Games to play together')}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {list.map((g) => tile(g))}
         </View>
